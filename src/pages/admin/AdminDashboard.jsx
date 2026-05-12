@@ -63,7 +63,7 @@ export default function AdminDashboard() {
     try {
       const [{ data: clients, error: clientsError }, { data: messages, error: messagesError }, plansRes, autoRes, integrationsRes] = await Promise.all([
         supabase.from("clients").select("id, business_name, email, is_active, created_at").order("created_at", { ascending: false }),
-        supabase.from("messages").select("id, client_id, sender, message, channel, platform, direction, created_at").order("created_at", { ascending: false }).limit(300),
+        supabase.from("messages").select("id, client_id, sender, message, channel, direction, created_at").order("created_at", { ascending: false }).limit(300),
         supabase.from("plans").select("*", { count: "exact", head: true }),
         supabase.from("auto_replies").select("*", { count: "exact", head: true }),
         supabase.from("client_feature_integrations").select("id, is_active, features:feature_id(slug, name)").limit(100),
@@ -94,7 +94,7 @@ export default function AdminDashboard() {
   const platformData = useMemo(() => {
     const map = {};
     stats.messages.forEach((m) => {
-      const key = (m.channel || m.platform || "unknown").toLowerCase();
+      const key = (m.channel || "unknown").toLowerCase();
       map[key] = (map[key] || 0) + 1;
     });
     const fallback = stats.messages.length ? [] : [
