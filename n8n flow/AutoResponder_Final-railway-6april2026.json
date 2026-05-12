@@ -1,0 +1,1069 @@
+{
+  "name": "AutoResponder_Final",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "inbound/:platform/:channelKey",
+        "options": {}
+      },
+      "id": "6348db56-bad5-4115-b5b8-8253090bc767",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -2128,
+        80
+      ],
+      "webhookId": "751ecf29-1acd-43b7-8c80-bd8f9929f656"
+    },
+    {
+      "parameters": {
+        "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"] +\n\"/rest/v1/client_feature_integrations?select=id,client_id,feature_id,is_active,config,features!inner(slug)\" +\n\"&is_active=eq.true\" +\n\"&config->>channelKey=eq.\" + $node[\"Code in JavaScript1\"].json[\"channelKey\"] +\n\"&features.slug=eq.\" + $node[\"Code in JavaScript1\"].json[\"platform\"] +\n\"&limit=1\"}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a872462d-9fa6-4032-906c-e366eb8331b1",
+      "name": "client_feature",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1648,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"]}}/rest/v1/messages\n\n",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  \"client_id\": $items(\"client_feature\", 0, 0)[0].json.client_id,\n  \"channel\": $items(\"Code in JavaScript1\", 0, 0)[0].json.platform,\n  \"sender\": $items(\"Code in JavaScript1\", 0, 0)[0].json.sender_id,\n  \"message\": $items(\"Code in JavaScript1\", 0, 0)[0].json.text,\n  \"direction\": \"inbound\",\n\"conversation_id\": $node[\"prepare_conversation\"].json[\"conversation_id\"]\n}\n}}",
+        "options": {}
+      },
+      "id": "741aabeb-767a-4b35-a903-4bde4c81ddec",
+      "name": "insert message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1136,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"]}}/rest/v1/auto_replies?select=id,client_id,trigger_text,reply_text,is_active&client_id=eq.{{$items(\"client_feature\", 0, 0)[0].json.client_id}}&is_active=eq.true",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7b16245c-4fde-4048-b4fd-1d940431b8d8",
+      "name": "auto_replies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -448,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "0539a740-36a9-4662-958e-e7d962ae8ad7",
+              "leftValue": "={{$node[\"normalize_reply\"].json[\"platform\"]?.toLowerCase()}}",
+              "rightValue": "=telegram",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "04e9528c-5eb3-4a19-8c25-43e2acc2e4de",
+      "name": "IF Telegram",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{$node[\"normalize_reply\"].json.config[\"Bot Token\"]}}/sendMessage\n",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": \"{{$node[\"normalize_reply\"].json[\"sender_id\"]}}\",\n  \"text\": \"{{$node[\"normalize_reply\"].json[\"reply_text\"]}}\"\n}",
+        "options": {}
+      },
+      "id": "7dc03f95-4370-4cfd-8c15-91035ece6a03",
+      "name": "send auto reply Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1648,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"]}}/rest/v1/messages\n\n",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"client_id\": \"{{$node[\"normalize_reply\"].json[\"client_id\"]}}\",\n  \"channel\": \"{{$node[\"normalize_reply\"].json[\"platform\"]}}\",\n  \"sender\": \"{{$node[\"normalize_reply\"].json[\"sender_id\"]}}\",\n  \"message\": \"{{$node[\"normalize_reply\"].json[\"reply_text\"].replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"').replace(/\\n/g, '\\\\n')}}\",\n  \"direction\": \"outbound\",\n\"conversation_id\": \"{{$node[\"normalize_reply\"].json[\"conversation_id\"]}}\"\n}",
+        "options": {}
+      },
+      "id": "b25eeb0c-da2e-4528-8548-ba4e65581676",
+      "name": "insert auto reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v18.0/me/messages?access_token={{$node[\"client_feature\"].json[\"config\"][\"Page Access Token\"]}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  \"recipient\": {\n    \"id\": $node[\"normalize_reply\"].json[\"sender_id\"]\n  },\n  \"message\": {\n    \"text\": $node[\"normalize_reply\"].json[\"reply_text\"]\n  }\n}\n}}",
+        "options": {}
+      },
+      "id": "16336c93-3f7f-47fb-a14b-92a5c68004d9",
+      "name": "send auto reply Facebook Graph API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1520,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const platform = String($json.params?.platform || \"\").toLowerCase();\nconst channelKey = String($json.params?.channelKey || \"\");\n\nlet text = \"\";\nlet sender_id = \"\";\n\nif (platform === \"telegram\") {\n  text = $json.body?.message?.text || \"\";\n  sender_id = String($json.body?.message?.chat?.id || \"\");\n}\n\nif (platform === \"facebook\") {\n  const fbMessage = $json.body?.entry?.[0]?.messaging?.[0];\n  text = fbMessage?.message?.text || \"\";\n  sender_id = String(fbMessage?.sender?.id || \"\");\n}\n\nreturn {\n  platform,\n  channelKey,\n  text,\n  sender_id,\n  raw_body: $json.body || $json\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1968,
+        80
+      ],
+      "id": "0b193b7b-7cbf-4033-9aed-1b29b22b5acf",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst integration = $items(\"client_feature\", 0, 0)[0].json;\nconst replies = $input.all().map(item => item.json);\nconst text = String(base.text || \"\").toLowerCase().trim();\n\n// fallback default reply\nlet selectedReply = \"شكراً لتواصلك معنا 🙏 سيتم الرد عليك بأقرب وقت ممكن\";\n\nfor (const r of replies) {\n  const trigger = String(r.trigger_text || \"\").toLowerCase().trim();\n  if (trigger && text.includes(trigger)) {\n    selectedReply = r.reply_text;\n    break;\n  }\n}\n\nreturn [\n  {\n    json: {\n      platform: base.platform,\n      channelKey: base.channelKey,\n      text: base.text,\n      sender_id: base.sender_id,\n      client_id: integration.client_id,\n      config: integration.config || {},\n      reply_text: selectedReply\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -256,
+        336
+      ],
+      "id": "798d33ec-c6cf-4639-8e3a-134a861c4b5b",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"SUPABASE_URL\": \"https://rdfqdkzcudcqjattpmpt.supabase.co\",\n  \"SUPABASE_KEY\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJkZnFka3pjdWRjcWphdHRwbXB0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI4OTk0NTUsImV4cCI6MjA3ODQ3NTQ1NX0.o18a417R13oStclFA2smM-6jQ7799H7RcxmhZA6xX74\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1808,
+        80
+      ],
+      "id": "77f2d285-cce5-4e06-b4eb-b322a3e48822",
+      "name": "Config"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{'https://n8n-production-fcd4.up.railway.app/webhook/751ecf29-1acd-43b7-8c80-bd8f9929f656/inbound/facebook/' + $json.body.entry[0].messaging[0].recipient.id}}\n\n\n",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json.body}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1680,
+        400
+      ],
+      "id": "f8303ac8-46cb-46a0-8931-e8fdbf145ae2",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "facebook-verify",
+        "options": {
+          "responseCode": {
+            "values": {}
+          }
+        }
+      },
+      "id": "7821a034-7391-4877-b016-74870aa5277e",
+      "name": "facebook-webhook (POST)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -2032,
+        400
+      ],
+      "webhookId": "751ecf29-1acd-43b7-8c80-bd8f9929f656"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{$json.query[\"hub.challenge\"]}}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -1680,
+        576
+      ],
+      "id": "957278d1-51db-41ad-8309-c80870646375",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "path": "facebook-verify",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -2032,
+        576
+      ],
+      "id": "4a702fe8-f2d7-416f-804d-e063557cd831",
+      "name": "Webhook GET",
+      "webhookId": "8c121907-6dbc-4fc7-81dd-a9456890557e"
+    },
+    {
+      "parameters": {
+        "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"] + \"/rest/v1/clients?select=id,plan_id,plans!inner(plan_features!inner(features!inner(slug)))&id=eq.\" + $node[\"client_feature\"].json[\"client_id\"] + \"&plans.plan_features.features.slug=eq.ai_auto_reply&limit=1\"}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e4bd593c-bc86-42a2-abd3-1ae65860e26f",
+      "name": "plan_supports_ai check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -624,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "2d22e717-9448-425e-b31a-2d4e7518ebdd",
+              "leftValue": "={{$node[\"client_feature\"].json[\"config\"][\"reply_mode\"]?.toLowerCase()}}",
+              "rightValue": "ai",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -816,
+        80
+      ],
+      "id": "5c8d7aef-6837-4017-84b7-183a8da42405",
+      "name": "If reply_mode = ai"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "2d22e717-9448-425e-b31a-2d4e7518ebdd",
+              "leftValue": "={{ !!$json.id }}",
+              "rightValue": "undefined",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -448,
+        -48
+      ],
+      "id": "2cc0d2e9-ccc5-4407-8986-19d8a5f54136",
+      "name": "If plan_supports_ai"
+    },
+    {
+      "parameters": {
+        "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"] + \"/rest/v1/client_feature_integrations?select=id,client_id,feature_id,is_active,config&client_id=eq.\" + $node[\"client_feature\"].json[\"client_id\"] + \"&feature_id=eq.\" + $node[\"get_ai_feature_id\"].json[\"id\"] + \"&is_active=eq.true&limit=1\"}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "22aabe32-f0d3-4b4d-be3c-d671880dd28e",
+      "name": "ai_feature_config",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -64,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $node[\"ai_feature_config\"].json[\"config\"] || {};\n\nconst business_name = config.business_name || \"\";\nconst business_description = config.business_description || \"\";\nconst reply_tone = config.reply_tone || \"friendly\";\nconst language = config.language || \"ar\";\nconst working_hours = config.working_hours || \"\";\nconst special_instructions = config.special_instructions || \"\";\n\nconst userMessage = $node[\"Code in JavaScript1\"].json[\"text\"] || \"\";\n\n// آخر الرسائل من الداتابيز\nconst historyItems = $items(\"get_conversation_history\", 0, 0);\n\n// Supabase رجّع الأحدث أولًا، بدنا نقلبهم عشان يصيروا من الأقدم للأحدث\nconst orderedHistory = [...historyItems].reverse();\n\nconst conversationHistory = orderedHistory\n  .map(item => {\n    const direction = item.json.direction === \"outbound\" ? \"Bot\" : \"User\";\n    const message = item.json.message || \"\";\n    return `${direction}: ${message}`;\n  })\n  .join(\"\\n\");\n\nconst prompt = `\nYou are an AI assistant for ${business_name}.\n\nBusiness description:\n${business_description}\n\nReply tone: ${reply_tone}\nLanguage: ${language}\n\nWorking hours:\n${working_hours}\n\nInstructions:\n${special_instructions}\n\nKeep answers short and direct.\nKeep replies under 2 sentences unless necessary.\nDo NOT include \"Bot:\" or \"User:\" in your reply. Just answer naturally.\n\nConversation history:\n${conversationHistory}\n\nCurrent user message:\n${userMessage}\n\nReply to the user based on the conversation.\n\nIMPORTANT:\nReturn your response ONLY as valid JSON in the following format:\n\n{\n  \"reply\": \"your reply message here\",\n  \"intent\": \"one of: greeting, pricing, order, support, closing, unknown\"\n}\n\nRules:\n- Do NOT include any extra text outside the JSON\n- Do NOT include \"Bot:\" or \"User:\"\n- Keep the reply natural, friendly, and short\n`;\n\nreturn [{\n  json: {\n    prompt\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        -64
+      ],
+      "id": "c7cbd1ef-d16b-475a-8ebd-ab4bc3447b50",
+      "name": "Code build_ai_prompt"
+    },
+    {
+      "parameters": {
+        "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"] + \"/rest/v1/features?select=id&slug=eq.ai_auto_reply&limit=1\"}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9e936ed5-980c-4232-b8af-cbcd1d60ec38",
+      "name": "get_ai_feature_id",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -256,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer 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"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4o-mini\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"{{$json[\"prompt\"].replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"').replace(/\\n/g, '\\\\n')}}\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "3038c417-5d46-4280-bacf-f7141a854970",
+      "name": "openai_reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        704,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst integration = $items(\"client_feature\", 0, 0)[0].json;\n\nlet aiRaw =\n  $json.choices?.[0]?.message?.content ||\n  '{\"reply\":\"عذرًا، لم أتمكن من إنشاء رد الآن.\",\"intent\":\"unknown\"}';\n\n// نحاول نفك JSON\nlet parsed;\n\ntry {\n  parsed = JSON.parse(aiRaw);\n} catch (e) {\n  parsed = {\n    reply: aiRaw,\n    intent: \"unknown\"\n  };\n}\n\nconst replyText = parsed.reply || \"عذرًا، لم أتمكن من إنشاء رد الآن.\";\nconst intent = parsed.intent || \"unknown\";\n\nreturn [\n  {\n    json: {\n      platform: base.platform,\n      channelKey: base.channelKey,\n      text: base.text,\n      sender_id: base.sender_id,\n      client_id: integration.client_id,\n      config: integration.config || {},\n      reply_text: replyText,\n      intent: intent\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        -64
+      ],
+      "id": "472d5015-fb0b-40e3-9b7c-c17c3bf2181b",
+      "name": "extract_ai_reply"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst integration = $items(\"client_feature\", 0, 0)[0].json;\nconst decision = $node[\"message_decision\"].json;\n\nfunction generateUuid() {\n  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {\n    const r = Math.random() * 16 | 0;\n    const v = c === 'x' ? r : (r & 0x3 | 0x8);\n    return v.toString(16);\n  });\n}\n\n//const stateItems = $items(\"get_conversation_state\", 0, 0) || [];\n//const state = stateItems.length > 0 ? stateItems[0].json : null;\n\n//const conversationId = state?.conversation_id || generateUuid();\nconst conversationId = $node[\"prepare_conversation\"].json[\"conversation_id\"];\nconst intent = $json.intent || null;\n\n// 0) إذا المستخدم بمرحلة إرسال بيانات التواصل\nif (decision.message_action === \"handle_contact\") {\n  return [\n    {\n      json: {\n        platform: base.platform,\n        channelKey: base.channelKey,\n        text: base.text,\n        sender_id: base.sender_id,\n        client_id: integration.client_id,\n        config: integration.config || {},\n        reply_text: decision.reply_text,\n        next_step: null,\n        conversation_status: \"active\",\n        conversation_id: conversationId\n      }\n    }\n  ];\n}\n\n// 1) إذا AI قال إن المحادثة انتهت\nif (intent === \"closing\") {\n  return [\n    {\n      json: {\n        platform: base.platform,\n        channelKey: base.channelKey,\n        text: base.text,\n        sender_id: base.sender_id,\n        client_id: integration.client_id,\n        config: integration.config || {},\n        reply_text: \"أهلاً وسهلاً 🙏 إذا احتجت أي شيء أنا موجود.\",\n        next_step: null,\n        conversation_status: \"closed\",\n        conversation_id: conversationId\n      }\n    }\n  ];\n}\n\n// 2) إذا AI فهم أنه طلب\nif (intent === \"order\") {\n  return [\n    {\n      json: {\n        platform: base.platform,\n        channelKey: base.channelKey,\n        text: base.text,\n        sender_id: base.sender_id,\n        client_id: integration.client_id,\n        config: integration.config || {},\n        reply_text: \"ممتاز 👌 خلينا نبدأ الطلب 🙏 ممكن تبعتلي اسمك ورقمك للتواصل؟\",\n        lead_step: \"ask_contact\",\n        next_step: \"ask_contact\",\n        conversation_status: \"active\",\n        conversation_id: conversationId\n      }\n    }\n  ];\n}\n\n// 3) إذا message_decision قررت إنهاء المحادثة\nif (decision.message_action === \"end_conversation\") {\n  return [\n    {\n      json: {\n        platform: base.platform,\n        channelKey: base.channelKey,\n        text: base.text,\n        sender_id: base.sender_id,\n        client_id: integration.client_id,\n        config: integration.config || {},\n        reply_text: decision.reply_text,\n        next_step: null,\n        conversation_status: \"closed\",\n        conversation_id: conversationId\n      }\n    }\n  ];\n}\n\n// 4) الوضع العادي\nlet replyText = $json.reply_text;\n\nif (!replyText) {\n  replyText = \"شكراً لتواصلك معنا 🙏 سيتم الرد عليك بأقرب وقت ممكن\";\n}\n\nreturn [\n  {\n    json: {\n      platform: base.platform,\n      channelKey: base.channelKey,\n      text: base.text,\n      sender_id: base.sender_id,\n      client_id: integration.client_id,\n      config: integration.config || {},\n      reply_text: replyText,\n      next_step: null,\n      conversation_status: \"active\",\n      conversation_id: conversationId\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        336
+      ],
+      "id": "6981f781-986c-4964-998f-f1004cbe5a7e",
+      "name": "normalize_reply"
+    },
+    {
+      "parameters": {
+        "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"] +\n\"/rest/v1/messages?select=id,client_id,sender,message,direction,created_at\" +\n\"&client_id=eq.\" + $node[\"client_feature\"].json[\"client_id\"] +\n\"&sender=eq.\" + $node[\"Code in JavaScript1\"].json[\"sender_id\"] +\n\"&order=created_at.desc\" +\n\"&created_at=gte.\" + $node[\"calculate_time\"].json[\"past_time\"] +\n\"&limit=5\"}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0853e1c7-8f0c-4f29-b92e-ff6331b53cfc",
+      "name": "get_conversation_history",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        336,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const minutes = 20;\n\nconst pastTime = new Date(Date.now() - minutes * 60 * 1000).toISOString();\n\nreturn [{\n  json: {\n    past_time: pastTime\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        144,
+        -64
+      ],
+      "id": "dcc1ea2a-6981-4fb0-9e65-b0daad0eba80",
+      "name": "calculate_time"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst integration = $items(\"client_feature\", 0, 0)[0].json;\n\n// state من الداتابيز\n//const stateItem = $items(\"get_conversation_state\", 0, 0)[0];\n//const state = stateItem ? stateItem.json : null;\n\nconst stateItems = $items(\"get_conversation_state\", 0, 0) || [];\nconst state = stateItems.length > 0 ? stateItems[0].json : null;\n\n\nconst currentStep = state?.current_step || null;\n\nconst text = String(base.text || \"\").toLowerCase().trim();\n\n// كلمات إنهاء المحادثة\nconst endWords = [\n  \"شكرا\",\n  \"شكراً\",\n  \"يسلمو\",\n  \"يعطيك العافية\",\n  \"تمام\",\n  \"خلص\",\n  \"خلص شكرا\",\n  \"اوك شكرا\",\n  \"ممتاز شكرا\"\n];\n\nconst isEndConversation = endWords.some(word => text.includes(word));\n\n// 🟢 1. إذا المستخدم كان بمرحلة الطلب\nif (currentStep === \"ask_contact\") {\n  return [\n    {\n      json: {\n        platform: base.platform,\n        channelKey: base.channelKey,\n        text: base.text,\n        sender_id: base.sender_id,\n        client_id: integration.client_id,\n        config: integration.config || {},\n        message_action: \"handle_contact\",\n        reply_text: \"تمام 👌 تم استلام بياناتك، رح نتواصل معك قريبًا 🙏\"\n      }\n    }\n  ];\n}\n\n// 🔴 2. إنهاء المحادثة\nif (isEndConversation) {\n  return [\n    {\n      json: {\n        platform: base.platform,\n        channelKey: base.channelKey,\n        text: base.text,\n        sender_id: base.sender_id,\n        client_id: integration.client_id,\n        config: integration.config || {},\n        message_action: \"end_conversation\",\n        reply_text: \"أهلاً وسهلاً 🙏 إذا احتجت أي شيء أنا موجود.\"\n      }\n    }\n  ];\n}\n\n// 🟡 3. الوضع الطبيعي\nreturn [\n  {\n    json: {\n      platform: base.platform,\n      channelKey: base.channelKey,\n      text: base.text,\n      sender_id: base.sender_id,\n      client_id: integration.client_id,\n      config: integration.config || {},\n      message_action: \"continue\",\n      reply_text: \"\"\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -976,
+        80
+      ],
+      "id": "52bfd377-692b-4404-8874-d4980ee31889",
+      "name": "message_decision"
+    },
+    {
+      "parameters": {
+        "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"] + \"/rest/v1/conversation_state?select=*&client_id=eq.\" + $node[\"client_feature\"].json[\"client_id\"] + \"&sender_id=eq.\" + $node[\"Code in JavaScript1\"].json[\"sender_id\"] + \"&limit=1\"}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8e501605-5dc1-4c05-9d2f-ffa35a441840",
+      "name": "get_conversation_state",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1488,
+        80
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"] + \"/rest/v1/conversation_state?on_conflict=client_id,sender_id\"}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "=client_id",
+              "value": "={{$json[\"client_id\"]}}"
+            },
+            {
+              "name": "sender_id",
+              "value": "={{$json[\"sender_id\"]}}"
+            },
+            {
+              "name": "platform",
+              "value": "={{$json[\"platform\"]}}"
+            },
+            {
+              "name": "conversation_id",
+              "value": "={{$json[\"conversation_id\"]}}"
+            },
+            {
+              "name": "current_step",
+              "value": "={{$json[\"next_step\"] || null}}"
+            },
+            {
+              "name": "updated_at",
+              "value": "={{$now}}"
+            },
+            {
+              "name": "conversation_status",
+              "value": "={{$json[\"conversation_status\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7e82f9da-3476-4f27-802c-684a530cf702",
+      "name": "upsert_conversation_state",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1088,
+        336
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst integration = $items(\"client_feature\", 0, 0)[0].json;\n\nconst stateItems = $items(\"get_conversation_state\", 0, 0) || [];\nconst state = stateItems.length > 0 ? stateItems[0].json : null;\n\nfunction generateUuid() {\n  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {\n    const r = Math.random() * 16 | 0;\n    const v = c === 'x' ? r : (r & 0x3 | 0x8);\n    return v.toString(16);\n  });\n}\n\n//const conversationId = state?.conversation_id || generateUuid();\nconst shouldStartNewConversation =\n  !state || state.conversation_status === \"closed\";\n\nconst conversationId = shouldStartNewConversation\n  ? generateUuid()\n  : state.conversation_id;\n\nreturn [\n  {\n    json: {\n      platform: base.platform,\n      channelKey: base.channelKey,\n      text: base.text,\n      sender_id: base.sender_id,\n      client_id: integration.client_id,\n      config: integration.config || {},\n      conversation_id: conversationId,\n      current_step: state?.current_step || null\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1296,
+        80
+      ],
+      "id": "d64e1ce9-f5f3-4b49-a80d-2775183b7473",
+      "name": "prepare_conversation"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "client_feature": {
+      "main": [
+        [
+          {
+            "node": "get_conversation_state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "insert message": {
+      "main": [
+        [
+          {
+            "node": "message_decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Telegram": {
+      "main": [
+        [
+          {
+            "node": "send auto reply Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "send auto reply Facebook Graph API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "send auto reply Telegram": {
+      "main": [
+        [
+          {
+            "node": "insert auto reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "send auto reply Facebook Graph API": {
+      "main": [
+        [
+          {
+            "node": "insert auto reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "auto_replies": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "normalize_reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "client_feature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "facebook-webhook (POST)": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        []
+      ]
+    },
+    "Webhook GET": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "plan_supports_ai check": {
+      "main": [
+        [
+          {
+            "node": "If plan_supports_ai",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If reply_mode = ai": {
+      "main": [
+        [
+          {
+            "node": "plan_supports_ai check",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "auto_replies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If plan_supports_ai": {
+      "main": [
+        [
+          {
+            "node": "get_ai_feature_id",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "auto_replies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ai_feature_config": {
+      "main": [
+        [
+          {
+            "node": "calculate_time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_ai_feature_id": {
+      "main": [
+        [
+          {
+            "node": "ai_feature_config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code build_ai_prompt": {
+      "main": [
+        [
+          {
+            "node": "openai_reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "openai_reply": {
+      "main": [
+        [
+          {
+            "node": "extract_ai_reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "extract_ai_reply": {
+      "main": [
+        [
+          {
+            "node": "normalize_reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "normalize_reply": {
+      "main": [
+        [
+          {
+            "node": "upsert_conversation_state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_conversation_history": {
+      "main": [
+        [
+          {
+            "node": "Code build_ai_prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "calculate_time": {
+      "main": [
+        [
+          {
+            "node": "get_conversation_history",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "message_decision": {
+      "main": [
+        [
+          {
+            "node": "If reply_mode = ai",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_conversation_state": {
+      "main": [
+        [
+          {
+            "node": "prepare_conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "upsert_conversation_state": {
+      "main": [
+        [
+          {
+            "node": "IF Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "prepare_conversation": {
+      "main": [
+        [
+          {
+            "node": "insert message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "91364bd6-8ee0-4355-a41b-ce89165083e9",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a7dfe56264a1242cc8219a9c70adbe48c92f9f0ed6980470afb6be80b2a84146"
+  },
+  "id": "mIZc2ttw7QyHRwLa",
+  "tags": []
+}
