@@ -29,6 +29,21 @@ function initials(text = "") {
   return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
 }
 
+
+function getMessageText(msg = {}) {
+  return (
+    msg.message ??
+    msg.text ??
+    msg.body ??
+    msg.content ??
+    msg.reply_text ??
+    msg.reply ??
+    msg.response ??
+    msg.answer ??
+    ""
+  );
+}
+
 function directionLabel(direction) {
   if (["in", "inbound"].includes(direction)) return "واردة";
   if (["out", "outbound"].includes(direction)) return "صادرة";
@@ -146,7 +161,7 @@ export default function ClientMessages() {
             conversation_status: state?.conversation_status || "active",
             current_step: state?.current_step || null,
             updated_at: state?.updated_at || msg.created_at,
-            last_message: msg.message || "",
+            last_message: getMessageText(msg) || "",
             last_message_at: msg.created_at,
             sender: lead?.name || msg.sender || state?.sender_id || "",
             last_direction: msg.direction || "",
@@ -208,7 +223,7 @@ export default function ClientMessages() {
         .order("created_at", { ascending: true });
 
       if (error) throw error;
-      setConversationMessages(data || []);
+      setConversationMessages((data || []).map((m) => ({ ...m, message_text: getMessageText(m) })));
     } catch (err) {
       console.error(err);
       setError(err.message || "فشل في جلب رسائل المحادثة");
@@ -457,7 +472,7 @@ export default function ClientMessages() {
                               <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${isInbound ? "bg-slate-100 text-slate-500" : "bg-white/15 text-white"}`}>{directionLabel(msg.direction)}</span>
                               <span className={`text-[11px] ${isInbound ? "text-slate-400" : "text-indigo-100"}`}>{formatDate(msg.created_at)}</span>
                             </div>
-                            <div className="whitespace-pre-wrap break-words text-sm leading-7">{msg.message || "—"}</div>
+                            <div className="whitespace-pre-wrap break-words text-sm leading-7">{msg.message_text || getMessageText(msg) || "—"}</div>
                           </div>
                         </div>
                       );
