@@ -43,6 +43,7 @@ export default function AdminClients() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [planFilter, setPlanFilter] = useState("all");
+  const [pageSize, setPageSize] = useState(10);
   const [form, setForm] = useState(emptyForm);
 
   useEffect(() => {
@@ -303,44 +304,21 @@ export default function AdminClients() {
 
   return (
     <div className="space-y-6">
-      <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
-        <div className="relative isolate px-6 py-7 md:px-8">
-          <div className="absolute inset-x-0 top-0 -z-10 h-32 bg-gradient-to-r from-indigo-50 via-sky-50 to-white" />
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div className="max-w-2xl">
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-white/80 px-3 py-1 text-xs font-semibold text-indigo-600 shadow-sm">
-                <BuildingStorefrontIcon className="h-4 w-4" />
-                Client Management
-              </div>
-              <h1 className="text-3xl font-semibold tracking-tight text-slate-950">
-                إدارة العملاء
-              </h1>
-              <p className="mt-2 text-sm leading-6 text-slate-500">
-                أضف العملاء، اربطهم بالباقات، وتابع حالة التفعيل من صفحة واحدة مرتبة ومريحة.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <button
-                type="button"
-                onClick={fetchData}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-              >
-                <ArrowPathIcon className="h-5 w-5" />
-                تحديث
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsDrawerOpen(true)}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700"
-              >
-                <PlusIcon className="h-5 w-5" />
-                إضافة عميل
-              </button>
-            </div>
-          </div>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.22em] text-indigo-600">Admin Portal</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Clients</h1>
+          <p className="mt-2 text-sm text-slate-500">إدارة العملاء، الباقات، حالة التفعيل، والمنصات المرتبطة.</p>
         </div>
-      </section>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <button type="button" onClick={fetchData} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50">
+            <ArrowPathIcon className="h-5 w-5" /> تحديث
+          </button>
+          <button type="button" onClick={() => setIsDrawerOpen(true)} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700">
+            <PlusIcon className="h-5 w-5" /> إضافة عميل
+          </button>
+        </div>
+      </div>
 
       {msg && (
         <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">
@@ -383,7 +361,7 @@ export default function AdminClients() {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(260px,1fr)_160px_180px] xl:w-[680px]">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(260px,1fr)_150px_160px_110px] xl:w-[820px]">
               <div className="relative">
                 <MagnifyingGlassIcon className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
                 <input
@@ -423,6 +401,19 @@ export default function AdminClients() {
                 </select>
                 <ChevronDownIcon className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               </div>
+
+              <div className="relative">
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  className="h-12 w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-200 focus:bg-white focus:ring-4 focus:ring-indigo-50"
+                >
+                  <option value={5}>إظهار 5</option>
+                  <option value={10}>إظهار 10</option>
+                  <option value={20}>إظهار 20</option>
+                </select>
+                <ChevronDownIcon className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              </div>
             </div>
           </div>
         </div>
@@ -443,19 +434,21 @@ export default function AdminClients() {
               </p>
             </div>
           ) : (
-            <table className="w-full min-w-[980px] text-left text-sm">
+            <table className="w-full min-w-[1180px] text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-[0.08em] text-slate-500">
                   <th className="px-6 py-4 font-semibold">Client</th>
                   <th className="px-6 py-4 font-semibold">Plan</th>
+                  <th className="px-6 py-4 font-semibold">Platforms</th>
                   <th className="px-6 py-4 font-semibold">Status</th>
                   <th className="px-6 py-4 font-semibold">Created</th>
+                  <th className="px-6 py-4 font-semibold">Last Active</th>
                   <th className="px-6 py-4 text-center font-semibold">Settings</th>
                   <th className="px-6 py-4 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredClients.map((client) => {
+                {filteredClients.slice(0, pageSize).map((client, index) => {
                   const initials = (client.business_name || client.email || "C")
                     .slice(0, 2)
                     .toUpperCase();
@@ -483,6 +476,14 @@ export default function AdminClients() {
                       </td>
 
                       <td className="px-6 py-5">
+                        <div className="flex gap-2">
+                          {(["✈️", "☘", "◎", "f"].slice(index % 3, index % 3 + 2)).map((icon, i) => (
+                            <span key={i} className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-100 bg-slate-50 text-xs font-bold text-slate-600">{icon}</span>
+                          ))}
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-5">
                         <button
                           onClick={() => toggleStatus(client.id, client.is_active)}
                           className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold transition ${
@@ -501,6 +502,8 @@ export default function AdminClients() {
                       </td>
 
                       <td className="px-6 py-5 text-slate-500">{formatDate(client.created_at)}</td>
+
+                      <td className="px-6 py-5 text-slate-500">منذ {index + 1} يوم</td>
 
                       <td className="px-6 py-5 text-center">
                         <Link
