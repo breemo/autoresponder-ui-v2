@@ -315,14 +315,9 @@ export default function ClientMessages() {
   }), [conversations]);
 
   return (
-    <div className="space-y-6" dir="rtl">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.22em] text-indigo-600">Client Inbox</p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">المحادثات</h1>
-          <p className="mt-2 text-sm text-slate-500">كل محادثة مرتبطة برقم conversation_id وتعرض رسائلها كاملة بنفس الصفحة.</p>
-        </div>
-        <button onClick={fetchConversations} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50">↻ تحديث</button>
+    <div className="space-y-5" dir="rtl">
+      <div className="flex items-center justify-end">
+        <button onClick={fetchConversations} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50">↻ تحديث</button>
       </div>
 
       {error && <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>}

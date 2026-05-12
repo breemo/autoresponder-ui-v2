@@ -111,13 +111,9 @@ export default function AdminDashboard() {
   const activeIntegrations = stats.integrations.filter((i) => i.is_active !== false).slice(0, 4);
 
   return (
-    <div className="space-y-6" dir="ltr">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-950">Dashboard</h1>
-          <p className="mt-1 text-sm text-slate-500">Welcome back, {user?.name || "Admin"}. Here's what's happening with your AI agents.</p>
-        </div>
-        <button onClick={fetchStats} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50">↻ Refresh</button>
+    <div className="space-y-5" dir="ltr">
+      <div className="flex items-center justify-end">
+        <button onClick={fetchStats} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50">↻ Refresh</button>
       </div>
 
       {error && <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>}
