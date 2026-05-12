@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom styling */
+html, body {
+  background-color: #f9fafb; /* نفس bg-gray-50 */
+  color: #1f2937; /* نفس text-gray-800 */
+  font-family: 'Inter', sans-serif;
+}
