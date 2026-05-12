@@ -1,6 +1,37 @@
-import React, { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabaseClient";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  ArrowPathIcon,
+  BuildingStorefrontIcon,
+  CheckCircleIcon,
+  ChevronDownIcon,
+  MagnifyingGlassIcon,
+  PlusIcon,
+  SparklesIcon,
+  UserGroupIcon,
+  XMarkIcon,
+} from "@heroicons/react/24/outline";
+import { supabase } from "../../lib/supabaseClient";
+
+const emptyForm = {
+  business_name: "",
+  email: "",
+  password: "",
+  plan_id: "",
+};
+
+function formatDate(value) {
+  if (!value) return "-";
+  try {
+    return new Intl.DateTimeFormat("en", {
+      month: "short",
+      day: "2-digit",
+      year: "numeric",
+    }).format(new Date(value));
+  } catch {
+    return "-";
+  }
+}
 
 export default function AdminClients() {
   const [clients, setClients] = useState([]);
@@ -8,12 +39,11 @@ export default function AdminClients() {
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({
-    business_name: "",
-    email: "",
-    password: "",
-    plan_id: "",
-  });
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [planFilter, setPlanFilter] = useState("all");
+  const [form, setForm] = useState(emptyForm);
 
   useEffect(() => {
     fetchData();
@@ -25,11 +55,13 @@ export default function AdminClients() {
 
     const { data: plansData } = await supabase
       .from("plans")
-      .select("id, name, price");
+      .select("id, name, price")
+      .order("price", { ascending: true });
 
     const { data: clientsData, error } = await supabase
       .from("clients")
-      .select("id, business_name, email, plan_id, is_active, created_at");
+      .select("id, business_name, email, plan_id, is_active, created_at")
+      .order("created_at", { ascending: false });
 
     if (error) {
       console.error(error);
@@ -43,6 +75,75 @@ export default function AdminClients() {
 
   const handleChange = (e) => {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+  };
+
+  const getPlan = (planId) => plans.find((pl) => pl.id === planId);
+
+  const getPlanName = (planId) => {
+    const plan = getPlan(planId);
+    return plan ? `${plan.name} · $${plan.price}` : "No plan";
+  };
+
+  const filteredClients = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+
+    return clients.filter((client) => {
+      const matchesSearch =
+        !keyword ||
+        client.business_name?.toLowerCase().includes(keyword) ||
+        client.email?.toLowerCase().includes(keyword);
+
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "active" && client.is_active) ||
+        (statusFilter === "inactive" && !client.is_active);
+
+      const matchesPlan = planFilter === "all" || client.plan_id === planFilter;
+
+      return matchesSearch && matchesStatus && matchesPlan;
+    });
+  }, [clients, planFilter, search, statusFilter]);
+
+  const stats = useMemo(() => {
+    const active = clients.filter((client) => client.is_active).length;
+    const inactive = clients.length - active;
+    const withPlan = clients.filter((client) => client.plan_id).length;
+
+    return [
+      {
+        label: "Total Clients",
+        value: clients.length,
+        hint: "كل العملاء المسجلين",
+        icon: UserGroupIcon,
+        accent: "bg-indigo-50 text-indigo-600 ring-indigo-100",
+      },
+      {
+        label: "Active Clients",
+        value: active,
+        hint: "عملاء مفعّلين حالياً",
+        icon: CheckCircleIcon,
+        accent: "bg-emerald-50 text-emerald-600 ring-emerald-100",
+      },
+      {
+        label: "Inactive",
+        value: inactive,
+        hint: "بحاجة لمراجعة أو تفعيل",
+        icon: ArrowPathIcon,
+        accent: "bg-amber-50 text-amber-600 ring-amber-100",
+      },
+      {
+        label: "Assigned Plans",
+        value: withPlan,
+        hint: "عملاء مربوطين بباقات",
+        icon: SparklesIcon,
+        accent: "bg-sky-50 text-sky-600 ring-sky-100",
+      },
+    ];
+  }, [clients]);
+
+  const closeDrawer = () => {
+    setIsDrawerOpen(false);
+    setForm(emptyForm);
   };
 
   const addClient = async (e) => {
@@ -129,7 +230,8 @@ export default function AdminClients() {
       if (linkError) throw linkError;
 
       setMsg("✅ تم إضافة العميل والمستخدم وربطهما بنجاح");
-      setForm({ business_name: "", email: "", password: "", plan_id: "" });
+      setForm(emptyForm);
+      setIsDrawerOpen(false);
       fetchData();
     } catch (error) {
       console.error(error);
@@ -163,9 +265,7 @@ export default function AdminClients() {
     setMsg("✔️ تم تحديث حالة العميل بنجاح");
 
     setClients((prev) =>
-      prev.map((c) =>
-        c.id === id ? { ...c, is_active: !currentStatus } : c
-      )
+      prev.map((c) => (c.id === id ? { ...c, is_active: !currentStatus } : c))
     );
   }
 
@@ -201,143 +301,359 @@ export default function AdminClients() {
     }
   };
 
-  const getPlanName = (plan_id) => {
-    const p = plans.find((pl) => pl.id === plan_id);
-    return p ? `${p.name} (${p.price}$)` : "-";
-  };
-
   return (
-    <div>
-      <h1 className="text-2xl font-bold mb-4">إدارة العملاء</h1>
-      <p className="text-gray-500 mb-6">
-        يمكنك إضافة عميل جديد، وتفعيل/تعطيل، أو تعديل إعداداته.
-      </p>
+    <div className="space-y-6">
+      <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
+        <div className="relative isolate px-6 py-7 md:px-8">
+          <div className="absolute inset-x-0 top-0 -z-10 h-32 bg-gradient-to-r from-indigo-50 via-sky-50 to-white" />
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-2xl">
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-white/80 px-3 py-1 text-xs font-semibold text-indigo-600 shadow-sm">
+                <BuildingStorefrontIcon className="h-4 w-4" />
+                Client Management
+              </div>
+              <h1 className="text-3xl font-semibold tracking-tight text-slate-950">
+                إدارة العملاء
+              </h1>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                أضف العملاء، اربطهم بالباقات، وتابع حالة التفعيل من صفحة واحدة مرتبة ومريحة.
+              </p>
+            </div>
 
-      {msg && <p className="mb-4 text-blue-700 font-semibold">{msg}</p>}
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={fetchData}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+              >
+                <ArrowPathIcon className="h-5 w-5" />
+                تحديث
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsDrawerOpen(true)}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700"
+              >
+                <PlusIcon className="h-5 w-5" />
+                إضافة عميل
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
 
-      <form
-        onSubmit={addClient}
-        className="bg-white shadow rounded-xl p-4 mb-8 flex flex-wrap gap-4 items-end"
-      >
-        <div>
-          <label className="block text-sm mb-1">الاسم التجاري</label>
-          <input
-            type="text"
-            name="business_name"
-            value={form.business_name}
-            onChange={handleChange}
-            className="border rounded px-3 py-2 w-64"
-          />
+      {msg && (
+        <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">
+          {msg}
+        </div>
+      )}
+
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {stats.map((item) => {
+          const Icon = item.icon;
+          return (
+            <div
+              key={item.label}
+              className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-slate-500">{item.label}</p>
+                  <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
+                    {item.value}
+                  </p>
+                </div>
+                <div className={`rounded-2xl p-3 ring-1 ${item.accent}`}>
+                  <Icon className="h-6 w-6" />
+                </div>
+              </div>
+              <p className="mt-4 text-sm text-slate-500">{item.hint}</p>
+            </div>
+          );
+        })}
+      </section>
+
+      <section className="rounded-[2rem] border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 p-5 md:p-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-950">قائمة العملاء</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                {filteredClients.length} من أصل {clients.length} عميل ظاهر حالياً
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(260px,1fr)_160px_180px] xl:w-[680px]">
+              <div className="relative">
+                <MagnifyingGlassIcon className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="بحث باسم العميل أو الإيميل..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-200 focus:bg-white focus:ring-4 focus:ring-indigo-50"
+                />
+              </div>
+
+              <div className="relative">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="h-12 w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-200 focus:bg-white focus:ring-4 focus:ring-indigo-50"
+                >
+                  <option value="all">كل الحالات</option>
+                  <option value="active">مفعّل</option>
+                  <option value="inactive">معطّل</option>
+                </select>
+                <ChevronDownIcon className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              </div>
+
+              <div className="relative">
+                <select
+                  value={planFilter}
+                  onChange={(e) => setPlanFilter(e.target.value)}
+                  className="h-12 w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-200 focus:bg-white focus:ring-4 focus:ring-indigo-50"
+                >
+                  <option value="all">كل الباقات</option>
+                  {plans.map((plan) => (
+                    <option key={plan.id} value={plan.id}>
+                      {plan.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDownIcon className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div>
-          <label className="block text-sm mb-1">البريد الإلكتروني</label>
-          <input
-            type="email"
-            name="email"
-            value={form.email}
-            onChange={handleChange}
-            className="border rounded px-3 py-2 w-64"
-          />
+        <div className="overflow-x-auto">
+          {loading ? (
+            <div className="flex min-h-[260px] items-center justify-center text-sm font-medium text-slate-500">
+              جارِ تحميل العملاء...
+            </div>
+          ) : filteredClients.length === 0 ? (
+            <div className="flex min-h-[280px] flex-col items-center justify-center px-6 text-center">
+              <div className="rounded-3xl bg-slate-50 p-5 ring-1 ring-slate-100">
+                <UserGroupIcon className="h-10 w-10 text-slate-400" />
+              </div>
+              <h3 className="mt-4 text-lg font-semibold text-slate-950">لا يوجد عملاء مطابقين</h3>
+              <p className="mt-2 max-w-md text-sm text-slate-500">
+                جرّب تعديل البحث أو الفلاتر، أو أضف عميل جديد من زر إضافة عميل.
+              </p>
+            </div>
+          ) : (
+            <table className="w-full min-w-[980px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-[0.08em] text-slate-500">
+                  <th className="px-6 py-4 font-semibold">Client</th>
+                  <th className="px-6 py-4 font-semibold">Plan</th>
+                  <th className="px-6 py-4 font-semibold">Status</th>
+                  <th className="px-6 py-4 font-semibold">Created</th>
+                  <th className="px-6 py-4 text-center font-semibold">Settings</th>
+                  <th className="px-6 py-4 text-right font-semibold">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredClients.map((client) => {
+                  const initials = (client.business_name || client.email || "C")
+                    .slice(0, 2)
+                    .toUpperCase();
+
+                  return (
+                    <tr key={client.id} className="group transition hover:bg-slate-50/80">
+                      <td className="px-6 py-5">
+                        <div className="flex items-center gap-4">
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-sm font-bold text-white shadow-sm">
+                            {initials}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold text-slate-950">
+                              {client.business_name || "Unnamed Client"}
+                            </p>
+                            <p className="mt-1 truncate text-sm text-slate-500">{client.email}</p>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-5">
+                        <span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
+                          {getPlanName(client.plan_id)}
+                        </span>
+                      </td>
+
+                      <td className="px-6 py-5">
+                        <button
+                          onClick={() => toggleStatus(client.id, client.is_active)}
+                          className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold transition ${
+                            client.is_active
+                              ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100 hover:bg-emerald-100"
+                              : "bg-rose-50 text-rose-700 ring-1 ring-rose-100 hover:bg-rose-100"
+                          }`}
+                        >
+                          <span
+                            className={`h-2 w-2 rounded-full ${
+                              client.is_active ? "bg-emerald-500" : "bg-rose-500"
+                            }`}
+                          />
+                          {client.is_active ? "Active" : "Inactive"}
+                        </button>
+                      </td>
+
+                      <td className="px-6 py-5 text-slate-500">{formatDate(client.created_at)}</td>
+
+                      <td className="px-6 py-5 text-center">
+                        <Link
+                          to={`/admin/client/${client.id}`}
+                          className="inline-flex items-center justify-center rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100"
+                        >
+                          إعدادات العميل
+                        </Link>
+                      </td>
+
+                      <td className="px-6 py-5 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => toggleStatus(client.id, client.is_active)}
+                            className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                          >
+                            {client.is_active ? "تعطيل" : "تفعيل"}
+                          </button>
+                          <button
+                            onClick={() => deleteClient(client.id)}
+                            className="rounded-full border border-rose-100 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
+                          >
+                            حذف
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
+      </section>
 
-        <div>
-          <label className="block text-sm mb-1">كلمة المرور</label>
-          <input
-            type="text"
-            name="password"
-            value={form.password}
-            onChange={handleChange}
-            className="border rounded px-3 py-2 w-56"
-            placeholder="مثال: 12345"
-          />
-        </div>
+      {isDrawerOpen && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={closeDrawer} />
 
-        <div>
-          <label className="block text-sm mb-1">الخطة</label>
-          <select
-            name="plan_id"
-            value={form.plan_id}
-            onChange={handleChange}
-            className="border rounded px-3 py-2 w-56"
-          >
-            <option value="">بدون خطة</option>
-            {plans.map((pl) => (
-              <option key={pl.id} value={pl.id}>
-                {pl.name} - ${pl.price}
-              </option>
-            ))}
-          </select>
-        </div>
+          <aside className="absolute right-0 top-0 flex h-full w-full max-w-xl flex-col bg-white shadow-2xl">
+            <div className="border-b border-slate-100 px-6 py-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600">
+                    New Client
+                  </p>
+                  <h3 className="mt-2 text-2xl font-semibold text-slate-950">إضافة عميل جديد</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    أدخل بيانات العميل الأساسية، وسيتم إنشاء مستخدم وربطه تلقائياً.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeDrawer}
+                  className="rounded-2xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
+                >
+                  <XMarkIcon className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
 
-        <button
-          type="submit"
-          disabled={submitting}
-          className="bg-blue-600 text-white px-5 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
-        >
-          {submitting ? "جارِ الإضافة..." : "إضافة عميل"}
-        </button>
-      </form>
+            <form onSubmit={addClient} className="flex flex-1 flex-col overflow-y-auto">
+              <div className="flex-1 space-y-5 px-6 py-6">
+                <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-2xl bg-indigo-600 p-2 text-white">
+                      <SparklesIcon className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-slate-950">Client onboarding</p>
+                      <p className="mt-1 text-sm leading-6 text-slate-500">
+                        بعد الإضافة، تقدر تدخل على إعدادات العميل لتفعيل المنصات والميزات.
+                      </p>
+                    </div>
+                  </div>
+                </div>
 
-      {loading ? (
-        <p>جارِ تحميل العملاء...</p>
-      ) : clients.length === 0 ? (
-        <p className="text-gray-400">لا يوجد عملاء بعد.</p>
-      ) : (
-        <table className="w-full bg-white shadow rounded-xl overflow-hidden">
-          <thead className="bg-gray-100 text-gray-700">
-            <tr>
-              <th className="p-3 text-left">الاسم التجاري</th>
-              <th className="p-3 text-left">الإيميل</th>
-              <th className="p-3 text-left">الخطة</th>
-              <th className="p-3 text-left">الحالة</th>
-              <th className="p-3 text-center">الإعدادات</th>
-              <th className="p-3 text-center">إجراءات</th>
-            </tr>
-          </thead>
-          <tbody>
-            {clients.map((c) => (
-              <tr key={c.id} className="border-t hover:bg-gray-50 text-sm">
-                <td className="p-3">{c.business_name}</td>
-                <td className="p-3">{c.email}</td>
-                <td className="p-3">{getPlanName(c.plan_id)}</td>
-                <td className="p-3">
-                  {c.is_active ? (
-                    <span className="text-green-600 font-semibold">مفعّل</span>
-                  ) : (
-                    <span className="text-red-500 font-semibold">معطّل</span>
-                  )}
-                </td>
-                <td className="p-3 text-center">
-                  <Link
-                    to={`/admin/client/${c.id}`}
-                    className="text-blue-600 hover:underline"
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">الاسم التجاري</label>
+                  <input
+                    type="text"
+                    name="business_name"
+                    value={form.business_name}
+                    onChange={handleChange}
+                    className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-200 focus:ring-4 focus:ring-indigo-50"
+                    placeholder="مثال: شركة المستقبل للتشطيبات"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">البريد الإلكتروني</label>
+                  <input
+                    type="email"
+                    name="email"
+                    value={form.email}
+                    onChange={handleChange}
+                    className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-200 focus:ring-4 focus:ring-indigo-50"
+                    placeholder="client@example.com"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">كلمة المرور الأولية</label>
+                  <input
+                    type="text"
+                    name="password"
+                    value={form.password}
+                    onChange={handleChange}
+                    className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-200 focus:ring-4 focus:ring-indigo-50"
+                    placeholder="مثال: 12345"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">الخطة</label>
+                  <select
+                    name="plan_id"
+                    value={form.plan_id}
+                    onChange={handleChange}
+                    className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-200 focus:ring-4 focus:ring-indigo-50"
                   >
-                    إعدادات العميل
-                  </Link>
-                </td>
-                <td className="p-3 text-center space-x-2 space-x-reverse">
+                    <option value="">بدون خطة</option>
+                    {plans.map((plan) => (
+                      <option key={plan.id} value={plan.id}>
+                        {plan.name} - ${plan.price}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100 bg-white px-6 py-5">
+                <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                   <button
-                    onClick={() => toggleStatus(c.id, c.is_active)}
-                    className={
-                      c.is_active
-                        ? "bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600 mx-1"
-                        : "bg-gray-400 text-white px-3 py-1 rounded hover:bg-gray-500 mx-1"
-                    }
+                    type="button"
+                    onClick={closeDrawer}
+                    className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                   >
-                    {c.is_active ? "تعطيل" : "تفعيل"}
+                    إلغاء
                   </button>
                   <button
-                    onClick={() => deleteClient(c.id)}
-                    className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 mx-1"
+                    type="submit"
+                    disabled={submitting}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    حذف
+                    <PlusIcon className="h-5 w-5" />
+                    {submitting ? "جارِ الإضافة..." : "إضافة العميل"}
                   </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
+              </div>
+            </form>
+          </aside>
+        </div>
       )}
     </div>
   );
