@@ -1,26 +1,116 @@
-// src/pages/client/ClientSettings.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  ArrowPathIcon,
+  BoltIcon,
+  CheckCircleIcon,
+  Cog6ToothIcon,
+  LinkIcon,
+  PaperAirplaneIcon,
+  PlusIcon,
+  ShieldCheckIcon,
+  Squares2X2Icon,
+  XMarkIcon,
+} from "@heroicons/react/24/outline";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
 
-// helper بسيط لتطبيع الأسماء (للمقارنة بين label و key في config)
 function normalizeName(str) {
   return (str || "").toString().toLowerCase().replace(/\s+/g, "");
 }
 
-export default function ClientSettings() {
-  const { user } = useAuth();
+function getFeatureMeta(feature) {
+  const slug = (feature?.slug || feature?.name || "").toLowerCase();
 
+  if (slug.includes("telegram")) {
+    return {
+      label: "Telegram",
+      icon: PaperAirplaneIcon,
+      accent: "from-sky-500 to-cyan-400",
+      soft: "bg-sky-50 text-sky-700 border-sky-100",
+      description: "استقبال الرسائل والرد التلقائي عبر Telegram Bot.",
+    };
+  }
+
+  if (slug.includes("facebook") || slug.includes("messenger")) {
+    return {
+      label: "Facebook Page",
+      icon: BoltIcon,
+      accent: "from-blue-600 to-indigo-500",
+      soft: "bg-blue-50 text-blue-700 border-blue-100",
+      description: "ربط صفحة فيسبوك والرد على رسائل Messenger.",
+    };
+  }
+
+  if (slug.includes("instagram")) {
+    return {
+      label: "Instagram",
+      icon: Squares2X2Icon,
+      accent: "from-fuchsia-500 to-rose-400",
+      soft: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100",
+      description: "تجهيز ربط رسائل Instagram Business لاحقاً.",
+    };
+  }
+
+  if (slug.includes("whatsapp")) {
+    return {
+      label: "WhatsApp",
+      icon: ShieldCheckIcon,
+      accent: "from-emerald-500 to-teal-400",
+      soft: "bg-emerald-50 text-emerald-700 border-emerald-100",
+      description: "ربط WhatsApp Cloud API للرسائل والردود.",
+    };
+  }
+
+  return {
+    label: feature?.name || "Integration",
+    icon: LinkIcon,
+    accent: "from-slate-600 to-slate-400",
+    soft: "bg-slate-50 text-slate-700 border-slate-100",
+    description: feature?.description || "قناة ربط مخصصة ضمن خطة العميل.",
+  };
+}
+
+function normalizeFields(feature) {
+  if (Array.isArray(feature?.fields)) return feature.fields;
+  if (feature?.fields && typeof feature.fields === "object") {
+    return Object.entries(feature.fields).map(([label, type]) => ({
+      key: label,
+      label,
+      type,
+    }));
+  }
+  return [];
+}
+
+function StatCard({ label, value, hint, icon: Icon }) {
+  return (
+    <div className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium text-slate-500">{label}</p>
+          <p className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{value}</p>
+          {hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}
+        </div>
+        <div className="grid h-10 w-10 place-items-center rounded-xl bg-slate-50 text-slate-600">
+          <Icon className="h-5 w-5" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function ClientIntegrations() {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-
   const [client, setClient] = useState(null);
-  const [planFeatures, setPlanFeatures] = useState([]); // كل الـ features المسموحة في الخطة
-  const [integrations, setIntegrations] = useState([]); // تكاملات هذا العميل
+  const [planFeatures, setPlanFeatures] = useState([]);
+  const [integrations, setIntegrations] = useState([]);
+  const [selectedIntegrationId, setSelectedIntegrationId] = useState(null);
+  const [query, setQuery] = useState("");
 
-  // نحاول نطلع clientId من المستخدم
   const clientId = user?.client_id || user?.clientId || user?.id || null;
 
   useEffect(() => {
@@ -35,7 +125,6 @@ export default function ClientSettings() {
       setError("");
       setSuccess("");
 
-      // 1) جلب بيانات العميل
       const { data: clientData, error: clientError } = await supabase
         .from("clients")
         .select("*")
@@ -45,7 +134,6 @@ export default function ClientSettings() {
       if (clientError) throw clientError;
       setClient(clientData);
 
-      // 2) جلب الـ features المرتبطة بخطة هذا العميل
       let featuresList = [];
       if (clientData.plan_id) {
         const { data: pf, error: pfError } = await supabase
@@ -69,7 +157,6 @@ export default function ClientSettings() {
 
       setPlanFeatures(featuresList);
 
-      // 3) جلب التكاملات الحالية للعميل
       const { data: integrationsData, error: intError } = await supabase
         .from("client_feature_integrations")
         .select("*")
@@ -78,12 +165,13 @@ export default function ClientSettings() {
 
       if (intError) throw intError;
 
-      // نتأكد من وجود config ككائن
       const normalized = (integrationsData || []).map((row) => ({
         ...row,
         config: row.config || {},
       }));
+
       setIntegrations(normalized);
+      setSelectedIntegrationId((prev) => prev || normalized[0]?.id || null);
     } catch (err) {
       console.error("Error loading client integrations:", err);
       setError(err.message || "حدث خطأ أثناء تحميل إعدادات التكامل.");
@@ -92,40 +180,56 @@ export default function ClientSettings() {
     }
   }
 
-  // ===== Helpers لحساب القوائم =====
   function getFeatureById(featureId) {
     return planFeatures.find((f) => f.id === featureId);
   }
 
   const activeIntegrations = integrations;
+  const enabledIntegrations = integrations.filter((i) => i.is_active);
   const availableFeatures = planFeatures.filter(
     (f) => !integrations.some((i) => i.feature_id === f.id)
   );
 
+  const filteredIntegrations = useMemo(() => {
+    const value = query.trim().toLowerCase();
+    if (!value) return activeIntegrations;
 
-  const toggleActive = async (featureId, currentValue) => {
-  const { error } = await supabase
-    .from("client_feature_integrations")
-    .update({ is_active: !currentValue })
-    .eq("client_id", clientId)
-    .eq("feature_id", featureId);
+    return activeIntegrations.filter((integration) => {
+      const feature = getFeatureById(integration.feature_id);
+      const text = `${feature?.name || ""} ${feature?.slug || ""} ${feature?.description || ""}`.toLowerCase();
+      return text.includes(value);
+    });
+  }, [query, activeIntegrations, planFeatures]);
 
-  if (!error) {
-    // حدّث state حتى يظهر بالفوراً
-    setIntegrations(prev =>
-      prev.map(item =>
-        item.feature_id === featureId
-          ? { ...item, is_active: !currentValue }
-          : item
+  const selectedIntegration =
+    integrations.find((integration) => integration.id === selectedIntegrationId) ||
+    integrations[0] ||
+    null;
+
+  const selectedFeature = selectedIntegration
+    ? getFeatureById(selectedIntegration.feature_id)
+    : null;
+  const selectedFields = normalizeFields(selectedFeature);
+
+  async function toggleActive(featureId, currentValue) {
+    const { error: toggleError } = await supabase
+      .from("client_feature_integrations")
+      .update({ is_active: !currentValue })
+      .eq("client_id", clientId)
+      .eq("feature_id", featureId);
+
+    if (toggleError) {
+      setError(toggleError.message || "فشل تغيير حالة التكامل.");
+      return;
+    }
+
+    setIntegrations((prev) =>
+      prev.map((item) =>
+        item.feature_id === featureId ? { ...item, is_active: !currentValue } : item
       )
     );
   }
-};
 
-
-  
-
-  // ===== Handlers =====
   function handleFieldChange(integrationId, key, value) {
     setIntegrations((prev) =>
       prev.map((intg) =>
@@ -134,7 +238,7 @@ export default function ClientSettings() {
               ...intg,
               config: {
                 ...(intg.config || {}),
-                [key]: value, // نخزن بالقيمة key اللي هي label نفسه (مثلاً "Page ID")
+                [key]: value,
               },
             }
           : intg
@@ -142,15 +246,9 @@ export default function ClientSettings() {
     );
   }
 
-  function handleToggleActive(integrationId, value) {
-    setIntegrations((prev) =>
-      prev.map((intg) =>
-        intg.id === integrationId ? { ...intg, is_active: value } : intg
-      )
-    );
-  }
-
   async function handleSaveIntegration(integration) {
+    if (!integration) return;
+
     try {
       setSavingId(integration.id);
       setError("");
@@ -165,7 +263,7 @@ export default function ClientSettings() {
         .eq("id", integration.id);
 
       if (updateError) throw updateError;
-      setSuccess("تم حفظ إعدادات التكامل بنجاح ✅");
+      setSuccess("تم حفظ إعدادات التكامل بنجاح.");
     } catch (err) {
       console.error(err);
       setError(err.message || "فشل في حفظ إعدادات التكامل.");
@@ -186,18 +284,17 @@ export default function ClientSettings() {
           client_id: clientId,
           feature_id: feature.id,
           is_active: true,
-          config: {}, // نملأه لاحقاً من الفورم
+          config: {},
         })
         .select()
         .single();
 
       if (insertError) throw insertError;
 
-      setIntegrations((prev) => [
-        ...prev,
-        { ...data, config: data.config || {} },
-      ]);
-      setSuccess("تم تفعيل التكامل بنجاح ✅");
+      const normalized = { ...data, config: data.config || {} };
+      setIntegrations((prev) => [...prev, normalized]);
+      setSelectedIntegrationId(normalized.id);
+      setSuccess("تم تفعيل التكامل بنجاح.");
     } catch (err) {
       console.error(err);
       setError(err.message || "فشل في تفعيل التكامل.");
@@ -208,213 +305,290 @@ export default function ClientSettings() {
 
   const displayName = client?.business_name || user?.name || "العميل";
 
-  // ===== Render =====
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-800 mb-1">
-          إعدادات التكامل للعميل
-        </h1>
-        <p className="text-gray-500 text-sm">
-          هنا يمكنك ربط حسابك على واتساب، فيسبوك، إنستغرام، تيليجرام وغيرها حسب
-          الباقة الخاصة بك يا {displayName}.
-        </p>
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+            <Squares2X2Icon className="h-4 w-4" />
+            Integrations Center
+          </div>
+          <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-950">
+            قنوات الربط والتكامل
+          </h1>
+          <p className="mt-1 max-w-2xl text-sm text-slate-500">
+            إدارة قنوات الرد الآلي الخاصة بـ {displayName} من مكان واحد، مع إعدادات واضحة لكل منصة.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={fetchData}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+          >
+            <ArrowPathIcon className="h-4 w-4" />
+            Refresh
+          </button>
+        </div>
       </div>
 
-      {/* Messages */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm">
-          {error}
+      {(error || success) && (
+        <div
+          className={`rounded-2xl border px-4 py-3 text-sm ${
+            error
+              ? "border-rose-200 bg-rose-50 text-rose-700"
+              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+          }`}
+        >
+          {error || success}
         </div>
       )}
-      {success && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded-lg text-sm">
-          {success}
-        </div>
-      )}
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <StatCard label="Available channels" value={planFeatures.length} hint="حسب الخطة الحالية" icon={Squares2X2Icon} />
+        <StatCard label="Connected" value={integrations.length} hint="قنوات تم تفعيلها" icon={LinkIcon} />
+        <StatCard label="Active now" value={enabledIntegrations.length} hint="جاهزة لاستقبال الرسائل" icon={CheckCircleIcon} />
+      </div>
 
       {loading ? (
-        <p className="text-gray-500 text-sm">جارِ تحميل بيانات التكامل...</p>
+        <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
+          جارِ تحميل بيانات التكامل...
+        </div>
       ) : (
-        <>
-          {/* Active integrations */}
-          <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <h2 className="text-lg font-semibold mb-4">
-              التكاملات المفعّلة حالياً
-            </h2>
+        <div className="grid min-h-[620px] gap-4 xl:grid-cols-[minmax(320px,380px)_1fr]">
+          <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-100 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-semibold text-slate-950">القنوات المفعّلة</h2>
+                  <p className="mt-1 text-xs text-slate-500">اختر قناة لعرض الإعدادات.</p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                  {filteredIntegrations.length}
+                </span>
+              </div>
 
-            {activeIntegrations.length === 0 ? (
-              <p className="text-gray-400 text-sm">
-                لا توجد تكاملات مفعّلة بعد. يمكنك تفعيلها من القسم أسفل 👇
-              </p>
-            ) : (
-              <div className="space-y-4">
-                {activeIntegrations.map((intg) => {
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search channel..."
+                className="mt-3 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-50"
+              />
+            </div>
+
+            <div className="max-h-[520px] space-y-2 overflow-y-auto p-3">
+              {filteredIntegrations.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 p-5 text-center text-sm text-slate-500">
+                  لا توجد قنوات مفعّلة بعد.
+                </div>
+              ) : (
+                filteredIntegrations.map((intg) => {
                   const feature = getFeatureById(intg.feature_id);
-
-                  // ⬇⬇⬇ التعديل المهم هنا: تطبيع fields حسب الشكل الجديد ⬇⬇⬇
-                  let fields = [];
-                  if (Array.isArray(feature?.fields)) {
-                    fields = feature.fields;
-                  } else if (
-                    feature?.fields &&
-                    typeof feature.fields === "object"
-                  ) {
-                    // مثال: { "Page ID": "text", "Access Token": "password" }
-                    fields = Object.entries(feature.fields).map(
-                      ([label, type]) => ({
-                        key: label, // نستخدم نفس النص كمفتاح في config
-                        label,
-                        type,
-                      })
-                    );
-                  }
+                  const meta = getFeatureMeta(feature);
+                  const Icon = meta.icon;
+                  const isSelected = selectedIntegration?.id === intg.id;
 
                   return (
-                    <div
-                      key={intg.id}
-                      className="mb-6 border rounded-lg p-4 bg-white shadow-sm"
-                    >
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <h3 className="font-semibold text-gray-800">
-                            {feature?.name || intg.name}
-                          </h3>
-                          <p className="text-xs text-gray-400">
-                            {feature?.slug}
-                          </p>
-                        </div>
-
-                        <label className="flex items-center gap-2 text-sm">
-                  
-
-<input
-  type="checkbox"
-  checked={intg.is_active}
-  onChange={() => toggleActive(intg.feature_id, intg.is_active)}
-/>
-                          
-                          <span>
-                            {intg.is_active ? "مفعّل" : "معطّل"}
-                          </span>
-                        </label>
-                      </div>
-
-                      {/* Dynamic fields */}
-                      {fields.length > 0 ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                          {fields.map((field) => {
-                            // نحاول نقرأ القيمة من config:
-                            const cfg = intg.config || {};
-                            let value = cfg[field.key];
-
-                            // لو مش موجودة بالاسم المباشر، نجرب نطابق بالـ normalize
-                            if (value === undefined) {
-                              const normLabel = normalizeName(field.key);
-                              const found = Object.entries(cfg).find(
-                                ([k]) => normalizeName(k) === normLabel
-                              );
-                              if (found) {
-                                value = found[1];
-                              } else {
-                                value = "";
-                              }
-                            }
-
-                            return (
-                              <div key={field.key}>
-                                <label className="block text-xs text-gray-500 mb-1">
-                                  {field.label || field.key}
-                                </label>
-                                <input
-                                  type={
-                                    field.type === "password"
-                                      ? "password"
-                                      : "text"
-                                  }
-                                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                  value={value}
-                                  onChange={(e) =>
-                                    handleFieldChange(
-                                      intg.id,
-                                      field.key,
-                                      e.target.value
-                                    )
-                                  }
-                                  placeholder={field.placeholder || ""}
-                                />
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-gray-400 mb-2">
-                          لا توجد حقول مخصّصة لهذا التكامل.
-                        </p>
-                      )}
-
-                      <div className="flex justify-end">
-                        <button
-                          onClick={() => handleSaveIntegration(intg)}
-                          disabled={savingId === intg.id}
-                          className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
-                        >
-                          {savingId === intg.id
-                            ? "جارِ الحفظ..."
-                            : "حفظ الإعدادات"}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-
-          {/* Available features */}
-          <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <h2 className="text-lg font-semibold mb-4">
-              قنوات يمكن تفعيلها من ضمن خطتك
-            </h2>
-
-            {availableFeatures.length === 0 ? (
-              <p className="text-gray-400 text-sm">
-                كل قنوات التكامل المتاحة في خطتك مفعّلة بالفعل ✅
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {availableFeatures.map((feature) => (
-                  <div
-                    key={feature.id}
-                    className="border border-dashed border-gray-300 rounded-lg p-4 flex flex-col justify-between"
-                  >
-                    <div>
-                      <h3 className="font-semibold text-gray-800 mb-1">
-                        {feature.name}
-                      </h3>
-                      {feature.description && (
-                        <p className="text-xs text-gray-500 mb-2">
-                          {feature.description}
-                        </p>
-                      )}
-                    </div>
-
                     <button
-                      onClick={() => handleAddIntegration(feature)}
-                      disabled={savingId === feature.id}
-                      className="mt-3 px-3 py-2 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-60"
+                      key={intg.id}
+                      onClick={() => setSelectedIntegrationId(intg.id)}
+                      className={`w-full rounded-2xl border p-3 text-left transition ${
+                        isSelected
+                          ? "border-indigo-200 bg-indigo-50/70 shadow-sm"
+                          : "border-slate-100 bg-white hover:border-slate-200 hover:bg-slate-50"
+                      }`}
                     >
-                      {savingId === feature.id
-                        ? "جارِ التفعيل..."
-                        : "تفعيل هذا التكامل"}
+                      <div className="flex items-center gap-3">
+                        <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br ${meta.accent} text-white shadow-sm`}>
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <h3 className="truncate text-sm font-semibold text-slate-950">{feature?.name || meta.label}</h3>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                intg.is_active
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : "bg-slate-100 text-slate-500"
+                              }`}
+                            >
+                              {intg.is_active ? "Active" : "Paused"}
+                            </span>
+                          </div>
+                          <p className="mt-1 truncate text-xs text-slate-500">{feature?.slug || meta.label}</p>
+                        </div>
+                      </div>
                     </button>
+                  );
+                })
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+            {selectedIntegration && selectedFeature ? (
+              <div className="flex h-full flex-col">
+                {(() => {
+                  const meta = getFeatureMeta(selectedFeature);
+                  const Icon = meta.icon;
+
+                  return (
+                    <>
+                      <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={`grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br ${meta.accent} text-white shadow-sm`}>
+                            <Icon className="h-6 w-6" />
+                          </div>
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h2 className="text-lg font-bold text-slate-950">{selectedFeature.name || meta.label}</h2>
+                              <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${meta.soft}`}>
+                                {selectedIntegration.is_active ? "Connected" : "Paused"}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-sm text-slate-500">{selectedFeature.description || meta.description}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => toggleActive(selectedIntegration.feature_id, selectedIntegration.is_active)}
+                            className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                              selectedIntegration.is_active
+                                ? "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                                : "bg-emerald-600 text-white hover:bg-emerald-700"
+                            }`}
+                          >
+                            {selectedIntegration.is_active ? "Pause" : "Activate"}
+                          </button>
+                          <button
+                            onClick={() => handleSaveIntegration(selectedIntegration)}
+                            disabled={savingId === selectedIntegration.id}
+                            className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-60"
+                          >
+                            <Cog6ToothIcon className="h-4 w-4" />
+                            {savingId === selectedIntegration.id ? "Saving..." : "Save"}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid flex-1 gap-4 p-4 lg:grid-cols-[1fr_280px]">
+                        <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+                          <h3 className="text-sm font-semibold text-slate-950">Configuration</h3>
+                          <p className="mt-1 text-xs text-slate-500">أدخل بيانات الربط الخاصة بهذه القناة.</p>
+
+                          {selectedFields.length > 0 ? (
+                            <div className="mt-4 grid gap-3 md:grid-cols-2">
+                              {selectedFields.map((field) => {
+                                const cfg = selectedIntegration.config || {};
+                                let value = cfg[field.key];
+                                if (value === undefined) {
+                                  const normLabel = normalizeName(field.key);
+                                  const found = Object.entries(cfg).find(([k]) => normalizeName(k) === normLabel);
+                                  value = found ? found[1] : "";
+                                }
+
+                                return (
+                                  <label key={field.key} className="block">
+                                    <span className="mb-1.5 block text-xs font-semibold text-slate-600">{field.label || field.key}</span>
+                                    <input
+                                      type={field.type === "password" ? "password" : field.type === "number" ? "number" : "text"}
+                                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50"
+                                      value={value}
+                                      onChange={(e) => handleFieldChange(selectedIntegration.id, field.key, e.target.value)}
+                                      placeholder={field.placeholder || "Enter value"}
+                                    />
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center text-sm text-slate-500">
+                              لا توجد حقول مخصصة لهذا التكامل.
+                            </div>
+                          )}
+                        </div>
+
+                        <aside className="space-y-3">
+                          <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Status</p>
+                            <div className="mt-3 flex items-center gap-2">
+                              <span className={`h-2.5 w-2.5 rounded-full ${selectedIntegration.is_active ? "bg-emerald-500" : "bg-slate-300"}`} />
+                              <span className="text-sm font-semibold text-slate-900">
+                                {selectedIntegration.is_active ? "Ready to receive messages" : "Integration paused"}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Reply mode</p>
+                            <p className="mt-2 rounded-xl bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700">
+                              {selectedIntegration.config?.reply_mode || selectedIntegration.config?.mode || "Auto / AI"}
+                            </p>
+                          </div>
+
+                          <button className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                            Test connection
+                          </button>
+                        </aside>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            ) : (
+              <div className="grid h-full min-h-[520px] place-items-center p-8 text-center">
+                <div>
+                  <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-slate-100 text-slate-500">
+                    <LinkIcon className="h-7 w-7" />
                   </div>
-                ))}
+                  <h3 className="mt-4 text-lg font-semibold text-slate-950">لا توجد قناة محددة</h3>
+                  <p className="mt-1 max-w-sm text-sm text-slate-500">فعّل قناة من القائمة المتاحة بالأسفل حتى تظهر إعداداتها هنا.</p>
+                </div>
               </div>
             )}
           </section>
-        </>
+        </div>
+      )}
+
+      {!loading && availableFeatures.length > 0 && (
+        <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-slate-950">قنوات متاحة للتفعيل</h2>
+              <p className="mt-1 text-xs text-slate-500">هذه القنوات ضمن خطتك ولم يتم ربطها بعد.</p>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {availableFeatures.map((feature) => {
+              const meta = getFeatureMeta(feature);
+              const Icon = meta.icon;
+              return (
+                <div key={feature.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br ${meta.accent} text-white shadow-sm`}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="truncate text-sm font-semibold text-slate-950">{feature.name || meta.label}</h3>
+                      <p className="mt-0.5 truncate text-xs text-slate-500">{feature.slug}</p>
+                    </div>
+                  </div>
+                  <p className="mt-3 line-clamp-2 text-xs text-slate-500">{feature.description || meta.description}</p>
+                  <button
+                    onClick={() => handleAddIntegration(feature)}
+                    disabled={savingId === feature.id}
+                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                  >
+                    <PlusIcon className="h-4 w-4" />
+                    {savingId === feature.id ? "Activating..." : "Activate"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
       )}
     </div>
   );
