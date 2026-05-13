@@ -1,17 +1,93 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
+import {
+  ArrowPathIcon,
+  ClipboardDocumentIcon,
+  MagnifyingGlassIcon,
+  PhoneIcon,
+  UserGroupIcon,
+  UserPlusIcon,
+  CalendarDaysIcon,
+  ChatBubbleLeftRightIcon,
+} from "@heroicons/react/24/outline";
+
+function formatDate(value) {
+  if (!value) return "—";
+  try {
+    return new Date(value).toLocaleString("ar-EG", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "—";
+  }
+}
+
+function initials(name, phone) {
+  const label = String(name || phone || "Lead").trim();
+  const words = label.split(/\s+/).filter(Boolean);
+  if (words.length >= 2) return `${words[0][0]}${words[1][0]}`.toUpperCase();
+  return label.slice(0, 2).toUpperCase();
+}
+
+function normalizePhone(phone) {
+  return String(phone || "").replace(/[^\d+]/g, "");
+}
+
+function isToday(dateValue) {
+  if (!dateValue) return false;
+  const d = new Date(dateValue);
+  const now = new Date();
+  return d.toDateString() === now.toDateString();
+}
+
+function isLastSevenDays(dateValue) {
+  if (!dateValue) return false;
+  const d = new Date(dateValue).getTime();
+  return Date.now() - d <= 7 * 24 * 60 * 60 * 1000;
+}
 
 export default function ClientLeads() {
   const { user } = useAuth();
-  const clientId = user?.client_id || user?.id;
+  const [clientId, setClientId] = useState(user?.client_id || null);
 
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [copied, setCopied] = useState("");
+
+  useEffect(() => {
+    async function resolveClientId() {
+      if (user?.client_id) {
+        setClientId(user.client_id);
+        return;
+      }
+
+      if (!user?.email) return;
+
+      const { data, error } = await supabase
+        .from("clients")
+        .select("id")
+        .eq("email", user.email)
+        .maybeSingle();
+
+      if (!error && data?.id) setClientId(data.id);
+    }
+
+    resolveClientId();
+  }, [user?.client_id, user?.email]);
 
   async function fetchLeads() {
+    if (!clientId) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError("");
@@ -26,79 +102,233 @@ export default function ClientLeads() {
       setLeads(data || []);
     } catch (err) {
       console.error(err);
-      setError("فشل في جلب البيانات");
+      setError("فشل في جلب بيانات العملاء المهتمين");
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    if (clientId) fetchLeads();
+    fetchLeads();
   }, [clientId]);
 
   const filteredLeads = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return leads;
+
     return leads.filter((lead) => {
-      if (!search.trim()) return true;
-      return `${lead.name || ""} ${lead.phone || ""}`
+      return `${lead.name || ""} ${lead.phone || ""} ${lead.sender_id || ""} ${lead.conversation_id || ""}`
         .toLowerCase()
-        .includes(search.toLowerCase());
+        .includes(q);
     });
   }, [leads, search]);
 
+  const stats = useMemo(() => {
+    const uniquePhones = new Set(leads.map((lead) => normalizePhone(lead.phone)).filter(Boolean));
+    return {
+      total: leads.length,
+      unique: uniquePhones.size,
+      today: leads.filter((lead) => isToday(lead.created_at)).length,
+      week: leads.filter((lead) => isLastSevenDays(lead.created_at)).length,
+    };
+  }, [leads]);
+
+  async function copyValue(value) {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(value);
+      setTimeout(() => setCopied(""), 1400);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold mb-1">أرقام التواصل للزبائن</h1>
-        <p className="text-gray-500">قائمة العملاء الذين تم جمع بياناتهم.</p>
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">
+            <UserPlusIcon className="h-4 w-4" />
+            Leads Center
+          </div>
+          <h1 className="text-2xl font-bold text-slate-950">أرقام التواصل للزبائن</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            العملاء الذين تركوا بياناتهم من المحادثات، مع إمكانية البحث والنسخ السريع.
+          </p>
+        </div>
+
+        <button
+          onClick={fetchLeads}
+          disabled={loading}
+          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
+        >
+          <ArrowPathIcon className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          تحديث
+        </button>
       </div>
 
       {error && (
-        <div className="bg-red-50 text-red-600 p-4 rounded-xl">{error}</div>
+        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+          {error}
+        </div>
       )}
 
-      <div className="bg-white shadow rounded-xl p-4">
-        <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
-          <input
-            className="border p-2 rounded md:w-80"
-            placeholder="بحث بالاسم أو الرقم..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-500">إجمالي Leads</p>
+              <p className="mt-3 text-3xl font-bold text-slate-950">{stats.total}</p>
+            </div>
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100">
+              <UserGroupIcon className="h-6 w-6" />
+            </div>
+          </div>
+        </div>
 
-          <button
-            onClick={fetchLeads}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 md:w-32"
-          >
-            تحديث
-          </button>
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-500">أرقام فريدة</p>
+              <p className="mt-3 text-3xl font-bold text-emerald-600">{stats.unique}</p>
+            </div>
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100">
+              <PhoneIcon className="h-6 w-6" />
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-500">اليوم</p>
+              <p className="mt-3 text-3xl font-bold text-blue-600">{stats.today}</p>
+            </div>
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 ring-1 ring-blue-100">
+              <CalendarDaysIcon className="h-6 w-6" />
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-500">آخر 7 أيام</p>
+              <p className="mt-3 text-3xl font-bold text-violet-600">{stats.week}</p>
+            </div>
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-50 text-violet-600 ring-1 ring-violet-100">
+              <ChatBubbleLeftRightIcon className="h-6 w-6" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-slate-950">قائمة العملاء المهتمين</h2>
+            <p className="text-sm text-slate-500">
+              ظاهر {filteredLeads.length} من أصل {leads.length} lead
+            </p>
+          </div>
+
+          <div className="relative w-full lg:w-96">
+            <MagnifyingGlassIcon className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+            <input
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pr-11 pl-4 text-sm outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-50"
+              placeholder="بحث بالاسم، الرقم، المرسل، أو رقم المحادثة..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
         </div>
 
         {loading ? (
-          <p className="text-gray-500 text-center py-8">جارِ التحميل...</p>
+          <div className="p-10 text-center text-sm text-slate-500">جارِ تحميل البيانات...</div>
         ) : filteredLeads.length === 0 ? (
-          <p className="text-gray-400 text-center py-8">لا يوجد Leads</p>
+          <div className="p-10 text-center">
+            <UserPlusIcon className="mx-auto mb-3 h-10 w-10 text-slate-300" />
+            <p className="font-semibold text-slate-700">لا يوجد Leads مطابقين للبحث</p>
+            <p className="mt-1 text-sm text-slate-400">جرّب تغيير كلمة البحث أو تحديث الصفحة.</p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-right">
-              <thead>
-                <tr className="border-b text-gray-500">
-                  <th className="py-3">الاسم</th>
-                  <th className="py-3">الرقم</th>
-                  <th className="py-3">التاريخ</th>
+            <table className="w-full min-w-[900px] text-right text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-5 py-4 font-bold">العميل</th>
+                  <th className="px-5 py-4 font-bold">رقم الهاتف</th>
+                  <th className="px-5 py-4 font-bold">المحادثة</th>
+                  <th className="px-5 py-4 font-bold">تاريخ الالتقاط</th>
+                  <th className="px-5 py-4 font-bold">إجراءات</th>
                 </tr>
               </thead>
-              <tbody>
-                {filteredLeads.map((lead) => (
-                  <tr key={lead.id} className="border-b last:border-b-0">
-                    <td className="py-3">{lead.name || "—"}</td>
-                    <td className="py-3">{lead.phone || "—"}</td>
-                    <td className="py-3">
-                      {lead.created_at
-                        ? new Date(lead.created_at).toLocaleString("ar-EG")
-                        : "—"}
-                    </td>
-                  </tr>
-                ))}
+              <tbody className="divide-y divide-slate-100">
+                {filteredLeads.map((lead) => {
+                  const phone = normalizePhone(lead.phone);
+                  const whatsappPhone = phone.startsWith("+") ? phone.slice(1) : phone;
+                  const whatsappLink = phone ? `https://wa.me/${whatsappPhone}` : null;
+
+                  return (
+                    <tr key={lead.id} className="transition hover:bg-slate-50/70">
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-sm font-bold text-white shadow-sm">
+                            {initials(lead.name, lead.phone)}
+                          </div>
+                          <div>
+                            <p className="font-bold text-slate-950">{lead.name || "بدون اسم"}</p>
+                            <p className="text-xs text-slate-400">Sender: {lead.sender_id || "—"}</p>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="px-5 py-4">
+                        <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-bold text-emerald-700 ring-1 ring-emerald-100">
+                          <PhoneIcon className="h-4 w-4" />
+                          {lead.phone || "—"}
+                        </div>
+                      </td>
+
+                      <td className="px-5 py-4">
+                        {lead.conversation_id ? (
+                          <span className="inline-flex max-w-[220px] truncate rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-100">
+                            {lead.conversation_id}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
+
+                      <td className="px-5 py-4 text-slate-600">{formatDate(lead.created_at)}</td>
+
+                      <td className="px-5 py-4">
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => copyValue(lead.phone)}
+                            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+                          >
+                            <ClipboardDocumentIcon className="h-4 w-4" />
+                            {copied === lead.phone ? "تم النسخ" : "نسخ"}
+                          </button>
+
+                          {whatsappLink && (
+                            <a
+                              href={whatsappLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700"
+                            >
+                              WhatsApp
+                            </a>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

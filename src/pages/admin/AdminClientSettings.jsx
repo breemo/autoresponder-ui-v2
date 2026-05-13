@@ -1,7 +1,126 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
+import {
+  BoltIcon,
+  CheckCircleIcon,
+  ClipboardDocumentIcon,
+  Cog6ToothIcon,
+  ExclamationTriangleIcon,
+  LinkIcon,
+  LockClosedIcon,
+  PaperAirplaneIcon,
+  PencilSquareIcon,
+  SparklesIcon,
+  XMarkIcon,
+} from "@heroicons/react/24/outline";
+
+const FEATURE_META = {
+  telegram: {
+    title: "Telegram",
+    accent: "blue",
+    icon: PaperAirplaneIcon,
+    description: "ربط بوت تيليجرام واستقبال الرسائل عبر Webhook.",
+  },
+  facebook: {
+    title: "Facebook Page",
+    accent: "indigo",
+    icon: LinkIcon,
+    description: "ربط صفحة فيسبوك والرد على رسائل Messenger.",
+  },
+  instagram: {
+    title: "Instagram",
+    accent: "pink",
+    icon: SparklesIcon,
+    description: "تجهيز ربط Instagram Business والرسائل لاحقاً.",
+  },
+  whatsapp: {
+    title: "WhatsApp Cloud API",
+    accent: "emerald",
+    icon: BoltIcon,
+    description: "ربط WhatsApp Cloud API لإدارة الرسائل والردود.",
+  },
+  ai_auto_reply: {
+    title: "AI Auto Reply",
+    accent: "violet",
+    icon: SparklesIcon,
+    description: "إعدادات الرد الذكي ونبرة الرد ومعلومات النشاط.",
+  },
+};
+
+const ACCENT_CLASSES = {
+  blue: "bg-blue-50 text-blue-700 ring-blue-100",
+  indigo: "bg-indigo-50 text-indigo-700 ring-indigo-100",
+  pink: "bg-pink-50 text-pink-700 ring-pink-100",
+  emerald: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+  violet: "bg-violet-50 text-violet-700 ring-violet-100",
+  amber: "bg-amber-50 text-amber-700 ring-amber-100",
+  slate: "bg-slate-100 text-slate-700 ring-slate-200",
+};
+
+function getFeatureMeta(feature) {
+  const slug = String(feature?.slug || "").toLowerCase();
+  const fallback = {
+    title: feature?.name || slug || "Feature",
+    accent: "slate",
+    icon: Cog6ToothIcon,
+    description: feature?.description || "إعدادات هذه الميزة للعميل.",
+  };
+  return { ...fallback, ...(FEATURE_META[slug] || {}) };
+}
+
+function maskSecret(value) {
+  const text = String(value || "");
+  if (!text) return "غير مكتمل";
+  if (text.length <= 8) return "••••••";
+  return `${text.slice(0, 4)}••••${text.slice(-4)}`;
+}
+
+function getConfiguredCount(feature, values) {
+  const fields =
+    feature?.fields && typeof feature.fields === "object" && !Array.isArray(feature.fields)
+      ? Object.keys(feature.fields)
+      : [];
+
+  if (!fields.length) return { done: 0, total: 0 };
+
+  const done = fields.filter((field) => String(values?.[field] || "").trim()).length;
+  return { done, total: fields.length };
+}
+
+function buildSetupLinks({ activeFeature, featureValues }) {
+  const slug = activeFeature?.slug;
+  const channelKey = String(featureValues?.channelKey || "").trim();
+  const webhookBase = String(import.meta.env.VITE_WEBHOOK_BASE_URL || "")
+    .trim()
+    .replace(/\/$/, "");
+
+  const links = [];
+
+  if (slug && webhookBase && channelKey) {
+    links.push({
+      label: "Webhook URL",
+      value: `${webhookBase}/${slug}/${channelKey}`,
+      type: "webhook",
+    });
+  }
+
+  if (slug === "telegram") {
+    const botToken = String(featureValues?.["Bot Token"] || "").trim();
+    const webhookUrl = links.find((item) => item.type === "webhook")?.value;
+
+    if (botToken && webhookUrl) {
+      links.push({
+        label: "رابط تفعيل Telegram Webhook",
+        value: `https://api.telegram.org/bot${botToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}`,
+        type: "activation",
+      });
+    }
+  }
+
+  return links;
+}
 
 export default function AdminClientSettings({ clientIdOverride }) {
   const params = useParams();
@@ -11,11 +130,11 @@ export default function AdminClientSettings({ clientIdOverride }) {
   const [client, setClient] = useState(null);
   const [plan, setPlan] = useState(null);
   const [features, setFeatures] = useState([]);
+  const [featureSettings, setFeatureSettings] = useState({});
 
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState("");
 
-  // Drawer state
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activeFeature, setActiveFeature] = useState(null);
   const [settingsRowId, setSettingsRowId] = useState(null);
@@ -23,6 +142,7 @@ export default function AdminClientSettings({ clientIdOverride }) {
   const [saving, setSaving] = useState(false);
   const [readOnly, setReadOnly] = useState(false);
   const [showTelegramGuide, setShowTelegramGuide] = useState(false);
+  const [copiedValue, setCopiedValue] = useState("");
 
   useEffect(() => {
     if (effectiveClientId) {
@@ -61,16 +181,14 @@ export default function AdminClientSettings({ clientIdOverride }) {
           .eq("id", clientData.plan_id)
           .maybeSingle();
 
-        if (error) {
-          console.error(error);
-        } else {
-          planData = data || null;
-        }
+        if (error) console.error(error);
+        planData = data || null;
       }
       setPlan(planData);
 
       if (!clientData.plan_id) {
         setFeatures([]);
+        setFeatureSettings({});
         setLoading(false);
         return;
       }
@@ -88,9 +206,10 @@ export default function AdminClientSettings({ clientIdOverride }) {
         return;
       }
 
-      const featureIds = (pfData || []).map((x) => x.feature_id);
-      if (featureIds.length === 0) {
+      const featureIds = (pfData || []).map((x) => x.feature_id).filter(Boolean);
+      if (!featureIds.length) {
         setFeatures([]);
+        setFeatureSettings({});
         setLoading(false);
         return;
       }
@@ -106,6 +225,22 @@ export default function AdminClientSettings({ clientIdOverride }) {
         setFeatures([]);
       } else {
         setFeatures(featuresData || []);
+      }
+
+      const { data: integrationsData, error: integrationsError } = await supabase
+        .from("client_feature_integrations")
+        .select("id, feature_id, is_active, config")
+        .eq("client_id", clientId);
+
+      if (integrationsError) {
+        console.error(integrationsError);
+        setFeatureSettings({});
+      } else {
+        const settingsMap = {};
+        (integrationsData || []).forEach((row) => {
+          settingsMap[row.feature_id] = row;
+        });
+        setFeatureSettings(settingsMap);
       }
     } catch (err) {
       console.error(err);
@@ -123,6 +258,7 @@ export default function AdminClientSettings({ clientIdOverride }) {
     setDrawerOpen(true);
     setSaving(false);
     setShowTelegramGuide(false);
+    setCopiedValue("");
 
     const isAdmin = user?.role === "admin";
     const clientCanEdit = plan?.allow_self_edit === true;
@@ -137,24 +273,18 @@ export default function AdminClientSettings({ clientIdOverride }) {
 
     if (error) console.error(error);
 
-    if (data) {
-      setSettingsRowId(data.id);
-    } else {
-      setSettingsRowId(null);
-    }
+    setSettingsRowId(data?.id || null);
 
     const fieldsDef =
-      feature.fields &&
-      typeof feature.fields === "object" &&
-      !Array.isArray(feature.fields)
+      feature.fields && typeof feature.fields === "object" && !Array.isArray(feature.fields)
         ? feature.fields
         : {};
 
-    const existingSettings = (data && data.config) || {};
+    const existingSettings = data?.config || {};
 
     const initialValues = {};
-    Object.entries(fieldsDef).forEach(([f]) => {
-      initialValues[f] = existingSettings[f] ?? "";
+    Object.entries(fieldsDef).forEach(([field]) => {
+      initialValues[field] = existingSettings[field] ?? "";
     });
 
     setFeatureValues(initialValues);
@@ -167,13 +297,21 @@ export default function AdminClientSettings({ clientIdOverride }) {
     setSettingsRowId(null);
     setSaving(false);
     setShowTelegramGuide(false);
+    setCopiedValue("");
   }
 
   function handleFieldChange(fieldName, value) {
-    setFeatureValues((prev) => ({
-      ...prev,
-      [fieldName]: value,
-    }));
+    setFeatureValues((prev) => ({ ...prev, [fieldName]: value }));
+  }
+
+  async function copyToClipboard(value) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedValue(value);
+      setTimeout(() => setCopiedValue(""), 1500);
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   async function handleSaveFeature(e) {
@@ -213,7 +351,7 @@ export default function AdminClientSettings({ clientIdOverride }) {
 
       const { data: refreshed, error: refError } = await supabase
         .from("client_feature_integrations")
-        .select("id, config")
+        .select("id, feature_id, is_active, config")
         .eq("client_id", effectiveClientId)
         .eq("feature_id", activeFeature.id)
         .maybeSingle();
@@ -221,6 +359,7 @@ export default function AdminClientSettings({ clientIdOverride }) {
       if (!refError && refreshed) {
         setSettingsRowId(refreshed.id);
         setFeatureValues(refreshed.config || {});
+        setFeatureSettings((prev) => ({ ...prev, [activeFeature.id]: refreshed }));
       }
     } catch (err) {
       console.error("Save Error:", err);
@@ -232,182 +371,306 @@ export default function AdminClientSettings({ clientIdOverride }) {
 
   const isAdmin = user?.role === "admin";
   const clientCanEdit = plan?.allow_self_edit === true;
-
   const isTelegramFeature = activeFeature?.slug === "telegram";
-  const telegramBotToken = (featureValues["Bot Token"] || "").trim();
-  const telegramChannelKey = (featureValues["channelKey"] || "").trim();
-  const telegramWebhookBase = (import.meta.env.VITE_WEBHOOK_BASE_URL || "")
-    .trim()
-    .replace(/\/$/, "");
-  const telegramWebhookUrl =
-    isTelegramFeature && telegramWebhookBase && telegramChannelKey
-      ? `${telegramWebhookBase}/telegram/${telegramChannelKey}`
-      : "";
-  const telegramActivationLink =
-    isTelegramFeature && telegramBotToken && telegramWebhookUrl
-      ? `https://api.telegram.org/bot${telegramBotToken}/setWebhook?url=${encodeURIComponent(telegramWebhookUrl)}`
-      : "";
+  const setupLinks = useMemo(
+    () => buildSetupLinks({ activeFeature, featureValues }),
+    [activeFeature, featureValues]
+  );
+
+  const configuredFeatures = features.filter((feature) => {
+    const config = featureSettings[feature.id]?.config || {};
+    const { done, total } = getConfiguredCount(feature, config);
+    return total > 0 && done === total;
+  }).length;
+
+  const partialFeatures = features.filter((feature) => {
+    const config = featureSettings[feature.id]?.config || {};
+    const { done, total } = getConfiguredCount(feature, config);
+    return total > 0 && done > 0 && done < total;
+  }).length;
+
+  if (loading) {
+    return (
+      <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+        <div className="mx-auto mb-4 h-10 w-10 animate-pulse rounded-full bg-indigo-100" />
+        <p className="text-sm text-slate-500">جارِ تحميل إعدادات الميزات...</p>
+      </div>
+    );
+  }
+
+  if (!client) {
+    return (
+      <div className="rounded-3xl border border-red-100 bg-red-50 p-6 text-red-700">
+        {msg || "لم يتم العثور على العميل"}
+      </div>
+    );
+  }
 
   return (
-    <div>
-      {loading ? (
-        <p>جارِ تحميل بيانات العميل...</p>
-      ) : !client ? (
-        <p className="text-red-500">{msg || "لم يتم العثور على العميل"}</p>
-      ) : (
-        <>
-          <h1 className="text-2xl font-bold mb-2">إعدادات العميل: {client.business_name}</h1>
-          <p className="text-gray-500 mb-1">{client.email}</p>
-          {plan && <p className="text-gray-500 mb-4">الخطة الحالية: {plan.name}</p>}
-
-          {msg && <p className="mb-4 text-blue-700 font-semibold">{msg}</p>}
-
-          <div className="bg-white shadow rounded-xl p-4">
-            <h2 className="text-xl font-semibold mb-3">الميزات المفعّلة لهذا العميل</h2>
-
-            {features.length === 0 ? (
-              <p className="text-gray-400 text-sm">لا توجد ميزات مفعّلة ضمن خطة هذا العميل.</p>
-            ) : (
-              <div className="divide-y">
-                {features.map((f) => (
-                  <div key={f.id} className="flex items-center justify-between py-3">
-                    <div>
-                      <div className="font-semibold">{f.name}</div>
-                      {f.description && <div className="text-gray-500 text-sm">{f.description}</div>}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => openFeatureDrawer(f)}
-                      className="bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700 text-sm"
-                    >
-                      تعديل الإعدادات
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {!isAdmin && !clientCanEdit && (
-              <p className="mt-4 text-xs text-gray-500">
-                ⚠️ لا تتيح خطتك الحالية تعديل الإعدادات بنفسك. الرجاء التواصل مع المسؤول.
-              </p>
-            )}
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-100">
+            <SparklesIcon className="h-4 w-4" />
+            Feature Control Center
           </div>
-        </>
+          <h1 className="text-2xl font-bold text-slate-950">إعدادات ميزات العميل</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            {client.business_name} • {client.email} • الخطة: {plan?.name || "بدون خطة"}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => fetchClientAndFeatures(effectiveClientId)}
+          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+        >
+          تحديث
+        </button>
+      </div>
+
+      {msg && (
+        <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-700">
+          {msg}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-medium text-slate-500">الميزات المتاحة</p>
+          <p className="mt-3 text-3xl font-bold text-slate-950">{features.length}</p>
+          <p className="mt-1 text-xs text-slate-400">حسب خطة العميل الحالية</p>
+        </div>
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-medium text-slate-500">إعدادات مكتملة</p>
+          <p className="mt-3 text-3xl font-bold text-emerald-600">{configuredFeatures}</p>
+          <p className="mt-1 text-xs text-slate-400">ميزات جاهزة للاستخدام</p>
+        </div>
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-medium text-slate-500">بحاجة استكمال</p>
+          <p className="mt-3 text-3xl font-bold text-amber-500">{partialFeatures}</p>
+          <p className="mt-1 text-xs text-slate-400">فيها بيانات ناقصة</p>
+        </div>
+      </div>
+
+      {!isAdmin && !clientCanEdit && (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-800">
+          <LockClosedIcon className="mt-0.5 h-5 w-5" />
+          <p>لا تتيح خطتك الحالية تعديل الإعدادات بنفسك. الرجاء التواصل مع المسؤول.</p>
+        </div>
+      )}
+
+      {features.length === 0 ? (
+        <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+          <Cog6ToothIcon className="mx-auto mb-3 h-10 w-10 text-slate-300" />
+          <p className="font-semibold text-slate-700">لا توجد ميزات مفعّلة ضمن خطة هذا العميل.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          {features.map((feature) => {
+            const meta = getFeatureMeta(feature);
+            const Icon = meta.icon;
+            const config = featureSettings[feature.id]?.config || {};
+            const row = featureSettings[feature.id];
+            const { done, total } = getConfiguredCount(feature, config);
+            const isComplete = total > 0 && done === total;
+            const isPartial = total > 0 && done > 0 && done < total;
+            const statusText = isComplete ? "جاهزة" : isPartial ? "ناقصة" : "غير مهيأة";
+            const statusClass = isComplete
+              ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
+              : isPartial
+                ? "bg-amber-50 text-amber-700 ring-amber-100"
+                : "bg-slate-100 text-slate-600 ring-slate-200";
+
+            return (
+              <div key={feature.id} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-4">
+                    <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ring-1 ${ACCENT_CLASSES[meta.accent] || ACCENT_CLASSES.slate}`}>
+                      <Icon className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-base font-bold text-slate-950">{meta.title}</h3>
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${statusClass}`}>
+                          {statusText}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm text-slate-500">{feature.description || meta.description}</p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => openFeatureDrawer(feature)}
+                    className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+                  >
+                    <PencilSquareIcon className="h-4 w-4" />
+                    تعديل
+                  </button>
+                </div>
+
+                <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="rounded-2xl bg-slate-50 p-3">
+                    <p className="text-xs text-slate-400">الحقول</p>
+                    <p className="mt-1 font-bold text-slate-800">{done}/{total}</p>
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 p-3">
+                    <p className="text-xs text-slate-400">الحالة</p>
+                    <p className="mt-1 font-bold text-slate-800">{row?.is_active === false ? "معطلة" : "مفعلة"}</p>
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 p-3">
+                    <p className="text-xs text-slate-400">Channel Key</p>
+                    <p className="mt-1 truncate font-bold text-slate-800">{config.channelKey || "—"}</p>
+                  </div>
+                </div>
+
+                {Object.keys(config).length > 0 && (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {Object.entries(config).slice(0, 4).map(([key, value]) => (
+                      <span key={key} className="rounded-full bg-slate-50 px-3 py-1 text-xs text-slate-500 ring-1 ring-slate-200">
+                        {key}: {String(key).toLowerCase().includes("token") ? maskSecret(value) : String(value || "—").slice(0, 24)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
 
       {drawerOpen && activeFeature && (
         <div className="fixed inset-0 z-50 flex">
-          <div className="w-full max-w-md h-full bg-white shadow-xl border-r p-6 overflow-y-auto">
-            <h2 className="text-xl font-bold mb-2">إعدادات: {activeFeature.name}</h2>
-            {activeFeature.slug && <p className="text-gray-500 text-sm mb-4">{activeFeature.slug}</p>}
-
-            {isTelegramFeature && (
-              <div className="mb-4">
+          <div className="flex-1 bg-slate-950/50 backdrop-blur-sm" onClick={closeFeatureDrawer} />
+          <div className="h-full w-full max-w-xl overflow-y-auto border-r border-slate-200 bg-white shadow-2xl">
+            <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 p-5 backdrop-blur">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.22em] text-indigo-600">Feature Settings</p>
+                  <h2 className="mt-1 text-2xl font-bold text-slate-950">{activeFeature.name}</h2>
+                  {activeFeature.slug && <p className="mt-1 text-sm text-slate-500">{activeFeature.slug}</p>}
+                </div>
                 <button
                   type="button"
-                  onClick={() => setShowTelegramGuide((prev) => !prev)}
-                  className="text-blue-600 underline text-sm"
+                  onClick={closeFeatureDrawer}
+                  className="rounded-2xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50"
                 >
-                  كيف تنشئ بوت تيليجرام؟
+                  <XMarkIcon className="h-5 w-5" />
                 </button>
-
-                {showTelegramGuide && (
-                  <div className="mt-3 bg-gray-100 p-3 rounded text-sm space-y-2">
-                    <p>1. افتح Telegram وابحث عن BotFather</p>
-                    <p>2. اكتب /newbot</p>
-                    <p>3. اختر اسمًا للبوت</p>
-                    <p>4. اختر username ينتهي بـ bot</p>
-                    <p>5. انسخ Bot Token</p>
-                    <p>6. ضعه في الحقول بالأدنى ثم احفظ الإعدادات</p>
-                  </div>
-                )}
               </div>
-            )}
+            </div>
 
-            <form onSubmit={handleSaveFeature} className="space-y-4">
-              {activeFeature.fields &&
-              typeof activeFeature.fields === "object" &&
-              !Array.isArray(activeFeature.fields) ? (
-                Object.entries(activeFeature.fields).map(([fieldName, fieldType]) => {
-                  const type =
-                    fieldType === "password" ||
-                    fieldType === "number" ||
-                    fieldType === "url"
-                      ? fieldType
-                      : "text";
+            <form onSubmit={handleSaveFeature} className="space-y-5 p-5">
+              {isTelegramFeature && (
+                <div className="rounded-3xl border border-blue-100 bg-blue-50 p-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowTelegramGuide((prev) => !prev)}
+                    className="text-sm font-semibold text-blue-700 underline"
+                  >
+                    كيف تنشئ بوت تيليجرام؟
+                  </button>
 
-                  return (
-                    <div key={fieldName}>
-                      <label className="block text-sm mb-1">{fieldName}</label>
-                      <input
-                        type={type}
-                        value={featureValues[fieldName] || ""}
-                        onChange={(e) => handleFieldChange(fieldName, e.target.value)}
-                        className="border rounded px-3 py-2 w-full"
-                        disabled={readOnly}
-                      />
-                    </div>
-                  );
-                })
-              ) : (
-                <p className="text-sm text-gray-500">لا توجد حقول معرفة لهذه الميزة.</p>
-              )}
-
-              {isTelegramFeature && (telegramWebhookUrl || telegramActivationLink) && (
-                <div className="mt-4 space-y-3">
-                  {telegramWebhookUrl && (
-                    <div className="bg-gray-100 rounded p-3 text-sm">
-                      <p className="mb-1 font-medium">Webhook URL</p>
-                      <div className="text-blue-700 break-all">{telegramWebhookUrl}</div>
-                    </div>
-                  )}
-
-                  {telegramActivationLink && (
-                    <div className="bg-gray-100 rounded p-3 text-sm">
-                      <p className="mb-1 font-medium">رابط تفعيل تيليجرام</p>
-                      <a
-                        href={telegramActivationLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-700 underline break-all"
-                      >
-                        {telegramActivationLink}
-                      </a>
+                  {showTelegramGuide && (
+                    <div className="mt-3 space-y-2 text-sm text-blue-900">
+                      <p>1. افتح Telegram وابحث عن BotFather</p>
+                      <p>2. اكتب /newbot</p>
+                      <p>3. اختر اسمًا للبوت</p>
+                      <p>4. اختر username ينتهي بـ bot</p>
+                      <p>5. انسخ Bot Token وضعه هنا</p>
                     </div>
                   )}
                 </div>
               )}
 
-              <div className="flex gap-2 mt-6">
+              {activeFeature.fields && typeof activeFeature.fields === "object" && !Array.isArray(activeFeature.fields) ? (
+                <div className="grid grid-cols-1 gap-4">
+                  {Object.entries(activeFeature.fields).map(([fieldName, fieldType]) => {
+                    const type = fieldType === "password" || fieldType === "number" || fieldType === "url" ? fieldType : "text";
+                    return (
+                      <div key={fieldName}>
+                        <label className="mb-1.5 block text-sm font-semibold text-slate-700">{fieldName}</label>
+                        <input
+                          type={type}
+                          value={featureValues[fieldName] || ""}
+                          onChange={(e) => handleFieldChange(fieldName, e.target.value)}
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-50"
+                          disabled={readOnly}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">لا توجد حقول معرفة لهذه الميزة.</div>
+              )}
+
+              {setupLinks.length > 0 && (
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <LinkIcon className="h-5 w-5 text-indigo-600" />
+                    <h3 className="font-bold text-slate-900">روابط الإعداد التلقائية</h3>
+                  </div>
+
+                  <div className="space-y-3">
+                    {setupLinks.map((link) => (
+                      <div key={link.label} className="rounded-2xl border border-slate-200 bg-white p-3">
+                        <p className="mb-1 text-xs font-semibold text-slate-500">{link.label}</p>
+                        <div className="flex gap-2">
+                          <div className="min-w-0 flex-1 break-all rounded-xl bg-slate-50 px-3 py-2 text-xs text-blue-700">
+                            {link.value}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(link.value)}
+                            className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            {copiedValue === link.value ? "تم" : <ClipboardDocumentIcon className="h-4 w-4" />}
+                          </button>
+                          <a
+                            href={link.value}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
+                          >
+                            فتح
+                          </a>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-3 border-t border-slate-100 pt-5">
                 {!readOnly && (
                   <button
                     type="submit"
                     disabled={saving}
-                    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50"
                   >
+                    <CheckCircleIcon className="h-5 w-5" />
                     {saving ? "جاري الحفظ..." : "حفظ الإعدادات"}
                   </button>
                 )}
                 <button
                   type="button"
                   onClick={closeFeatureDrawer}
-                  className="bg-gray-300 text-gray-800 px-4 py-2 rounded hover:bg-gray-400"
+                  className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50"
                 >
                   إغلاق
                 </button>
               </div>
 
               {readOnly && (
-                <p className="mt-3 text-xs text-gray-500">
+                <div className="flex items-start gap-2 rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+                  <ExclamationTriangleIcon className="h-4 w-4" />
                   هذه الإعدادات للعرض فقط حسب صلاحيات خطتك.
-                </p>
+                </div>
               )}
             </form>
           </div>
-
-          <div className="flex-1 h-full bg-black/40" onClick={closeFeatureDrawer} />
         </div>
       )}
     </div>
