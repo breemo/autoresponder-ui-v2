@@ -159,8 +159,8 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
           </div>
         </header>
 
-        <main className="min-h-[calc(100vh-5rem)] px-5 py-6 md:px-8 lg:py-8">
-          <div className="mx-auto w-full max-w-7xl animate-[fadeIn_.2s_ease-out]">
+        <main className="min-h-[calc(100vh-5rem)] px-4 py-5 md:px-6 lg:px-8 lg:py-6">
+          <div className="mx-auto w-full max-w-[1800px] animate-[fadeIn_.2s_ease-out]">
             {children}
           </div>
         </main>
