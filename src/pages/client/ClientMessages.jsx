@@ -80,7 +80,7 @@ function StatCard({ label, value, hint, icon, tone = "indigo" }) {
           <p className="mt-2 text-3xl font-bold tracking-tight text-slate-950">{value}</p>
           <p className="mt-1 text-xs text-slate-400">{hint}</p>
         </div>
-        <div className={`flex h-12 w-12 items-center justify-center rounded-2xl border text-xl ${tones[tone]}`}>{icon}</div>
+        <div className={`flex h-10 w-10 items-center justify-center rounded-2xl border text-xl ${tones[tone]}`}>{icon}</div>
       </div>
     </div>
   );
@@ -330,24 +330,17 @@ export default function ClientMessages() {
   }), [conversations]);
 
   return (
-    <div className="space-y-4" dir="rtl">
+    <div className="space-y-2" dir="rtl">
       <div className="flex items-center justify-end">
-        <button onClick={fetchConversations} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50">↻ تحديث</button>
+        <button onClick={fetchConversations} className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50">↻ تحديث</button>
       </div>
 
       {error && <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="إجمالي المحادثات" value={stats.total} hint="حسب conversation_id" icon="💬" />
-        <StatCard label="النشطة" value={stats.active} hint="محادثات مفتوحة" icon="●" tone="emerald" />
-        <StatCard label="المغلقة" value={stats.closed} hint="تم إغلاقها" icon="✓" tone="sky" />
-        <StatCard label="Leads" value={stats.leads} hint="محادثات فيها بيانات" icon="◎" tone="amber" />
-      </div>
-
-      <div className="grid h-[calc(100vh-300px)] min-h-[680px] grid-cols-1 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm xl:grid-cols-[390px_minmax(0,1fr)]" dir="rtl">
+      <div className="grid h-[calc(100vh-118px)] min-h-[640px] grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:grid-cols-[330px_minmax(0,1fr)]" dir="rtl">
         <aside className="border-l border-slate-100 bg-slate-50/50">
-          <div className="border-b border-slate-100 p-4">
-            <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="border-b border-slate-100 p-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
               <div>
                 <h2 className="font-bold text-slate-950">قائمة المحادثات</h2>
                 <p className="mt-1 text-xs text-slate-500">{filteredConversations.length} محادثة ظاهرة</p>
@@ -355,17 +348,17 @@ export default function ClientMessages() {
               <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-600">Live</span>
             </div>
 
-            <div className="space-y-3">
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث بالاسم، الرقم، الرسالة، conversation_id..." className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50" />
+            <div className="space-y-2">
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث بالاسم، الرقم، الرسالة، conversation_id..." className="h-9 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50" />
               <div className="grid grid-cols-2 gap-2">
-                <select value={channel} onChange={(e) => setChannel(e.target.value)} className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-indigo-300">
+                <select value={channel} onChange={(e) => setChannel(e.target.value)} className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-indigo-300">
                   <option value="all">كل القنوات</option>
                   <option value="facebook">Facebook</option>
                   <option value="telegram">Telegram</option>
                   <option value="whatsapp">WhatsApp</option>
                   <option value="instagram">Instagram</option>
                 </select>
-                <select value={status} onChange={(e) => setStatus(e.target.value)} className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-indigo-300">
+                <select value={status} onChange={(e) => setStatus(e.target.value)} className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-indigo-300">
                   <option value="all">كل الحالات</option>
                   <option value="active">نشطة</option>
                   <option value="open">Open</option>
@@ -374,14 +367,14 @@ export default function ClientMessages() {
                   <option value="waiting_human">بانتظار موظف</option>
                 </select>
               </div>
-              <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+              <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600">
                 <input type="checkbox" checked={leadsOnly} onChange={(e) => setLeadsOnly(e.target.checked)} />
                 فقط المحادثات التي فيها Lead
               </label>
             </div>
           </div>
 
-          <div className="h-[calc(100%-214px)] overflow-y-auto p-3">
+          <div className="h-[calc(100%-178px)] overflow-y-auto p-2">
             {loadingConversations ? (
               <div className="p-8 text-center text-sm text-slate-500">جارِ تحميل المحادثات...</div>
             ) : filteredConversations.length === 0 ? (
@@ -393,21 +386,21 @@ export default function ClientMessages() {
                 const statusClass = statusStyles[conv.conversation_status] || "bg-slate-100 text-slate-600 border-slate-200";
 
                 return (
-                  <button key={conv.conversation_id} onClick={() => setSelectedConversationId(conv.conversation_id)} className={`mb-2 w-full rounded-2xl border p-3 text-right transition ${isActive ? "border-indigo-200 bg-white shadow-sm ring-4 ring-indigo-50" : "border-transparent hover:border-slate-200 hover:bg-white"}`}>
+                  <button key={conv.conversation_id} onClick={() => setSelectedConversationId(conv.conversation_id)} className={`mb-1.5 w-full rounded-xl border p-2 text-right transition ${isActive ? "border-indigo-200 bg-white shadow-sm ring-4 ring-indigo-50" : "border-transparent hover:border-slate-200 hover:bg-white"}`}>
                     <div className="flex items-start gap-3">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-xs font-bold text-white">{initials(conv.lead_name || conv.sender || conv.sender_id)}</div>
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-xs font-bold text-white">{initials(conv.lead_name || conv.sender || conv.sender_id)}</div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
                           <p className="truncate text-sm font-bold text-slate-950">{conv.lead_name || conv.sender || conv.sender_id || "بدون اسم"}</p>
                           <span className="shrink-0 text-[11px] text-slate-400">{relativeTime(conv.last_message_at || conv.updated_at)}</span>
                         </div>
                         <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{conv.last_message || "لا توجد رسالة بعد"}</p>
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                           <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${platformClass}`}>{conv.channel || conv.platform || "unknown"}</span>
                           <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${statusClass}`}>{conv.conversation_status || "active"}</span>
                           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">{conv.messages_count} رسائل</span>
                         </div>
-                        <p className="mt-2 truncate font-mono text-[10px] text-slate-400">ID: {conv.conversation_id}</p>
+                        <p className="mt-1 truncate font-mono text-[9px] text-slate-400">ID: {conv.conversation_id}</p>
                       </div>
                     </div>
                   </button>
@@ -422,13 +415,13 @@ export default function ClientMessages() {
             <div className="flex flex-1 items-center justify-center text-sm text-slate-400">اختر محادثة من القائمة</div>
           ) : (
             <>
-              <div className="border-b border-slate-100 p-4">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="border-b border-slate-100 p-3">
+                <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
                   <div className="flex items-start gap-3">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 font-bold text-indigo-600">{initials(selectedLead?.name || selectedConversation.sender || selectedConversation.sender_id)}</div>
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 font-bold text-indigo-600">{initials(selectedLead?.name || selectedConversation.sender || selectedConversation.sender_id)}</div>
                     <div>
-                      <h2 className="text-lg font-bold text-slate-950">{selectedLead?.name || selectedConversation.lead_name || selectedConversation.sender || selectedConversation.sender_id || "بدون اسم"}</h2>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <h2 className="text-base font-bold text-slate-950">{selectedLead?.name || selectedConversation.lead_name || selectedConversation.sender || selectedConversation.sender_id || "بدون اسم"}</h2>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                         <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">{selectedConversation.channel || selectedConversation.platform || "unknown"}</span>
                         <span className={`rounded-full border px-3 py-1 text-xs font-bold ${statusStyles[selectedConversation.conversation_status] || "bg-slate-100 text-slate-600 border-slate-200"}`}>{selectedConversation.conversation_status || "active"}</span>
                         <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-600">{conversationMessages.length} رسائل</span>
@@ -437,42 +430,38 @@ export default function ClientMessages() {
                   </div>
 
                   <div className="flex flex-col items-start gap-2 lg:items-end">
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-[11px] text-slate-500">{selectedConversation.conversation_id}</div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 font-mono text-[11px] text-slate-500">{selectedConversation.conversation_id}</div>
                     <div className="flex flex-wrap gap-2">
-                      <button onClick={() => updateConversationStatus("active")} disabled={updatingStatus || selectedConversation.conversation_status === "active"} className="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50">إعادة فتح</button>
-                      <button onClick={() => updateConversationStatus("closed")} disabled={updatingStatus || selectedConversation.conversation_status === "closed"} className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50">إغلاق</button>
+                      <button onClick={() => updateConversationStatus("active")} disabled={updatingStatus || selectedConversation.conversation_status === "active"} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">إعادة فتح</button>
+                      <button onClick={() => updateConversationStatus("closed")} disabled={updatingStatus || selectedConversation.conversation_status === "closed"} className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">إغلاق</button>
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <h3 className="text-sm font-bold text-slate-950">بيانات الـ Lead</h3>
-                  {selectedLead ? (
-                    <div className="mt-3 grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
-                      <div><p className="text-xs text-slate-400">الاسم</p><p className="font-semibold text-slate-800">{selectedLead.name || "—"}</p></div>
-                      <div><p className="text-xs text-slate-400">رقم الهاتف</p><p className="font-semibold text-slate-800">{selectedLead.phone || "—"}</p></div>
-                    </div>
-                  ) : <p className="mt-2 text-sm text-slate-400">لا توجد بيانات Lead لهذه المحادثة.</p>}
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="font-bold text-slate-500">Lead:</span>
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 font-semibold text-slate-700">{selectedLead?.name || "بدون اسم"}</span>
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 font-semibold text-slate-700">{selectedLead?.phone || "بدون رقم"}</span>
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/40 p-5">
+              <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/40 p-3">
                 {loadingMessages ? (
                   <div className="p-8 text-center text-sm text-slate-500">جارِ تحميل رسائل المحادثة...</div>
                 ) : conversationMessages.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-400">لا توجد رسائل لهذه المحادثة.</div>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-2.5">
                     {conversationMessages.map((msg) => {
                       const isInbound = ["inbound", "in"].includes(msg.direction);
                       return (
                         <div key={msg.id} className={`flex ${isInbound ? "justify-start" : "justify-end"}`}>
-                          <div className={`max-w-[66%] rounded-3xl px-4 py-3 shadow-sm ${isInbound ? "rounded-tr-lg border border-slate-200 bg-white text-slate-800" : "rounded-tl-lg bg-indigo-600/95 text-white shadow-indigo-100"}`}>
-                            <div className="mb-2 flex items-center gap-2">
+                          <div className={`max-w-[58%] rounded-2xl px-3.5 py-2.5 shadow-sm ${isInbound ? "rounded-tr-lg border border-slate-200 bg-white text-slate-800" : "rounded-tl-lg bg-indigo-600/95 text-white shadow-indigo-100"}`}>
+                            <div className="mb-1.5 flex items-center gap-2">
                               <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${isInbound ? "bg-slate-100 text-slate-500" : "bg-white/15 text-white"}`}>{directionLabel(msg.direction)}</span>
                               <span className={`text-[11px] ${isInbound ? "text-slate-400" : "text-indigo-100"}`}>{formatDate(msg.created_at)}</span>
                             </div>
-                            <div className="whitespace-pre-wrap break-words text-sm leading-7">{msg.message_text || getMessageText(msg) || "—"}</div>
+                            <div className="whitespace-pre-wrap break-words text-sm leading-6">{msg.message_text || getMessageText(msg) || "—"}</div>
                           </div>
                         </div>
                       );
