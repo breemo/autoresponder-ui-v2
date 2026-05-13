@@ -73,7 +73,7 @@ function StatCard({ label, value, hint, icon, tone = "indigo" }) {
     amber: "bg-amber-50 text-amber-600 border-amber-100",
   };
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-slate-500">{label}</p>
@@ -330,7 +330,7 @@ export default function ClientMessages() {
   }), [conversations]);
 
   return (
-    <div className="space-y-5" dir="rtl">
+    <div className="space-y-4" dir="rtl">
       <div className="flex items-center justify-end">
         <button onClick={fetchConversations} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50">↻ تحديث</button>
       </div>
@@ -344,7 +344,7 @@ export default function ClientMessages() {
         <StatCard label="Leads" value={stats.leads} hint="محادثات فيها بيانات" icon="◎" tone="amber" />
       </div>
 
-      <div className="grid min-h-[720px] grid-cols-1 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm xl:grid-cols-[390px_1fr]" dir="rtl">
+      <div className="grid h-[calc(100vh-300px)] min-h-[680px] grid-cols-1 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm xl:grid-cols-[390px_minmax(0,1fr)]" dir="rtl">
         <aside className="border-l border-slate-100 bg-slate-50/50">
           <div className="border-b border-slate-100 p-4">
             <div className="mb-4 flex items-center justify-between gap-3">
@@ -381,7 +381,7 @@ export default function ClientMessages() {
             </div>
           </div>
 
-          <div className="max-h-[580px] overflow-y-auto p-3">
+          <div className="h-[calc(100%-214px)] overflow-y-auto p-3">
             {loadingConversations ? (
               <div className="p-8 text-center text-sm text-slate-500">جارِ تحميل المحادثات...</div>
             ) : filteredConversations.length === 0 ? (
@@ -417,12 +417,12 @@ export default function ClientMessages() {
           </div>
         </aside>
 
-        <section className="flex min-h-[720px] flex-col bg-white">
+        <section className="flex min-h-0 flex-col bg-white">
           {!selectedConversation ? (
             <div className="flex flex-1 items-center justify-center text-sm text-slate-400">اختر محادثة من القائمة</div>
           ) : (
             <>
-              <div className="border-b border-slate-100 p-5">
+              <div className="border-b border-slate-100 p-4">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="flex items-start gap-3">
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 font-bold text-indigo-600">{initials(selectedLead?.name || selectedConversation.sender || selectedConversation.sender_id)}</div>
@@ -456,7 +456,7 @@ export default function ClientMessages() {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto bg-gradient-to-b from-white to-slate-50 p-6">
+              <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/40 p-5">
                 {loadingMessages ? (
                   <div className="p-8 text-center text-sm text-slate-500">جارِ تحميل رسائل المحادثة...</div>
                 ) : conversationMessages.length === 0 ? (
@@ -467,7 +467,7 @@ export default function ClientMessages() {
                       const isInbound = ["inbound", "in"].includes(msg.direction);
                       return (
                         <div key={msg.id} className={`flex ${isInbound ? "justify-start" : "justify-end"}`}>
-                          <div className={`max-w-[78%] rounded-3xl px-5 py-3 shadow-sm ${isInbound ? "rounded-tr-lg border border-slate-200 bg-white text-slate-800" : "rounded-tl-lg bg-indigo-600 text-white"}`}>
+                          <div className={`max-w-[66%] rounded-3xl px-4 py-3 shadow-sm ${isInbound ? "rounded-tr-lg border border-slate-200 bg-white text-slate-800" : "rounded-tl-lg bg-indigo-600/95 text-white shadow-indigo-100"}`}>
                             <div className="mb-2 flex items-center gap-2">
                               <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${isInbound ? "bg-slate-100 text-slate-500" : "bg-white/15 text-white"}`}>{directionLabel(msg.direction)}</span>
                               <span className={`text-[11px] ${isInbound ? "text-slate-400" : "text-indigo-100"}`}>{formatDate(msg.created_at)}</span>
