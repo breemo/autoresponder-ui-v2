@@ -83,17 +83,20 @@ function getSender(row = {}) {
 }
 
 function buildThreadKey({ msg, state }) {
+  // Main rule: messages belong to the same chat when they share the same conversation_id.
+  // This is what keeps inbound + outbound messages together in one Messenger-like thread.
+  if (msg?.conversation_id || state?.conversation_id) {
+    return `conv:${msg?.conversation_id || state?.conversation_id}`;
+  }
+
+  // Fallback only for old rows that were saved without conversation_id.
   const clientId = msg.client_id || state?.client_id || "no-client";
   const channel = getChannel(state || msg);
   const direction = normalizeDirection(msg.direction || msg.channel_direction);
   const sender = state?.sender_id || (direction === "inbound" ? getSender(msg) : "") || getSender(msg);
-
-  // Messenger-like grouping: one thread per customer/page channel.
-  // If sender is known, this intentionally groups multiple conversation_id sessions under the same contact.
   if (sender) return `thread:${clientId}:${channel}:${sender}`;
 
-  // Last fallback only when we really cannot know the sender/contact.
-  return msg.conversation_id ? `conv:${msg.conversation_id}` : `row:${msg.id}`;
+  return `row:${msg.id}`;
 }
 
 function StatCard({ label, value, hint, icon, tone = "indigo" }) {
@@ -156,7 +159,8 @@ export default function AdminMessages() {
       const clientRows = clientsRes.data || [];
       const stateRows = statesRes.data || [];
       const leadRows = leadsRes.data || [];
-      const messageRows = (messagesRes.data || []).map((m) => ({
+      const rawMessages = messagesRes.data || [];
+      const messageRows = rawMessages.map((m) => ({
         ...m,
         channel: getChannel(m),
         direction: normalizeDirection(m.direction || m.channel_direction),
@@ -186,7 +190,7 @@ export default function AdminMessages() {
         const key = buildThreadKey({ msg, state });
         const client = msg.clients || clientMap.get(msg.client_id) || {};
         const channel = getChannel(state || msg);
-        const customerId = state?.sender_id || (msg.direction === "inbound" ? getSender(msg) : "") || getSender(msg);
+        const customerId = state?.sender_id || getSender(msg);
 
         if (!threadMap.has(key)) {
           threadMap.set(key, {
