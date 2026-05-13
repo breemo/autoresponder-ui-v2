@@ -74,9 +74,26 @@ function leadPhone(lead) {
   return lead?.phone || lead?.lead_phone || lead?.mobile || null;
 }
 
-function conversationKeyFromMessage(msg) {
-  if (msg.conversation_id) return `conv:${msg.conversation_id}`;
-  return `fallback:${msg.client_id || "no-client"}:${(msg.channel || msg.platform || "unknown").toLowerCase()}:${msg.sender || msg.sender_id || "unknown"}`;
+function getChannel(row = {}) {
+  return String(row.platform || row.channel || "unknown").toLowerCase();
+}
+
+function getSender(row = {}) {
+  return String(row.sender_id || row.sender || row.customer_id || row.from || row.psid || "").trim();
+}
+
+function buildThreadKey({ msg, state }) {
+  const clientId = msg.client_id || state?.client_id || "no-client";
+  const channel = getChannel(state || msg);
+  const direction = normalizeDirection(msg.direction || msg.channel_direction);
+  const sender = state?.sender_id || (direction === "inbound" ? getSender(msg) : "") || getSender(msg);
+
+  // Messenger-like grouping: one thread per customer/page channel.
+  // If sender is known, this intentionally groups multiple conversation_id sessions under the same contact.
+  if (sender) return `thread:${clientId}:${channel}:${sender}`;
+
+  // Last fallback only when we really cannot know the sender/contact.
+  return msg.conversation_id ? `conv:${msg.conversation_id}` : `row:${msg.id}`;
 }
 
 function StatCard({ label, value, hint, icon, tone = "indigo" }) {
@@ -104,9 +121,7 @@ export default function AdminMessages() {
   const [clients, setClients] = useState([]);
   const [conversations, setConversations] = useState([]);
   const [selectedKey, setSelectedKey] = useState(null);
-  const [conversationMessages, setConversationMessages] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMessages, setLoadingMessages] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [clientFilter, setClientFilter] = useState("all");
@@ -117,18 +132,6 @@ export default function AdminMessages() {
     loadData();
   }, []);
 
-  useEffect(() => {
-    const selected = conversations.find((c) => c.key === selectedKey) || conversations[0] || null;
-    if (!selected) {
-      setSelectedKey(null);
-      setConversationMessages([]);
-      return;
-    }
-    if (selected.key !== selectedKey) setSelectedKey(selected.key);
-    loadConversationMessages(selected);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedKey, conversations]);
-
   async function loadData() {
     try {
       setLoading(true);
@@ -136,13 +139,13 @@ export default function AdminMessages() {
 
       const [clientsRes, statesRes, messagesRes, leadsRes] = await Promise.all([
         supabase.from("clients").select("id, business_name, email").order("business_name", { ascending: true }),
-        supabase.from("conversation_state").select("*").order("updated_at", { ascending: false }).limit(1000),
+        supabase.from("conversation_state").select("*").order("updated_at", { ascending: false }).limit(2000),
         supabase
           .from("messages")
           .select("*, clients:client_id(business_name,email)")
           .order("created_at", { ascending: false })
-          .limit(2000),
-        supabase.from("leads").select("*").order("created_at", { ascending: false }).limit(1000),
+          .limit(3000),
+        supabase.from("leads").select("*").order("created_at", { ascending: false }).limit(2000),
       ]);
 
       if (clientsRes.error) throw clientsRes.error;
@@ -152,40 +155,92 @@ export default function AdminMessages() {
 
       const clientRows = clientsRes.data || [];
       const stateRows = statesRes.data || [];
+      const leadRows = leadsRes.data || [];
       const messageRows = (messagesRes.data || []).map((m) => ({
         ...m,
-        channel: (m.channel || m.platform || "unknown").toLowerCase(),
+        channel: getChannel(m),
         direction: normalizeDirection(m.direction || m.channel_direction),
         message_text: getMessageText(m),
       }));
-      const leadRows = leadsRes.data || [];
 
       setClients(clientRows);
 
       const clientMap = new Map(clientRows.map((c) => [c.id, c]));
-      const leadMap = new Map();
-      for (const lead of leadRows) {
-        const key = `${lead.client_id || ""}:${lead.conversation_id || ""}`;
-        if (lead.conversation_id && !leadMap.has(key)) leadMap.set(key, lead);
+      const stateByConversation = new Map();
+      for (const state of stateRows) {
+        if (state.conversation_id) stateByConversation.set(state.conversation_id, state);
       }
 
-      const convMap = new Map();
+      const leadByConversation = new Map();
+      for (const lead of leadRows) {
+        if (lead.conversation_id && !leadByConversation.has(lead.conversation_id)) {
+          leadByConversation.set(lead.conversation_id, lead);
+        }
+      }
 
+      const threadMap = new Map();
+
+      for (const msg of messageRows) {
+        const state = msg.conversation_id ? stateByConversation.get(msg.conversation_id) : null;
+        const lead = msg.conversation_id ? leadByConversation.get(msg.conversation_id) : null;
+        const key = buildThreadKey({ msg, state });
+        const client = msg.clients || clientMap.get(msg.client_id) || {};
+        const channel = getChannel(state || msg);
+        const customerId = state?.sender_id || (msg.direction === "inbound" ? getSender(msg) : "") || getSender(msg);
+
+        if (!threadMap.has(key)) {
+          threadMap.set(key, {
+            key,
+            client_id: msg.client_id || state?.client_id,
+            clientName: client.business_name || "Unknown client",
+            clientEmail: client.email || "",
+            sender: leadName(lead) || customerId || "بدون مرسل",
+            sender_id: customerId || "",
+            channel,
+            conversation_status: state?.conversation_status || "active",
+            updated_at: state?.updated_at || msg.created_at,
+            last_message: msg.message_text || "",
+            last_message_at: msg.created_at,
+            messages_count: 0,
+            inbound: 0,
+            outbound: 0,
+            unread: 0,
+            lead,
+            conversation_ids: new Set(),
+            messages: [],
+          });
+        }
+
+        const thread = threadMap.get(key);
+        thread.messages.push(msg);
+        thread.messages_count += 1;
+        if (msg.conversation_id) thread.conversation_ids.add(msg.conversation_id);
+        if (msg.direction === "inbound") thread.inbound += 1;
+        if (msg.direction === "outbound") thread.outbound += 1;
+        if (msg.is_read === false) thread.unread += 1;
+        if (!thread.lead && lead) thread.lead = lead;
+        if ((!thread.sender || thread.sender === "بدون مرسل") && (leadName(lead) || customerId)) thread.sender = leadName(lead) || customerId;
+        if (msg.created_at && new Date(msg.created_at) >= new Date(thread.last_message_at || 0)) {
+          thread.last_message = msg.message_text || thread.last_message;
+          thread.last_message_at = msg.created_at;
+        }
+      }
+
+      // Include state-only threads only when no messages exist yet.
       for (const state of stateRows) {
-        if (!state.conversation_id) continue;
-        const client = clientMap.get(state.client_id);
-        const lead = leadMap.get(`${state.client_id}:${state.conversation_id}`);
-        const key = `conv:${state.conversation_id}`;
-        convMap.set(key, {
+        const fakeMsg = { client_id: state.client_id, conversation_id: state.conversation_id, channel: state.platform, sender: state.sender_id, direction: "inbound", id: state.conversation_id };
+        const key = buildThreadKey({ msg: fakeMsg, state });
+        if (threadMap.has(key)) continue;
+        const client = clientMap.get(state.client_id) || {};
+        const lead = state.conversation_id ? leadByConversation.get(state.conversation_id) : null;
+        threadMap.set(key, {
           key,
-          isFallback: false,
-          conversation_id: state.conversation_id,
           client_id: state.client_id,
-          clientName: client?.business_name || "Unknown client",
-          clientEmail: client?.email || "",
-          sender: leadName(lead) || state.sender_id || "",
+          clientName: client.business_name || "Unknown client",
+          clientEmail: client.email || "",
+          sender: leadName(lead) || state.sender_id || "بدون مرسل",
           sender_id: state.sender_id || "",
-          channel: (state.platform || "unknown").toLowerCase(),
+          channel: getChannel(state),
           conversation_status: state.conversation_status || "active",
           updated_at: state.updated_at,
           last_message: "",
@@ -195,54 +250,17 @@ export default function AdminMessages() {
           outbound: 0,
           unread: 0,
           lead,
+          conversation_ids: new Set(state.conversation_id ? [state.conversation_id] : []),
+          messages: [],
         });
       }
 
-      for (const msg of messageRows) {
-        const key = conversationKeyFromMessage(msg);
-        const client = msg.clients || clientMap.get(msg.client_id) || {};
-        const lead = msg.conversation_id ? leadMap.get(`${msg.client_id}:${msg.conversation_id}`) : null;
-
-        if (!convMap.has(key)) {
-          convMap.set(key, {
-            key,
-            isFallback: !msg.conversation_id,
-            conversation_id: msg.conversation_id || null,
-            client_id: msg.client_id,
-            clientName: client.business_name || "Unknown client",
-            clientEmail: client.email || "",
-            sender: leadName(lead) || msg.sender || msg.sender_id || "",
-            sender_id: msg.sender || msg.sender_id || "",
-            channel: msg.channel || "unknown",
-            conversation_status: "active",
-            updated_at: msg.created_at,
-            last_message: msg.message_text,
-            last_message_at: msg.created_at,
-            messages_count: 0,
-            inbound: 0,
-            outbound: 0,
-            unread: 0,
-            lead,
-          });
-        }
-
-        const conv = convMap.get(key);
-        conv.messages_count += 1;
-        if (msg.direction === "inbound") conv.inbound += 1;
-        if (msg.direction === "outbound") conv.outbound += 1;
-        if (msg.is_read === false) conv.unread += 1;
-        if (!conv.channel || conv.channel === "unknown") conv.channel = msg.channel || "unknown";
-        if (!conv.sender) conv.sender = leadName(lead) || msg.sender || msg.sender_id || "";
-        if (!conv.lead && lead) conv.lead = lead;
-        if (msg.created_at && new Date(msg.created_at) >= new Date(conv.last_message_at || 0)) {
-          conv.last_message = msg.message_text;
-          conv.last_message_at = msg.created_at;
-          conv.updated_at = msg.created_at;
-        }
-      }
-
-      const merged = Array.from(convMap.values())
-        .filter((c) => c.messages_count > 0 || c.conversation_id)
+      const merged = Array.from(threadMap.values())
+        .map((thread) => ({
+          ...thread,
+          conversation_ids: Array.from(thread.conversation_ids),
+          messages: thread.messages.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)),
+        }))
         .sort((a, b) => new Date(b.last_message_at || b.updated_at || 0) - new Date(a.last_message_at || a.updated_at || 0));
 
       setConversations(merged);
@@ -255,41 +273,6 @@ export default function AdminMessages() {
     }
   }
 
-  async function loadConversationMessages(conversation) {
-    if (!conversation) return;
-    try {
-      setLoadingMessages(true);
-      setError("");
-
-      let query = supabase.from("messages").select("*").order("created_at", { ascending: true });
-
-      if (conversation.conversation_id) {
-        query = query.eq("conversation_id", conversation.conversation_id);
-      } else {
-        query = query.eq("client_id", conversation.client_id);
-        if (conversation.channel && conversation.channel !== "unknown") query = query.eq("channel", conversation.channel);
-        if (conversation.sender_id) query = query.eq("sender", conversation.sender_id);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const normalized = (data || []).map((m) => ({
-        ...m,
-        channel: (m.channel || m.platform || conversation.channel || "unknown").toLowerCase(),
-        direction: normalizeDirection(m.direction || m.channel_direction),
-        message_text: getMessageText(m),
-      }));
-
-      setConversationMessages(normalized);
-    } catch (err) {
-      console.error(err);
-      setError(err.message || "فشل في تحميل رسائل المحادثة");
-    } finally {
-      setLoadingMessages(false);
-    }
-  }
-
   const filteredConversations = useMemo(() => {
     const q = search.trim().toLowerCase();
     return conversations.filter((c) => {
@@ -298,12 +281,13 @@ export default function AdminMessages() {
       if (directionFilter === "inbound" && c.inbound === 0) return false;
       if (directionFilter === "outbound" && c.outbound === 0) return false;
 
-      const haystack = `${c.clientName || ""} ${c.clientEmail || ""} ${c.sender || ""} ${c.sender_id || ""} ${c.last_message || ""} ${c.conversation_id || ""}`.toLowerCase();
+      const haystack = `${c.clientName || ""} ${c.clientEmail || ""} ${c.sender || ""} ${c.sender_id || ""} ${c.last_message || ""} ${(c.conversation_ids || []).join(" ")}`.toLowerCase();
       return !q || haystack.includes(q);
     });
   }, [conversations, search, clientFilter, channelFilter, directionFilter]);
 
   const selectedConversation = filteredConversations.find((c) => c.key === selectedKey) || filteredConversations[0] || null;
+  const conversationMessages = selectedConversation?.messages || [];
   const totalMessages = conversations.reduce((sum, c) => sum + c.messages_count, 0);
   const inbound = conversations.reduce((sum, c) => sum + c.inbound, 0);
   const outbound = conversations.reduce((sum, c) => sum + c.outbound, 0);
@@ -318,7 +302,7 @@ export default function AdminMessages() {
       {error && <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Conversations" value={conversations.length} hint="محادثات مجمعة" icon="💬" />
+        <StatCard label="Conversations" value={conversations.length} hint="محادثات مجمعة حسب العميل/القناة/المرسل" icon="💬" />
         <StatCard label="Inbound" value={inbound} hint="رسائل واردة" tone="sky" icon="↓" />
         <StatCard label="Outbound" value={outbound} hint="ردود صادرة" tone="emerald" icon="↑" />
         <StatCard label="Unread" value={unread || totalMessages} hint="غير مقروءة" tone="amber" icon="•" />
@@ -362,8 +346,9 @@ export default function AdminMessages() {
                     <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${channelStyle[conv.channel] || "border-slate-100 bg-slate-50 text-slate-500"}`}>{conv.channel}</span>
                     <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${statusStyles[conv.conversation_status] || "bg-slate-100 text-slate-600 border-slate-200"}`}>{conv.conversation_status}</span>
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">{conv.messages_count} رسائل</span>
+                    {conv.conversation_ids?.length > 1 && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-600">{conv.conversation_ids.length} sessions</span>}
                   </div>
-                  {conv.conversation_id && <p className="mt-2 truncate font-mono text-[10px] text-slate-400">ID: {conv.conversation_id}</p>}
+                  {conv.conversation_ids?.[0] && <p className="mt-2 truncate font-mono text-[10px] text-slate-400">ID: {conv.conversation_ids[0]}</p>}
                 </div>
               </button>
             ))}
@@ -383,7 +368,7 @@ export default function AdminMessages() {
                 </div>
                 <div className="flex flex-col items-end gap-2">
                   <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">{formatDate(selectedConversation.last_message_at)}</span>
-                  {selectedConversation.conversation_id && <span className="max-w-[320px] truncate rounded-xl bg-indigo-50 px-3 py-1 font-mono text-[11px] font-bold text-indigo-600">{selectedConversation.conversation_id}</span>}
+                  {selectedConversation.conversation_ids?.length > 0 && <span className="max-w-[420px] truncate rounded-xl bg-indigo-50 px-3 py-1 font-mono text-[11px] font-bold text-indigo-600">{selectedConversation.conversation_ids.join(" • ")}</span>}
                 </div>
               </div>
 
@@ -400,9 +385,7 @@ export default function AdminMessages() {
               )}
 
               <div className="flex-1 overflow-y-auto bg-gradient-to-b from-white to-slate-50 p-6">
-                {loadingMessages ? (
-                  <div className="p-8 text-center text-sm text-slate-500">جارِ تحميل رسائل المحادثة...</div>
-                ) : conversationMessages.length === 0 ? (
+                {conversationMessages.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-400">لا توجد رسائل لهذه المحادثة.</div>
                 ) : (
                   <div className="space-y-4">
