@@ -1,9 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ArrowPathIcon,
+  ArrowTopRightOnSquareIcon,
   BoltIcon,
   CheckCircleIcon,
+  ClipboardDocumentIcon,
   Cog6ToothIcon,
+  ChevronDownIcon,
   LinkIcon,
   PaperAirplaneIcon,
   PlusIcon,
@@ -82,6 +85,112 @@ function normalizeFields(feature) {
   return [];
 }
 
+function getConfigValue(config = {}, possibleKeys = []) {
+  const entries = Object.entries(config || {});
+  for (const key of possibleKeys) {
+    if (config[key] !== undefined && config[key] !== null && `${config[key]}`.trim() !== "") {
+      return `${config[key]}`.trim();
+    }
+
+    const normalizedKey = normalizeName(key);
+    const found = entries.find(([existingKey]) => normalizeName(existingKey) === normalizedKey);
+    if (found && found[1] !== undefined && found[1] !== null && `${found[1]}`.trim() !== "") {
+      return `${found[1]}`.trim();
+    }
+  }
+  return "";
+}
+
+function buildGeneratedLinks(feature, integration) {
+  const slug = `${feature?.slug || feature?.name || ""}`.toLowerCase();
+  const config = integration?.config || {};
+  const channelKey = getConfigValue(config, ["channelKey", "channel_key", "Channel Key", "channel key"]);
+  const botToken = getConfigValue(config, ["Bot Token", "bot_token", "botToken", "Telegram Bot Token"]);
+  const webhookBase = (import.meta.env.VITE_WEBHOOK_BASE_URL || "").trim().replace(/\/$/, "");
+
+  if (!webhookBase || !channelKey) return [];
+
+  const platform = slug.includes("telegram")
+    ? "telegram"
+    : slug.includes("facebook") || slug.includes("messenger")
+      ? "facebook"
+      : slug.includes("instagram")
+        ? "instagram"
+        : slug.includes("whatsapp")
+          ? "whatsapp"
+          : slug || "channel";
+
+  const webhookUrl = `${webhookBase}/${platform}/${channelKey}`;
+  const links = [
+    {
+      label: "Webhook URL",
+      hint: "استخدم هذا الرابط كـ callback/webhook لهذه القناة.",
+      value: webhookUrl,
+      openable: true,
+    },
+  ];
+
+  if (platform === "telegram" && botToken) {
+    links.push({
+      label: "رابط تفعيل تيليجرام",
+      hint: "افتح الرابط مرة واحدة لتفعيل setWebhook للبوت.",
+      value: `https://api.telegram.org/bot${botToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}`,
+      openable: true,
+    });
+  }
+
+  return links;
+}
+
+function SetupLinkCard({ label, hint, value, openable = true }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copyValue() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch (err) {
+      console.error("Copy failed", err);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold text-slate-800">{label}</p>
+          {hint && <p className="mt-1 text-[11px] leading-5 text-slate-500">{hint}</p>}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={copyValue}
+            className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            <ClipboardDocumentIcon className="h-4 w-4" />
+            {copied ? "Copied" : "Copy"}
+          </button>
+          {openable && (
+            <a
+              href={value}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+              title="Open link"
+            >
+              <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+            </a>
+          )}
+        </div>
+      </div>
+      <div dir="ltr" className="mt-3 max-h-24 overflow-auto rounded-xl bg-slate-50 px-3 py-2 text-left text-xs leading-5 text-indigo-700">
+        {value}
+      </div>
+    </div>
+  );
+}
+
 function StatCard({ label, value, hint, icon: Icon }) {
   return (
     <div className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 shadow-sm">
@@ -109,6 +218,7 @@ export default function ClientIntegrations() {
   const [planFeatures, setPlanFeatures] = useState([]);
   const [integrations, setIntegrations] = useState([]);
   const [selectedIntegrationId, setSelectedIntegrationId] = useState(null);
+  const [showAdvancedSetup, setShowAdvancedSetup] = useState(true);
   const [query, setQuery] = useState("");
 
   const clientId = user?.client_id || user?.clientId || user?.id || null;
@@ -527,9 +637,38 @@ export default function ClientIntegrations() {
                             </p>
                           </div>
 
-                          <button className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                            Test connection
-                          </button>
+                          {(() => {
+                            const generatedLinks = buildGeneratedLinks(selectedFeature, selectedIntegration);
+                            return (
+                              <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 shadow-sm">
+                                <button
+                                  type="button"
+                                  onClick={() => setShowAdvancedSetup((prev) => !prev)}
+                                  className="flex w-full items-center justify-between gap-3 text-right"
+                                >
+                                  <div>
+                                    <p className="text-sm font-bold text-slate-950">روابط الإعداد التلقائية</p>
+                                    <p className="mt-1 text-xs text-slate-500">Webhook و setup links حسب بيانات القناة.</p>
+                                  </div>
+                                  <ChevronDownIcon className={`h-4 w-4 shrink-0 text-slate-500 transition ${showAdvancedSetup ? "rotate-180" : ""}`} />
+                                </button>
+
+                                {showAdvancedSetup && (
+                                  <div className="mt-3 space-y-3">
+                                    {generatedLinks.length > 0 ? (
+                                      generatedLinks.map((link) => <SetupLinkCard key={link.label} {...link} />)
+                                    ) : (
+                                      <div className="rounded-2xl border border-dashed border-indigo-200 bg-white/70 p-4 text-xs leading-6 text-slate-500">
+                                        أدخل <span className="font-semibold text-slate-700">channelKey</span>
+                                        {`${selectedFeature?.slug || ""}`.toLowerCase().includes("telegram") ? " و Bot Token" : ""}
+                                        ثم احفظ الإعدادات لعرض الروابط تلقائياً.
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </aside>
                       </div>
                     </>
