@@ -107,11 +107,11 @@ function StatCard({ label, value, hint, icon, tone = "indigo" }) {
     amber: "bg-amber-50 text-amber-600 border-amber-100",
   };
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm font-medium text-slate-500">{label}</p>
-          <p className="mt-3 text-3xl font-bold text-slate-950">{value}</p>
+          <p className="mt-2 text-3xl font-bold text-slate-950">{value}</p>
           <p className="mt-2 text-xs text-slate-400">{hint}</p>
         </div>
         <div className={`flex h-12 w-12 items-center justify-center rounded-2xl border text-lg ${tones[tone]}`}>{icon}</div>
@@ -298,7 +298,7 @@ export default function AdminMessages() {
   const unread = conversations.reduce((sum, c) => sum + c.unread, 0);
 
   return (
-    <div className="space-y-5" dir="ltr">
+    <div className="space-y-4" dir="ltr">
       <div className="flex items-center justify-end">
         <button onClick={loadData} className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50">↻ تحديث</button>
       </div>
@@ -314,28 +314,28 @@ export default function AdminMessages() {
 
       <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[1.5fr_1fr_0.8fr_0.8fr_auto]">
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث في الرسائل، المرسل، العميل، أو رقم المحادثة..." className="h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-50" />
-          <select value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} className="h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-700 outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50">
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث في الرسائل، المرسل، العميل، أو رقم المحادثة..." className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-50" />
+          <select value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-700 outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50">
             <option value="all">كل العملاء</option>
             {clients.map((c) => <option key={c.id} value={c.id}>{c.business_name} ({c.email})</option>)}
           </select>
-          <select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)} className="h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-700 outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50">
+          <select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)} className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-700 outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50">
             <option value="all">كل القنوات</option><option value="whatsapp">WhatsApp</option><option value="telegram">Telegram</option><option value="facebook">Facebook</option><option value="instagram">Instagram</option>
           </select>
-          <select value={directionFilter} onChange={(e) => setDirectionFilter(e.target.value)} className="h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-700 outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50">
+          <select value={directionFilter} onChange={(e) => setDirectionFilter(e.target.value)} className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-700 outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50">
             <option value="all">واردة وصادرة</option><option value="inbound">فيها وارد</option><option value="outbound">فيها صادر</option>
           </select>
-          <button onClick={loadData} className="h-12 rounded-2xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700">تطبيق</button>
+          <button onClick={loadData} className="h-11 rounded-2xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700">تطبيق</button>
         </div>
       </div>
 
-      <div className="grid min-h-[700px] grid-cols-1 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm xl:grid-cols-[420px_1fr]" dir="rtl">
+      <div className="grid h-[calc(100vh-300px)] min-h-[680px] grid-cols-1 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm xl:grid-cols-[390px_minmax(0,1fr)]" dir="rtl">
         <aside className="border-l border-slate-100 bg-slate-50/40">
-          <div className="border-b border-slate-100 p-5">
+          <div className="border-b border-slate-100 p-4">
             <h2 className="font-bold text-slate-950">قائمة المحادثات</h2>
             <p className="mt-1 text-sm text-slate-500">{filteredConversations.length} محادثة ظاهرة</p>
           </div>
-          <div className="max-h-[630px] overflow-y-auto p-3">
+          <div className="h-[calc(100%-84px)] overflow-y-auto p-3">
             {loading ? <div className="p-8 text-center text-slate-500">جاري التحميل...</div> : filteredConversations.length === 0 ? <div className="p-8 text-center text-slate-400">لا توجد محادثات مطابقة.</div> : filteredConversations.map((conv) => (
               <button key={conv.key} onClick={() => setSelectedKey(conv.key)} className={`mb-2 flex w-full items-start gap-3 rounded-2xl border p-3 text-right transition ${selectedConversation?.key === conv.key ? "border-indigo-200 bg-white shadow-sm ring-4 ring-indigo-50" : "border-transparent hover:bg-white"}`}>
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-xs font-bold text-white">{initials(conv.sender || conv.clientName)}</div>
@@ -359,10 +359,10 @@ export default function AdminMessages() {
           </div>
         </aside>
 
-        <section className="flex min-h-[700px] flex-col">
+        <section className="flex min-h-0 flex-col">
           {selectedConversation ? (
             <>
-              <div className="flex items-center justify-between border-b border-slate-100 p-5">
+              <div className="flex items-center justify-between border-b border-slate-100 p-4">
                 <div className="flex items-center gap-3">
                   <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 font-bold text-indigo-600">{initials(selectedConversation.sender || selectedConversation.clientName)}</div>
                   <div>
@@ -388,7 +388,7 @@ export default function AdminMessages() {
                 </div>
               )}
 
-              <div className="flex-1 overflow-y-auto bg-gradient-to-b from-white to-slate-50 p-6">
+              <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/40 p-5">
                 {conversationMessages.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-400">لا توجد رسائل لهذه المحادثة.</div>
                 ) : (
@@ -397,7 +397,7 @@ export default function AdminMessages() {
                       const isInbound = msg.direction === "inbound";
                       return (
                         <div key={msg.id} className={`flex ${isInbound ? "justify-start" : "justify-end"}`}>
-                          <div className={`max-w-[78%] rounded-3xl px-5 py-3 shadow-sm ${isInbound ? "rounded-tr-lg border border-slate-200 bg-white text-slate-800" : "rounded-tl-lg bg-indigo-600 text-white"}`}>
+                          <div className={`max-w-[66%] rounded-3xl px-4 py-3 shadow-sm ${isInbound ? "rounded-tr-lg border border-slate-200 bg-white text-slate-800" : "rounded-tl-lg bg-indigo-600/95 text-white shadow-indigo-100"}`}>
                             <div className="mb-2 flex items-center gap-2">
                               <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${isInbound ? "bg-slate-100 text-slate-500" : "bg-white/15 text-white"}`}>{directionLabel(msg.direction)}</span>
                               <span className={`text-[11px] ${isInbound ? "text-slate-400" : "text-indigo-100"}`}>{formatDate(msg.created_at)}</span>
