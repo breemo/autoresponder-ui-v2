@@ -18,6 +18,7 @@ const emptyForm = {
   email: "",
   password: "",
   plan_id: "",
+  subscription_status: "trial",
 };
 
 function formatDate(value) {
@@ -203,6 +204,31 @@ export default function AdminClients() {
       if (clientError) throw clientError;
       createdClient = clientData;
 
+if (form.plan_id) {
+  const startDate = new Date();
+
+  const endDate = new Date();
+
+  if (form.subscription_status === "trial") {
+    endDate.setDate(endDate.getDate() + 3);
+  } else {
+    endDate.setMonth(endDate.getMonth() + 1);
+  }
+
+  const { error: subscriptionError } = await supabase
+    .from("subscriptions")
+    .insert([
+      {
+        client_id: createdClient.id,
+        plan_id: form.plan_id,
+        status: form.subscription_status,
+        start_date: startDate.toISOString(),
+        end_date: endDate.toISOString(),
+      },
+    ]);
+
+  if (subscriptionError) throw subscriptionError;
+}      
       const { data: userData, error: userError } = await supabase
         .from("users")
         .insert([
@@ -230,7 +256,7 @@ export default function AdminClients() {
 
       if (linkError) throw linkError;
 
-      setMsg("✅ تم إضافة العميل والمستخدم وربطهما بنجاح");
+      setMsg("✅ تم إنشاء العميل والمستخدم والاشتراك بنجاح");
       setForm(emptyForm);
       setIsDrawerOpen(false);
       fetchData();
@@ -635,6 +661,22 @@ export default function AdminClients() {
                 </div>
               </div>
 
+<div>
+  <label className="mb-2 block text-sm font-semibold text-slate-700">
+    نوع الاشتراك
+  </label>
+
+  <select
+    name="subscription_status"
+    value={form.subscription_status}
+    onChange={handleChange}
+    className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-200 focus:ring-4 focus:ring-indigo-50"
+  >
+    <option value="trial">Trial</option>
+    <option value="active">Active</option>
+  </select>
+</div>
+              
               <div className="border-t border-slate-100 bg-white px-6 py-5">
                 <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                   <button
