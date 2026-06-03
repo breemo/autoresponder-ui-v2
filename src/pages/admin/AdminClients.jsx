@@ -609,6 +609,7 @@ if (createdSubscription?.id) {
                           />
                           {client.is_active ? "Active" : "Inactive"}
                         </button>
+												  
                       </td>
 
                       <td className="px-6 py-5 text-slate-500">{formatDate(client.created_at)}</td>
@@ -626,12 +627,6 @@ if (createdSubscription?.id) {
 
                       <td className="px-6 py-5 text-right">
                         <div className="flex justify-end gap-2">
-                          <button
-                            onClick={() => toggleStatus(client.id, client.is_active)}
-                            className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-                          >
-                            {client.is_active ? "تعطيل" : "تفعيل"}
-                          </button>
                           <button
                             onClick={() => deleteClient(client.id)}
                             className="rounded-full border border-rose-100 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
