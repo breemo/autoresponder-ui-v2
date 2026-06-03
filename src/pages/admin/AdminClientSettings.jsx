@@ -122,6 +122,21 @@ function buildSetupLinks({ activeFeature, featureValues }) {
   return links;
 }
 
+function formatDate(value) {
+  if (!value) return "-";
+
+  try {
+    return new Intl.DateTimeFormat("en", {
+      month: "short",
+      day: "2-digit",
+      year: "numeric",
+    }).format(new Date(value));
+  } catch {
+    return "-";
+  }
+}
+
+
 export default function AdminClientSettings({ clientIdOverride }) {
   const params = useParams();
   const effectiveClientId = clientIdOverride || params.id;
@@ -566,6 +581,78 @@ export default function AdminClientSettings({ clientIdOverride }) {
         </div>
       )}
 
+ {/* Subscription History */}
+<div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+  <div className="mb-5 flex items-center justify-between">
+    <div>
+      <h3 className="text-xl font-bold text-slate-950">
+        Subscription History
+      </h3>
+
+      <p className="mt-1 text-sm text-slate-500">
+        سجل جميع اشتراكات العميل الحالية والسابقة
+      </p>
+    </div>
+  </div>
+
+  {subscriptions.length === 0 ? (
+    <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">
+      لا يوجد اشتراكات لهذا العميل
+    </div>
+  ) : (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[700px] text-sm">
+        <thead>
+          <tr className="border-b border-slate-100 text-left">
+            <th className="py-3 font-semibold text-slate-500">
+              Plan
+            </th>
+
+            <th className="py-3 font-semibold text-slate-500">
+              Status
+            </th>
+
+            <th className="py-3 font-semibold text-slate-500">
+              Start Date
+            </th>
+
+            <th className="py-3 font-semibold text-slate-500">
+              End Date
+            </th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {subscriptions.map((sub) => (
+            <tr
+              key={sub.id}
+              className="border-b border-slate-50"
+            >
+              <td className="py-4 font-semibold text-slate-900">
+                {sub.plans?.name || "-"}
+              </td>
+
+              <td className="py-4">
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                  {sub.status}
+                </span>
+              </td>
+
+              <td className="py-4 text-slate-600">
+                {formatDate(sub.start_date)}
+              </td>
+
+              <td className="py-4 text-slate-600">
+                {formatDate(sub.end_date)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+</div>
+ 
       {drawerOpen && activeFeature && (
         <div className="fixed inset-0 z-50 flex">
           <div className="flex-1 bg-slate-950/50 backdrop-blur-sm" onClick={closeFeatureDrawer} />
