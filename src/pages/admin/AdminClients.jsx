@@ -59,11 +59,26 @@ export default function AdminClients() {
       .from("plans")
       .select("id, name, price")
       .order("price", { ascending: true });
-
-    const { data: clientsData, error } = await supabase
-      .from("clients")
-      .select("id, business_name, email, plan_id, is_active, created_at")
-      .order("created_at", { ascending: false });
+  
+	const { data: clientsData, error } = await supabase
+	  .from("clients")
+	  .select(`
+		id,
+		business_name,
+		email,
+		plan_id,
+		is_active,
+		created_at,
+		subscriptions (
+		  id,
+		  status,
+		  start_date,
+		  end_date
+		)
+	  `)
+	  .order("created_at", { ascending: false });
+  
+  
 
     if (error) {
       console.error(error);
@@ -85,6 +100,26 @@ export default function AdminClients() {
     const plan = getPlan(planId);
     return plan ? `${plan.name} · $${plan.price}` : "No plan";
   };
+  
+  const getSubscription = (client) => {
+	  if (!client?.subscriptions?.length) return null;
+	  return client.subscriptions[0];
+	};
+
+	const getDaysRemaining = (endDate) => {
+	  if (!endDate) return "-";
+
+	  const now = new Date();
+	  const end = new Date(endDate);
+
+	  const diff = Math.ceil(
+		(end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+	  );
+
+	  if (diff < 0) return "Expired";
+
+	  return `${diff} days`;
+	};
 
   const filteredClients = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -486,6 +521,9 @@ if (createdSubscription?.id) {
                 <tr className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-[0.08em] text-slate-500">
                   <th className="px-6 py-4 font-semibold">Client</th>
                   <th className="px-6 py-4 font-semibold">Plan</th>
+				  <th className="px-6 py-4 font-semibold">Subscription</th>
+				  <th className="px-6 py-4 font-semibold">Expiry</th>
+				  <th className="px-6 py-4 font-semibold">Remaining</th>
                   <th className="px-6 py-4 font-semibold">Platforms</th>
                   <th className="px-6 py-4 font-semibold">Status</th>
                   <th className="px-6 py-4 font-semibold">Created</th>
@@ -500,6 +538,8 @@ if (createdSubscription?.id) {
                     .slice(0, 2)
                     .toUpperCase();
 
+				  const subscription = getSubscription(client);
+				  
                   return (
                     <tr key={client.id} className="group transition hover:bg-slate-50/80">
                       <td className="px-6 py-5">
@@ -521,6 +561,29 @@ if (createdSubscription?.id) {
                           {getPlanName(client.plan_id)}
                         </span>
                       </td>
+
+						<td className="px-6 py-5">
+						  {subscription ? (
+							<span className="inline-flex rounded-full border px-3 py-1 text-xs font-semibold">
+							  {subscription.status}
+							</span>
+						  ) : (
+							"-"
+						  )}
+						</td>
+
+						<td className="px-6 py-5 text-slate-500">
+						  {subscription?.end_date
+							? formatDate(subscription.end_date)
+							: "-"}
+						</td>
+
+						<td className="px-6 py-5 text-slate-500">
+						  {subscription?.end_date
+							? getDaysRemaining(subscription.end_date)
+							: "-"}
+						</td>
+
 
                       <td className="px-6 py-5">
                         <div className="flex gap-2">
