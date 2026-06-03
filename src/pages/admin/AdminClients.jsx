@@ -159,9 +159,11 @@ export default function AdminClients() {
 
     setSubmitting(true);
 
-    let createdClient = null;
-    let createdUser = null;
 
+let createdClient = null;
+let createdUser = null;
+let createdSubscription = null;
+    
     try {
       const normalizedEmail = form.email.trim().toLowerCase();
 
@@ -215,20 +217,24 @@ if (form.plan_id) {
     endDate.setMonth(endDate.getMonth() + 1);
   }
 
-  const { error: subscriptionError } = await supabase
-    .from("subscriptions")
-    .insert([
-      {
-        client_id: createdClient.id,
-        plan_id: form.plan_id,
-        status: form.subscription_status,
-        start_date: startDate.toISOString(),
-        end_date: endDate.toISOString(),
-      },
-    ]);
+const { data: subscriptionData, error: subscriptionError } = await supabase
+  .from("subscriptions")
+  .insert([
+    {
+      client_id: createdClient.id,
+      plan_id: form.plan_id,
+      status: form.subscription_status,
+      start_date: startDate.toISOString(),
+      end_date: endDate.toISOString(),
+    },
+  ])
+  .select()
+  .single();
 
-  if (subscriptionError) throw subscriptionError;
-}      
+if (subscriptionError) throw subscriptionError;
+
+createdSubscription = subscriptionData;
+}
       const { data: userData, error: userError } = await supabase
         .from("users")
         .insert([
@@ -256,7 +262,12 @@ if (form.plan_id) {
 
       if (linkError) throw linkError;
 
-      setMsg("✅ تم إنشاء العميل والمستخدم والاشتراك بنجاح");
+  setMsg(
+  form.plan_id
+    ? "✅ تم إنشاء العميل والمستخدم والاشتراك بنجاح"
+    : "✅ تم إنشاء العميل والمستخدم بنجاح"
+);
+  
       setForm(emptyForm);
       setIsDrawerOpen(false);
       fetchData();
@@ -267,10 +278,20 @@ if (form.plan_id) {
         await supabase.from("users").delete().eq("id", createdUser.id);
       }
 
-      if (createdClient?.id) {
-        await supabase.from("clients").delete().eq("id", createdClient.id);
-      }
+if (createdSubscription?.id) {
+  await supabase
+    .from("subscriptions")
+    .delete()
+    .eq("id", createdSubscription.id);
+}
 
+      if (createdClient?.id) {
+  await supabase
+    .from("clients")
+    .delete()
+    .eq("id", createdClient.id);
+}
+      
       setMsg(`❌ فشل في إضافة العميل كاملًا: ${error.message || "خطأ غير معروف"}`);
     } finally {
       setSubmitting(false);
@@ -655,27 +676,24 @@ if (form.plan_id) {
                     {plans.map((plan) => (
                       <option key={plan.id} value={plan.id}>
                         {plan.name} - ${plan.price}
-                      </option>
+                    </option>
                     ))}
                   </select>
                 </div>
-              </div>
 
-<div>
-  <label className="mb-2 block text-sm font-semibold text-slate-700">
-    نوع الاشتراك
-  </label>
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700"> نوع الاشتراك</label>
+				  <select
+					name="subscription_status"
+					value={form.subscription_status}
+					onChange={handleChange}
+					className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-200 focus:ring-4 focus:ring-indigo-50">
 
-  <select
-    name="subscription_status"
-    value={form.subscription_status}
-    onChange={handleChange}
-    className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-200 focus:ring-4 focus:ring-indigo-50"
-  >
-    <option value="trial">Trial</option>
-    <option value="active">Active</option>
-  </select>
-</div>
+					<option value="trial">Trial</option>
+					<option value="active">Active</option>
+				  </select>              
+				</div>
+			  </div>
               
               <div className="border-t border-slate-100 bg-white px-6 py-5">
                 <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
