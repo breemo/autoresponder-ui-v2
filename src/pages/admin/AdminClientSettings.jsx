@@ -129,6 +129,8 @@ export default function AdminClientSettings({ clientIdOverride }) {
 
   const [client, setClient] = useState(null);
   const [plan, setPlan] = useState(null);
+  const [subscriptions, setSubscriptions] = useState([]);
+  
   const [features, setFeatures] = useState([]);
   const [featureSettings, setFeatureSettings] = useState({});
 
@@ -185,6 +187,30 @@ export default function AdminClientSettings({ clientIdOverride }) {
         planData = data || null;
       }
       setPlan(planData);
+
+
+	const { data: subscriptionsData, error: subscriptionsError } =
+	  await supabase
+		.from("subscriptions")
+		.select(`
+		  id,
+		  status,
+		  start_date,
+		  end_date,
+		  created_at,
+		  plans (
+			name
+		  )
+		`)
+		.eq("client_id", clientId)
+		.order("created_at", { ascending: false });
+
+	if (subscriptionsError) {
+	  console.error(subscriptionsError);
+	} else {
+	  setSubscriptions(subscriptionsData || []);
+	}
+
 
       if (!clientData.plan_id) {
         setFeatures([]);
