@@ -153,7 +153,7 @@ export default function AdminClientSettings({ clientIdOverride }) {
 
   const [subscriptionForm, setSubscriptionForm] = useState({
 	  plan_id: "",
-	  status: "active",
+	  subscription_type: "paid",
 	  duration: "1",
   });
 
@@ -366,7 +366,7 @@ export default function AdminClientSettings({ clientIdOverride }) {
 	function openSubscriptionDrawer() {
 	  setSubscriptionForm({
 		plan_id: client?.plan_id || "",
-		status: "active",
+		subscription_type: "paid",
 		duration: "1",
 	  });
 
@@ -406,7 +406,8 @@ async function saveSubscription() {
       await supabase
         .from("subscriptions")
         .update({
-          status: "expired",
+			status: "cancelled",
+			closed_at: new Date().toISOString(),
         })
         .eq("client_id", effectiveClientId)
         .in("status", ["active", "trial"]);
@@ -415,7 +416,7 @@ async function saveSubscription() {
     const startDate = new Date();
 
     const endDate = calculateEndDate(
-      subscriptionForm.status,
+      subscriptionForm.subscription_type,
       subscriptionForm.duration
     );
 
@@ -426,7 +427,8 @@ async function saveSubscription() {
           {
             client_id: effectiveClientId,
             plan_id: subscriptionForm.plan_id,
-            status: subscriptionForm.status,
+            subscription_type: subscriptionForm.subscription_type,
+			status: "active",
             start_date: startDate.toISOString(),
             end_date: endDate,
           },
@@ -485,7 +487,7 @@ async function saveSubscription() {
 function calculateEndDate(status, duration) {
   const startDate = new Date();
 
-  if (status === "trial") {
+  if (subscriptionType === "trial") {
     startDate.setDate(startDate.getDate() + 3);
     return startDate.toISOString();
   }
@@ -767,6 +769,9 @@ function calculateEndDate(status, duration) {
             <th className="py-3 font-semibold text-slate-500">
               Plan
             </th>
+			<th className="py-3 font-semibold text-slate-500">
+			  Type
+			</th>
             <th className="py-3 font-semibold text-slate-500">
               Status
             </th>
@@ -779,6 +784,9 @@ function calculateEndDate(status, duration) {
             <th className="py-3 font-semibold text-slate-500">
               End Date
             </th>
+			<th className="py-3 font-semibold text-slate-500">
+			  Closed
+			</th>
 			<th className="py-3 font-semibold text-slate-500">
 			  Created
 			</th>
@@ -794,6 +802,16 @@ function calculateEndDate(status, duration) {
               <td className="py-4 font-semibold text-slate-900">
                 {sub.plans?.name || "-"}
               </td>
+
+				<td className="py-4">
+				  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+					sub.subscription_type === "trial"
+					  ? "bg-blue-50 text-blue-700"
+					  : "bg-violet-50 text-violet-700"
+				  }`}>
+					{sub.subscription_type}
+				  </span>
+				</td>
 
               <td className="py-4">
 				<span className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${getStatusClass(sub.status)}`}>
@@ -820,6 +838,9 @@ function calculateEndDate(status, duration) {
               <td className="py-4 text-slate-600">
                 {formatDate(sub.end_date)}
               </td>
+			  <td className="py-4 text-slate-600">
+				  {formatDate(sub.closed_at)}
+				</td>
 			  <td className="py-4 text-slate-600">
 				  {formatDate(sub.created_at)}
 				</td>
@@ -886,32 +907,32 @@ function calculateEndDate(status, duration) {
           </select>
         </div>
 
-        <div>
-          <label className="mb-2 block text-sm font-semibold">
-            Status
-          </label>
+<div>
+  <label className="mb-2 block text-sm font-semibold">
+    Subscription Type
+  </label>
 
-          <select
-            value={subscriptionForm.status}
-            onChange={(e) =>
-              setSubscriptionForm((prev) => ({
-                ...prev,
-                status: e.target.value,
-              }))
-            }
-            className="w-full rounded-2xl border px-4 py-3"
-          >
-            <option value="active">
-              Active
-            </option>
+  <select
+    value={subscriptionForm.subscription_type}
+    onChange={(e) =>
+      setSubscriptionForm((prev) => ({
+        ...prev,
+        subscription_type: e.target.value,
+      }))
+    }
+    className="w-full rounded-2xl border px-4 py-3"
+  >
+    <option value="paid">
+      Paid
+    </option>
 
-            <option value="trial">
-              Trial
-            </option>
-          </select>
-        </div>
+    <option value="trial">
+      Trial
+    </option>
+  </select>
+</div>
 
-        {subscriptionForm.status === "active" && (
+        {subscriptionForm.subscription_type === "paid" && (
           <div>
             <label className="mb-2 block text-sm font-semibold">
               Duration
