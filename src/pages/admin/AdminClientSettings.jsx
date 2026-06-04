@@ -226,10 +226,12 @@ export default function AdminClientSettings({ clientIdOverride }) {
 	  await supabase
 		.from("subscriptions")
 		.select(`
-		  id,
+		 id,
+		  subscription_type,
 		  status,
 		  start_date,
 		  end_date,
+		  closed_at,
 		  created_at,
 		  plans (
 			name
