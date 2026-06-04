@@ -149,6 +149,7 @@ export default function AdminClientSettings({ clientIdOverride }) {
   const [plansList, setPlansList] = useState([]);
 
   const [subscriptionDrawerOpen, setSubscriptionDrawerOpen] = useState(false);
+  const [savingSubscription, setSavingSubscription] = useState(false);
 
   const [subscriptionForm, setSubscriptionForm] = useState({
 	  plan_id: "",
@@ -376,6 +377,92 @@ export default function AdminClientSettings({ clientIdOverride }) {
 	  setSubscriptionDrawerOpen(false);
 	}
 
+async function saveSubscription() {
+  if (!subscriptionForm.plan_id) {
+    setMsg("⚠️ يرجى اختيار الخطة");
+    return;
+  }
+
+  try {
+    setSavingSubscription(true);
+
+    const { data: currentSubscriptions } =
+      await supabase
+        .from("subscriptions")
+        .select("id,status,end_date")
+        .eq("client_id", effectiveClientId)
+        .in("status", ["active", "trial"]);
+
+    if (currentSubscriptions?.length) {
+      const confirmReplace = window.confirm(
+        "يوجد اشتراك فعال حالياً، هل تريد استبداله؟"
+      );
+
+      if (!confirmReplace) {
+        setSavingSubscription(false);
+        return;
+      }
+
+      await supabase
+        .from("subscriptions")
+        .update({
+          status: "expired",
+        })
+        .eq("client_id", effectiveClientId)
+        .in("status", ["active", "trial"]);
+    }
+
+    const startDate = new Date();
+
+    const endDate = calculateEndDate(
+      subscriptionForm.status,
+      subscriptionForm.duration
+    );
+
+    const { error: subscriptionError } =
+      await supabase
+        .from("subscriptions")
+        .insert([
+          {
+            client_id: effectiveClientId,
+            plan_id: subscriptionForm.plan_id,
+            status: subscriptionForm.status,
+            start_date: startDate.toISOString(),
+            end_date: endDate,
+          },
+        ]);
+
+    if (subscriptionError) {
+      throw subscriptionError;
+    }
+
+    await supabase
+      .from("clients")
+      .update({
+        plan_id: subscriptionForm.plan_id,
+      })
+      .eq("id", effectiveClientId);
+
+    await fetchClientAndFeatures(
+      effectiveClientId
+    );
+
+    closeSubscriptionDrawer();
+
+    setMsg("✅ تم إنشاء الاشتراك بنجاح");
+  } catch (err) {
+    console.error(err);
+
+    setMsg(
+      "❌ فشل إنشاء الاشتراك: " +
+      (err?.message || "Unknown Error")
+    );
+  }
+
+  setSavingSubscription(false);
+}
+
+
 	function getStatusClass(status) {
 	  switch (status) {
 		case "active":
@@ -394,6 +481,22 @@ export default function AdminClientSettings({ clientIdOverride }) {
 		  return "bg-slate-100 text-slate-700 ring-slate-200";
 	  }
 	}
+
+function calculateEndDate(status, duration) {
+  const startDate = new Date();
+
+  if (status === "trial") {
+    startDate.setDate(startDate.getDate() + 3);
+    return startDate.toISOString();
+  }
+
+  startDate.setMonth(
+    startDate.getMonth() + Number(duration || 1)
+  );
+
+  return startDate.toISOString();
+}
+
 
   async function copyToClipboard(value) {
     try {
@@ -833,11 +936,15 @@ export default function AdminClientSettings({ clientIdOverride }) {
         )}
 
         <button
-          type="button"
-          className="w-full rounded-2xl bg-indigo-600 py-3 font-semibold text-white"
-        >
-          Save Subscription
-        </button>
+		  type="button"
+		  onClick={saveSubscription}
+		  disabled={savingSubscription}
+		  className="w-full rounded-2xl bg-indigo-600 py-3 font-semibold text-white disabled:opacity-50"
+		>
+		  {savingSubscription
+			? "Saving..."
+			: "Save Subscription"}
+		</button>
 
       </div>
     </div>
