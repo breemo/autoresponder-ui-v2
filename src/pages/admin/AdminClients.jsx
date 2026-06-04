@@ -18,7 +18,7 @@ const emptyForm = {
   email: "",
   password: "",
   plan_id: "",
-  subscription_status: "trial",
+  subscription_type: "trial",
 };
 
 function formatDate(value) {
@@ -71,9 +71,12 @@ export default function AdminClients() {
 		created_at,
 		subscriptions (
 		  id,
+		  subscription_type,
 		  status,
 		  start_date,
-		  end_date
+		  end_date,
+		  closed_at,
+		  plan_id
 		)
 	  `)
 	  .order("created_at", { ascending: false });
@@ -102,8 +105,13 @@ export default function AdminClients() {
   };
   
   const getSubscription = (client) => {
-	  if (!client?.subscriptions?.length) return null;
-	  return client.subscriptions[0];
+	if (!client?.subscriptions?.length) return null;
+
+	  return (
+		client.subscriptions.find(
+		  (s) => s.status === "active"
+		) || client.subscriptions[0]
+	  );
 	};
 
 	const getDaysRemaining = (endDate) => {
@@ -246,7 +254,7 @@ if (form.plan_id) {
 
   const endDate = new Date();
 
-  if (form.subscription_status === "trial") {
+  if (form.subscription_type === "trial") {
     endDate.setDate(endDate.getDate() + 3);
   } else {
     endDate.setMonth(endDate.getMonth() + 1);
@@ -258,7 +266,8 @@ const { data: subscriptionData, error: subscriptionError } = await supabase
     {
       client_id: createdClient.id,
       plan_id: form.plan_id,
-      status: form.subscription_status,
+      subscription_type: form.subscription_type,
+		status: "active",
       start_date: startDate.toISOString(),
       end_date: endDate.toISOString(),
     },
@@ -534,13 +543,16 @@ if (createdSubscription?.id) {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredClients.slice(0, pageSize).map((client, index) => {
-                  const initials = (client.business_name || client.email || "C")
-                    .slice(0, 2)
-                    .toUpperCase();
+					  const initials = (client.business_name || client.email || "C")
+						.slice(0, 2)
+						.toUpperCase();
 
-				  const subscription = getSubscription(client);
-				  
-                  return (
+					  const subscription = getSubscription(client);
+
+					  const currentPlanId =
+						subscription?.plan_id || client.plan_id;
+
+					  return (
                     <tr key={client.id} className="group transition hover:bg-slate-50/80">
                       <td className="px-6 py-5">
                         <div className="flex items-center gap-4">
@@ -558,14 +570,14 @@ if (createdSubscription?.id) {
 
                       <td className="px-6 py-5">
                         <span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
-                          {getPlanName(client.plan_id)}
+                          {getPlanName(currentPlanId)}
                         </span>
                       </td>
 
 						<td className="px-6 py-5">
 						  {subscription ? (
 							<span className="inline-flex rounded-full border px-3 py-1 text-xs font-semibold">
-							  {subscription.status}
+							  {subscription?.subscription_type || "-"}
 							</span>
 						  ) : (
 							"-"
@@ -748,7 +760,7 @@ if (createdSubscription?.id) {
 					className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-200 focus:ring-4 focus:ring-indigo-50">
 
 					<option value="trial">Trial</option>
-					<option value="active">Active</option>
+					<option value="paid">Paid</option>
 				  </select>              
 				</div>
 			  </div>
