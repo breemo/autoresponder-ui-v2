@@ -136,6 +136,19 @@ function formatDate(value) {
   }
 }
 
+function getRemainingDays(endDate) {
+  if (!endDate) return 0;
+
+  const now = new Date();
+  const end = new Date(endDate);
+
+  const diff = end.getTime() - now.getTime();
+
+  return Math.max(
+    0,
+    Math.ceil(diff / (1000 * 60 * 60 * 24))
+  );
+}
 
 export default function AdminClientSettings({ clientIdOverride }) {
   const params = useParams();
@@ -145,6 +158,7 @@ export default function AdminClientSettings({ clientIdOverride }) {
   const [client, setClient] = useState(null);
   const [plan, setPlan] = useState(null);
   const [subscriptions, setSubscriptions] = useState([]);
+  const [activeSubscription, setActiveSubscription] = useState(null);
   
   const [plansList, setPlansList] = useState([]);
 
@@ -244,6 +258,12 @@ export default function AdminClientSettings({ clientIdOverride }) {
 	  console.error(subscriptionsError);
 	} else {
 	  setSubscriptions(subscriptionsData || []);
+	  
+	  const activeSub = (subscriptionsData || []).find(
+		  (s) => s.status === "active"
+		);
+
+		setActiveSubscription(activeSub || null);
 	}
 
 
@@ -737,6 +757,90 @@ function calculateEndDate(status, duration) {
           })}
         </div>
       )}
+
+<div className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+  <div className="flex items-center justify-between">
+    <div>
+      <h3 className="text-xl font-bold text-slate-950">
+        Current Subscription
+      </h3>
+
+      <p className="mt-1 text-sm text-slate-500">
+        الاشتراك الحالي للعميل
+      </p>
+    </div>
+  </div>
+
+  {!activeSubscription ? (
+    <div className="mt-5 rounded-2xl border border-dashed border-slate-200 p-6 text-center text-slate-500">
+      لا يوجد اشتراك فعال حالياً
+    </div>
+  ) : (
+    <div className="mt-5 grid gap-4 md:grid-cols-3">
+      <div className="rounded-2xl bg-slate-50 p-4">
+        <div className="text-xs text-slate-500">
+          Plan
+        </div>
+
+        <div className="mt-2 text-lg font-bold">
+          {activeSubscription.plans?.name}
+        </div>
+      </div>
+
+      <div className="rounded-2xl bg-slate-50 p-4">
+        <div className="text-xs text-slate-500">
+          Type
+        </div>
+
+        <div className="mt-2 text-lg font-bold">
+          {activeSubscription.subscription_type}
+        </div>
+      </div>
+
+      <div className="rounded-2xl bg-slate-50 p-4">
+        <div className="text-xs text-slate-500">
+          Status
+        </div>
+
+        <div className="mt-2 text-lg font-bold text-emerald-600">
+          {activeSubscription.status}
+        </div>
+      </div>
+
+      <div className="rounded-2xl bg-slate-50 p-4">
+        <div className="text-xs text-slate-500">
+          Start Date
+        </div>
+
+        <div className="mt-2 font-semibold">
+          {formatDate(activeSubscription.start_date)}
+        </div>
+      </div>
+
+      <div className="rounded-2xl bg-slate-50 p-4">
+        <div className="text-xs text-slate-500">
+          End Date
+        </div>
+
+        <div className="mt-2 font-semibold">
+          {formatDate(activeSubscription.end_date)}
+        </div>
+      </div>
+
+      <div className="rounded-2xl bg-slate-50 p-4">
+        <div className="text-xs text-slate-500">
+          Remaining
+        </div>
+
+        <div className="mt-2 text-lg font-bold text-indigo-600">
+          {getRemainingDays(
+            activeSubscription.end_date
+          )} Days
+        </div>
+      </div>
+    </div>
+  )}
+</div>
 
  {/* Subscription History */}
 <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
