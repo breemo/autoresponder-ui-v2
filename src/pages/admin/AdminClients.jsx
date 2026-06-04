@@ -265,11 +265,11 @@ const { data: subscriptionData, error: subscriptionError } = await supabase
   .insert([
     {
       client_id: createdClient.id,
-      plan_id: form.plan_id,
-      subscription_type: form.subscription_type,
-		status: "active",
-      start_date: startDate.toISOString(),
-      end_date: endDate.toISOString(),
+	  plan_id: form.plan_id,
+	  subscription_type: form.subscription_type,
+	  status: "active",
+	  start_date: startDate.toISOString(),
+	  end_date: endDate.toISOString(),
     },
   ])
   .select()
@@ -754,8 +754,8 @@ if (createdSubscription?.id) {
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700"> نوع الاشتراك</label>
 				  <select
-					name="subscription_status"
-					value={form.subscription_status}
+					name="subscription_type"
+					value={form.subscription_type}
 					onChange={handleChange}
 					className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-200 focus:ring-4 focus:ring-indigo-50">
 
