@@ -751,12 +751,18 @@ function calculateEndDate(status, duration) {
       </p>
     </div>
 	
+ 
+  {isAdmin && (
   <button
     type="button"
     onClick={openSubscriptionDrawer}
-    className="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
+    className="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+  >
     + New Subscription
   </button>
+)}
+
+
   </div>
 
   {subscriptions.length === 0 ? (
@@ -854,7 +860,7 @@ function calculateEndDate(status, duration) {
   )}
 </div>
  
- {subscriptionDrawerOpen && (
+ {isAdmin && subscriptionDrawerOpen && (
   <div className="fixed inset-0 z-40 flex">
     <div
       className="flex-1 bg-slate-950/50"
