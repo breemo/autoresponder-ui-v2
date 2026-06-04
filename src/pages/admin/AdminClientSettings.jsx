@@ -146,6 +146,16 @@ export default function AdminClientSettings({ clientIdOverride }) {
   const [plan, setPlan] = useState(null);
   const [subscriptions, setSubscriptions] = useState([]);
   
+  const [plansList, setPlansList] = useState([]);
+
+  const [subscriptionDrawerOpen, setSubscriptionDrawerOpen] = useState(false);
+
+  const [subscriptionForm, setSubscriptionForm] = useState({
+	  plan_id: "",
+	  status: "active",
+	  duration: "1",
+  });
+
   const [features, setFeatures] = useState([]);
   const [featureSettings, setFeatureSettings] = useState({});
 
@@ -202,6 +212,13 @@ export default function AdminClientSettings({ clientIdOverride }) {
         planData = data || null;
       }
       setPlan(planData);
+
+	const { data: plansData } = await supabase
+	  .from("plans")
+	  .select("id,name,price")
+	  .order("price", { ascending: true });
+
+	setPlansList(plansData || []);
 
 
 	const { data: subscriptionsData, error: subscriptionsError } =
@@ -344,6 +361,39 @@ export default function AdminClientSettings({ clientIdOverride }) {
   function handleFieldChange(fieldName, value) {
     setFeatureValues((prev) => ({ ...prev, [fieldName]: value }));
   }
+
+	function openSubscriptionDrawer() {
+	  setSubscriptionForm({
+		plan_id: client?.plan_id || "",
+		status: "active",
+		duration: "1",
+	  });
+
+	  setSubscriptionDrawerOpen(true);
+	}
+
+	function closeSubscriptionDrawer() {
+	  setSubscriptionDrawerOpen(false);
+	}
+
+	function getStatusClass(status) {
+	  switch (status) {
+		case "active":
+		  return "bg-emerald-50 text-emerald-700 ring-emerald-100";
+
+		case "trial":
+		  return "bg-blue-50 text-blue-700 ring-blue-100";
+
+		case "expired":
+		  return "bg-rose-50 text-rose-700 ring-rose-100";
+
+		case "suspended":
+		  return "bg-amber-50 text-amber-700 ring-amber-100";
+
+		default:
+		  return "bg-slate-100 text-slate-700 ring-slate-200";
+	  }
+	}
 
   async function copyToClipboard(value) {
     try {
@@ -593,6 +643,13 @@ export default function AdminClientSettings({ clientIdOverride }) {
         سجل جميع اشتراكات العميل الحالية والسابقة
       </p>
     </div>
+	
+  <button
+    type="button"
+    onClick={openSubscriptionDrawer}
+    className="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
+    + New Subscription
+  </button>
   </div>
 
   {subscriptions.length === 0 ? (
@@ -607,18 +664,21 @@ export default function AdminClientSettings({ clientIdOverride }) {
             <th className="py-3 font-semibold text-slate-500">
               Plan
             </th>
-
             <th className="py-3 font-semibold text-slate-500">
               Status
             </th>
-
+			<th className="py-3 font-semibold text-slate-500">
+			  Current
+			</th>
             <th className="py-3 font-semibold text-slate-500">
               Start Date
             </th>
-
             <th className="py-3 font-semibold text-slate-500">
               End Date
             </th>
+			<th className="py-3 font-semibold text-slate-500">
+			  Created
+			</th>
           </tr>
         </thead>
 
@@ -633,10 +693,22 @@ export default function AdminClientSettings({ clientIdOverride }) {
               </td>
 
               <td className="py-4">
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                  {sub.status}
-                </span>
+				<span className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${getStatusClass(sub.status)}`}>
+				  {sub.status}
+				</span>
               </td>
+
+				<td className="py-4">
+				  {(sub.status === "active" || sub.status === "trial") ? (
+					<span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+					  Current
+					</span>
+				  ) : (
+					"-"
+				  )}
+				</td>
+
+
 
               <td className="py-4 text-slate-600">
                 {formatDate(sub.start_date)}
@@ -645,6 +717,9 @@ export default function AdminClientSettings({ clientIdOverride }) {
               <td className="py-4 text-slate-600">
                 {formatDate(sub.end_date)}
               </td>
+			  <td className="py-4 text-slate-600">
+				  {formatDate(sub.created_at)}
+				</td>
             </tr>
           ))}
         </tbody>
@@ -653,6 +728,122 @@ export default function AdminClientSettings({ clientIdOverride }) {
   )}
 </div>
  
+ {subscriptionDrawerOpen && (
+  <div className="fixed inset-0 z-40 flex">
+    <div
+      className="flex-1 bg-slate-950/50"
+      onClick={closeSubscriptionDrawer}
+    />
+
+    <div className="w-full max-w-md bg-white shadow-2xl">
+      <div className="border-b p-5">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xl font-bold">
+            New Subscription
+          </h3>
+
+          <button
+            type="button"
+            onClick={closeSubscriptionDrawer}
+          >
+            <XMarkIcon className="h-6 w-6" />
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-5 p-5">
+
+        <div>
+          <label className="mb-2 block text-sm font-semibold">
+            Plan
+          </label>
+
+          <select
+            value={subscriptionForm.plan_id}
+            onChange={(e) =>
+              setSubscriptionForm((prev) => ({
+                ...prev,
+                plan_id: e.target.value,
+              }))
+            }
+            className="w-full rounded-2xl border px-4 py-3"
+          >
+            <option value="">
+              Select Plan
+            </option>
+
+            {plansList.map((plan) => (
+              <option
+                key={plan.id}
+                value={plan.id}
+              >
+                {plan.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-semibold">
+            Status
+          </label>
+
+          <select
+            value={subscriptionForm.status}
+            onChange={(e) =>
+              setSubscriptionForm((prev) => ({
+                ...prev,
+                status: e.target.value,
+              }))
+            }
+            className="w-full rounded-2xl border px-4 py-3"
+          >
+            <option value="active">
+              Active
+            </option>
+
+            <option value="trial">
+              Trial
+            </option>
+          </select>
+        </div>
+
+        {subscriptionForm.status === "active" && (
+          <div>
+            <label className="mb-2 block text-sm font-semibold">
+              Duration
+            </label>
+
+            <select
+              value={subscriptionForm.duration}
+              onChange={(e) =>
+                setSubscriptionForm((prev) => ({
+                  ...prev,
+                  duration: e.target.value,
+                }))
+              }
+              className="w-full rounded-2xl border px-4 py-3"
+            >
+              <option value="1">1 Month</option>
+              <option value="3">3 Months</option>
+              <option value="6">6 Months</option>
+              <option value="12">12 Months</option>
+            </select>
+          </div>
+        )}
+
+        <button
+          type="button"
+          className="w-full rounded-2xl bg-indigo-600 py-3 font-semibold text-white"
+        >
+          Save Subscription
+        </button>
+
+      </div>
+    </div>
+  </div>
+)}
+
       {drawerOpen && activeFeature && (
         <div className="fixed inset-0 z-50 flex">
           <div className="flex-1 bg-slate-950/50 backdrop-blur-sm" onClick={closeFeatureDrawer} />
