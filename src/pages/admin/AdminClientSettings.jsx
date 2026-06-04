@@ -259,9 +259,13 @@ export default function AdminClientSettings({ clientIdOverride }) {
 	} else {
 	  setSubscriptions(subscriptionsData || []);
 	  
+console.log("subscriptions", subscriptionsData);
+	  
 	  const activeSub = (subscriptionsData || []).find(
 		  (s) => s.status === "active"
 		);
+
+console.log("activeSub", activeSub);
 
 		setActiveSubscription(activeSub || null);
 	}
@@ -413,7 +417,7 @@ async function saveSubscription() {
         .from("subscriptions")
         .select("id,status,end_date")
         .eq("client_id", effectiveClientId)
-        .in("status", ["active", "trial"]);
+        .in("status", ["active"]);
 
     if (currentSubscriptions?.length) {
       const confirmReplace = window.confirm(
@@ -432,7 +436,7 @@ async function saveSubscription() {
 			closed_at: new Date().toISOString(),
         })
         .eq("client_id", effectiveClientId)
-        .in("status", ["active", "trial"]);
+        .in("status", ["active"]);
     }
 
     const startDate = new Date();
@@ -506,7 +510,7 @@ async function saveSubscription() {
 	  }
 	}
 
-function calculateEndDate(status, duration) {
+function calculateEndDate(subscriptionType, duration) {
   const startDate = new Date();
 
   if (subscriptionType === "trial") {
