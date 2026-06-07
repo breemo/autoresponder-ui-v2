@@ -240,15 +240,20 @@ export default function AdminClientSettings({ clientIdOverride }) {
 	  await supabase
 		.from("subscriptions")
 		.select(`
-		 id,
+		  id,
 		  subscription_type,
 		  status,
 		  start_date,
 		  end_date,
 		  closed_at,
 		  created_at,
+		  messages_used,
+		  ai_replies_used,
+		  auto_replies_used,
 		  plans (
-			name
+			name,
+			messages_limit,
+			ai_replies_limit
 		  )
 		`)
 		.eq("client_id", clientId)
@@ -950,6 +955,55 @@ function calculateEndDate(subscriptionType, duration) {
     </div>
   )}
 </div>
+
+
+{activeSubscription && (
+  <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+    <h3 className="text-xl font-bold text-slate-950">
+      Usage Statistics
+    </h3>
+
+    <div className="mt-5 grid gap-4 md:grid-cols-3">
+
+      <div className="rounded-2xl bg-slate-50 p-4">
+        <div className="text-xs text-slate-500">
+          Total Messages
+        </div>
+
+        <div className="mt-2 text-2xl font-bold">
+			{activeSubscription.messages_used || 0}
+			{" / "}
+			{activeSubscription.plans?.messages_limit || 0}
+        </div>
+      </div>
+
+      <div className="rounded-2xl bg-slate-50 p-4">
+        <div className="text-xs text-slate-500">
+          AI Replies
+        </div>
+
+        <div className="mt-2 text-2xl font-bold text-indigo-600">
+			{activeSubscription.ai_replies_used || 0}
+			{" / "}
+			{activeSubscription.plans?.ai_replies_limit || 0}
+        </div>
+      </div>
+
+      <div className="rounded-2xl bg-slate-50 p-4">
+        <div className="text-xs text-slate-500">
+          Auto Replies
+        </div>
+
+        <div className="mt-2 text-2xl font-bold text-emerald-600">
+          {activeSubscription.auto_replies_used || 0}
+        </div>
+      </div>
+
+    </div>
+  </div>
+)}
+
+
 
  {/* Subscription History */}
 <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
