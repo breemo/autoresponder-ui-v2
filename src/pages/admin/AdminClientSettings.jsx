@@ -150,6 +150,38 @@ function getRemainingDays(endDate) {
   );
 }
 
+
+
+function getUsagePercent(used, limit) {
+  if (!limit) return 0;
+
+  return Math.min(
+    100,
+    Math.round((used / limit) * 100)
+  );
+}
+
+function getUsageStatus(percent) {
+  if (percent >= 100)
+    return {
+      label: "Limit Reached",
+      color: "text-rose-600",
+    };
+
+  if (percent >= 80)
+    return {
+      label: "Near Limit",
+      color: "text-amber-600",
+    };
+
+  return {
+    label: "Healthy",
+    color: "text-emerald-600",
+  };
+}
+
+
+
 export default function AdminClientSettings({ clientIdOverride }) {
   const params = useParams();
   const effectiveClientId = clientIdOverride || params.id;
@@ -960,48 +992,139 @@ function calculateEndDate(subscriptionType, duration) {
 {activeSubscription && (
   <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
     <h3 className="text-xl font-bold text-slate-950">
-      Usage Statistics
+      Remaining Usage
     </h3>
 
     <div className="mt-5 grid gap-4 md:grid-cols-3">
 
       <div className="rounded-2xl bg-slate-50 p-4">
         <div className="text-xs text-slate-500">
-          Total Messages
-        </div>
-
-        <div className="mt-2 text-2xl font-bold">
-			{activeSubscription.messages_used || 0}
-			{" / "}
-			{activeSubscription.plans?.messages_limit || 0}
-        </div>
-      </div>
-
-      <div className="rounded-2xl bg-slate-50 p-4">
-        <div className="text-xs text-slate-500">
-          AI Replies
+          Messages Left
         </div>
 
         <div className="mt-2 text-2xl font-bold text-indigo-600">
-			{activeSubscription.ai_replies_used || 0}
-			{" / "}
-			{activeSubscription.plans?.ai_replies_limit || 0}
+          {(activeSubscription.plans?.messages_limit || 0)
+            -
+            (activeSubscription.messages_used || 0)}
         </div>
       </div>
 
       <div className="rounded-2xl bg-slate-50 p-4">
         <div className="text-xs text-slate-500">
-          Auto Replies
+          AI Replies Left
+        </div>
+
+        <div className="mt-2 text-2xl font-bold text-violet-600">
+          {(activeSubscription.plans?.ai_replies_limit || 0)
+            -
+            (activeSubscription.ai_replies_used || 0)}
+        </div>
+      </div>
+
+      <div className="rounded-2xl bg-slate-50 p-4">
+        <div className="text-xs text-slate-500">
+          Days Left
         </div>
 
         <div className="mt-2 text-2xl font-bold text-emerald-600">
-          {activeSubscription.auto_replies_used || 0}
+          {getRemainingDays(
+            activeSubscription.end_date
+          )}
         </div>
       </div>
 
     </div>
   </div>
 )}
+
+
+{activeSubscription && (() => {
+
+  const msgPercent = getUsagePercent(
+    activeSubscription.messages_used || 0,
+    activeSubscription.plans?.messages_limit || 0
+  );
+
+  const aiPercent = getUsagePercent(
+    activeSubscription.ai_replies_used || 0,
+    activeSubscription.plans?.ai_replies_limit || 0
+  );
+
+  const status = getUsageStatus(
+    Math.max(msgPercent, aiPercent)
+  );
+
+  return (
+    <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+
+      <div className="flex items-center justify-between">
+        <h3 className="text-xl font-bold">
+          Usage Statistics
+        </h3>
+
+        <span className={`font-semibold ${status.color}`}>
+          {status.label}
+        </span>
+      </div>
+
+      <div className="mt-6 space-y-6">
+
+        <div>
+          <div className="mb-2 flex justify-between text-sm">
+            <span>Messages</span>
+
+            <span>
+              {activeSubscription.messages_used || 0}
+              /
+              {activeSubscription.plans?.messages_limit || 0}
+            </span>
+          </div>
+
+          <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full bg-indigo-600"
+              style={{
+                width: `${msgPercent}%`,
+              }}
+            />
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-2 flex justify-between text-sm">
+            <span>AI Replies</span>
+
+            <span>
+              {activeSubscription.ai_replies_used || 0}
+              /
+              {activeSubscription.plans?.ai_replies_limit || 0}
+            </span>
+          </div>
+
+          <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full bg-violet-600"
+              style={{
+                width: `${aiPercent}%`,
+              }}
+            />
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-2 flex justify-between text-sm">
+            <span>Auto Replies</span>
+
+            <span>
+              {activeSubscription.auto_replies_used || 0}
+            </span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+})()}
 
 
 
