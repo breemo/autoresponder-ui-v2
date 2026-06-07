@@ -624,6 +624,9 @@ async function renewSubscription() {
 
 		case "suspended":
 		  return "bg-amber-50 text-amber-700 ring-amber-100";
+		  
+		case "upgraded":
+			return "bg-violet-50 text-violet-700 ring-violet-100";
 
 		default:
 		  return "bg-slate-100 text-slate-700 ring-slate-200";
