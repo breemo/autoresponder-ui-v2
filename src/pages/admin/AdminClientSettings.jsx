@@ -491,6 +491,89 @@ async function saveSubscription() {
 }
 
 
+async function cancelSubscription() {
+  if (!activeSubscription) return;
+
+  const confirmCancel = window.confirm(
+    "هل أنت متأكد من إلغاء الاشتراك الحالي؟"
+  );
+
+  if (!confirmCancel) return;
+
+  try {
+    const { error } = await supabase
+      .from("subscriptions")
+      .update({
+        status: "cancelled",
+        closed_at: new Date().toISOString(),
+      })
+      .eq("id", activeSubscription.id);
+
+    if (error) throw error;
+
+    await fetchClientAndFeatures(
+      effectiveClientId
+    );
+
+    setMsg(
+      "✅ تم إلغاء الاشتراك بنجاح"
+    );
+  } catch (err) {
+    console.error(err);
+
+    setMsg(
+      "❌ فشل إلغاء الاشتراك"
+    );
+  }
+}
+
+
+async function renewSubscription() {
+  if (!activeSubscription) return;
+
+  const months = window.prompt(
+    "مدة التجديد بالأشهر؟ (1 / 3 / 6 / 12)",
+    "1"
+  );
+
+  if (!months) return;
+
+  try {
+    const currentEnd = new Date(
+      activeSubscription.end_date
+    );
+
+    currentEnd.setMonth(
+      currentEnd.getMonth() + Number(months)
+    );
+
+    const { error } = await supabase
+      .from("subscriptions")
+      .update({
+        end_date: currentEnd.toISOString(),
+      })
+      .eq("id", activeSubscription.id);
+
+    if (error) throw error;
+
+    await fetchClientAndFeatures(
+      effectiveClientId
+    );
+
+    setMsg(
+      `✅ تم تجديد الاشتراك ${months} شهر`
+    );
+  } catch (err) {
+    console.error(err);
+
+    setMsg(
+      "❌ فشل تجديد الاشتراك"
+    );
+  }
+}
+
+
+
 	function getStatusClass(status) {
 	  switch (status) {
 		case "active":
@@ -763,17 +846,39 @@ function calculateEndDate(subscriptionType, duration) {
       )}
 
 <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-  <div className="flex items-center justify-between">
-    <div>
-      <h3 className="text-xl font-bold text-slate-950">
-        Current Subscription
-      </h3>
+<div className="flex items-center justify-between">
+  <div>
+    <h3 className="text-xl font-bold text-slate-950">
+      Current Subscription
+    </h3>
 
-      <p className="mt-1 text-sm text-slate-500">
-        الاشتراك الحالي للعميل
-      </p>
-    </div>
+    <p className="mt-1 text-sm text-slate-500">
+      الاشتراك الحالي للعميل
+    </p>
   </div>
+
+{isAdmin &&
+ activeSubscription &&
+ activeSubscription.status === "active" &&(
+  <div className="flex gap-2">
+    <button
+      type="button"
+      onClick={renewSubscription}
+      className="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+    >
+      Renew
+    </button>
+
+    <button
+      type="button"
+      onClick={cancelSubscription}
+      className="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
+    >
+      Cancel Subscription
+    </button>
+  </div>
+)}
+</div>
 
   {!activeSubscription ? (
     <div className="mt-5 rounded-2xl border border-dashed border-slate-200 p-6 text-center text-slate-500">
