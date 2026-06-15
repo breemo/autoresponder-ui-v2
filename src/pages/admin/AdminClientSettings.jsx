@@ -1043,19 +1043,25 @@ function calculateEndDate(subscriptionType, duration) {
 
 {activeSubscription && (() => {
 
-  const msgPercent = getUsagePercent(
-    activeSubscription.messages_used || 0,
-    activeSubscription.plans?.messages_limit || 0
-  );
+	const msgPercent = getUsagePercent(
+	activeSubscription.messages_used || 0,
+	activeSubscription.plans?.messages_limit || 0);
 
-  const aiPercent = getUsagePercent(
-    activeSubscription.ai_replies_used || 0,
-    activeSubscription.plans?.ai_replies_limit || 0
-  );
+	const aiPercent = getUsagePercent(
+	activeSubscription.ai_replies_used || 0,
+	activeSubscription.plans?.ai_replies_limit || 0);
+	
+	const messagesLeft =
+	  (activeSubscription.plans?.messages_limit || 0) -
+	  (activeSubscription.messages_used || 0);
 
-  const status = getUsageStatus(
-    Math.max(msgPercent, aiPercent)
-  );
+	const aiLeft =
+	  (activeSubscription.plans?.ai_replies_limit || 0) -
+	  (activeSubscription.ai_replies_used || 0);
+	  
+	const status = getUsageStatus(
+	Math.max(msgPercent, aiPercent)
+);
 
   return (
     <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -1071,6 +1077,30 @@ function calculateEndDate(subscriptionType, duration) {
       </div>
 
       <div className="mt-6 space-y-6">
+
+		{messagesLeft <= 0 && (
+		  <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
+			🚫 تم استهلاك كامل رصيد الرسائل التلقائية.
+		  </div>
+		)}
+
+		{messagesLeft > 0 && msgPercent >= 80 && (
+		  <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-700">
+			⚠️ تم استهلاك أكثر من 80% من رصيد الرسائل.
+		  </div>
+		)}
+
+		{aiLeft <= 0 && (
+		  <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
+			🚫 تم استهلاك كامل رصيد AI.
+		  </div>
+		)}
+
+		{aiLeft > 0 && aiPercent >= 80 && (
+		  <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-700">
+			⚠️ تم استهلاك أكثر من 80% من رصيد AI.
+		  </div>
+		)}
 
         <div>
           <div className="mb-2 flex justify-between text-sm">
