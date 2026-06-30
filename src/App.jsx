@@ -124,9 +124,13 @@ export default function App() {
           />
 
           <Route
-            path="/admin/settings/whatsapp-servers"
-            element={<AdminWhatsappServers />}
-          />
+              path="/admin/settings/whatsapp-servers"
+              element={
+                <AdminRoute>
+                  <AdminWhatsappServers />
+                </AdminRoute>
+              }
+            />
           
         </Routes>
       </Router>
