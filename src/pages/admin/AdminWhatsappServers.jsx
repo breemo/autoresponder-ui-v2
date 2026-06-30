@@ -161,7 +161,10 @@ export default function AdminWhatsappServers() {
         </div>
 
         <button
-          onClick={openCreate}
+          onClick={() => {
+              alert("clicked");
+              openCreate();
+            }}
           className="h-11 rounded-2xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700"
         >
           + Add Server
