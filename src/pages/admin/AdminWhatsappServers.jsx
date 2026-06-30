@@ -109,10 +109,11 @@ export default function AdminWhatsappServers() {
     }
 
     if (error) {
-      console.error(error);
-      setMsg("حدث خطأ أثناء الحفظ");
-      return;
-    }
+  console.error(error);
+  alert(JSON.stringify(error, null, 2));
+  setMsg(error.message);
+  return;
+}
 
     setDrawerOpen(false);
     resetForm();
