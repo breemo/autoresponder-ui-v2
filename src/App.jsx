@@ -20,6 +20,7 @@ import AdminAutoReplies from "./pages/admin/AdminAutoReplies.jsx";
 import AdminSettings from "./pages/admin/AdminSettings.jsx";
 import AdminClientSettings from "./pages/admin/AdminClientSettings.jsx";
 import AdminFeatures from "./pages/admin/AdminFeatures.jsx";
+import AdminWhatsappServers from "./pages/admin/AdminWhatsappServers";
 
 // Client pages
 import ClientDashboard from "./pages/client/ClientDashboard.jsx";
@@ -121,6 +122,12 @@ export default function App() {
             path="/client/feature-settings"
             element={<ClientRoute><ClientFeatureSettings /></ClientRoute>}
           />
+
+          <Route
+            path="/admin/settings/whatsapp-servers"
+            element={<AdminWhatsappServers />}
+          />
+          
         </Routes>
       </Router>
     </AuthProvider>
