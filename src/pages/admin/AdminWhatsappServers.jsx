@@ -7,6 +7,11 @@ const inputClass =
 const cardClass =
   "rounded-3xl border border-slate-200 bg-white shadow-sm";
 
+const defaultWebhookUrl =
+  "https://n8n-production-fcd4.up.railway.app/webhook/evolution-inbound";
+
+const defaultIntegration = "WHATSAPP-BAILEYS";
+
 export default function AdminWhatsappServers() {
   const [servers, setServers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -20,8 +25,10 @@ export default function AdminWhatsappServers() {
     name: "",
     base_url: "",
     api_key: "",
+    webhook_url: defaultWebhookUrl,
+    integration: defaultIntegration,
     priority: 1,
-    max_clients: "",
+    max_instances: "",
     is_active: true,
   });
 
@@ -39,6 +46,7 @@ export default function AdminWhatsappServers() {
 
     if (error) {
       console.error(error);
+      setMsg(error.message || "فشل تحميل السيرفرات");
     } else {
       setServers(data || []);
     }
@@ -53,8 +61,10 @@ export default function AdminWhatsappServers() {
       name: "",
       base_url: "",
       api_key: "",
+      webhook_url: defaultWebhookUrl,
+      integration: defaultIntegration,
       priority: 1,
-      max_clients: "",
+      max_instances: "",
       is_active: true,
     });
 
@@ -73,9 +83,11 @@ export default function AdminWhatsappServers() {
       name: server.name || "",
       base_url: server.base_url || "",
       api_key: server.api_key || "",
+      webhook_url: server.webhook_url || defaultWebhookUrl,
+      integration: server.integration || defaultIntegration,
       priority: server.priority || 1,
-      max_clients: server.max_clients || "",
-      is_active: server.is_active,
+      max_instances: server.max_instances ?? server.max_clients ?? "",
+      is_active: server.is_active !== false,
     });
 
     setDrawerOpen(true);
@@ -86,12 +98,22 @@ export default function AdminWhatsappServers() {
 
     setMsg("");
 
+    if (!form.name.trim()) return setMsg("يرجى إدخال اسم السيرفر");
+    if (!form.base_url.trim()) return setMsg("يرجى إدخال Base URL");
+    if (!form.api_key.trim()) return setMsg("يرجى إدخال API Key");
+    if (!form.webhook_url.trim()) return setMsg("يرجى إدخال Webhook URL");
+
+    const maxInstances = form.max_instances ? Number(form.max_instances) : null;
+
     const payload = {
       name: form.name.trim(),
-      base_url: form.base_url.trim(),
+      base_url: form.base_url.trim().replace(/\/$/, ""),
       api_key: form.api_key.trim(),
-      priority: Number(form.priority),
-      max_clients: form.max_clients ? Number(form.max_clients) : null,
+      webhook_url: form.webhook_url.trim(),
+      integration: form.integration || defaultIntegration,
+      priority: Number(form.priority || 1),
+      max_instances: maxInstances,
+      max_clients: maxInstances,
       is_active: form.is_active,
     };
 
@@ -109,21 +131,16 @@ export default function AdminWhatsappServers() {
     }
 
     if (error) {
-  console.error(error);
-  alert(JSON.stringify(error, null, 2));
-  setMsg(error.message);
-  return;
-}
+      console.error(error);
+      setMsg(error.message || "حدث خطأ أثناء الحفظ");
+      return;
+    }
 
     setDrawerOpen(false);
     resetForm();
     fetchServers();
 
-    setMsg(
-      editingId
-        ? "تم تحديث السيرفر بنجاح"
-        : "تمت إضافة السيرفر بنجاح"
-    );
+    setMsg(editingId ? "تم تحديث السيرفر بنجاح" : "تمت إضافة السيرفر بنجاح");
   }
 
   async function deleteServer(id) {
@@ -162,10 +179,7 @@ export default function AdminWhatsappServers() {
         </div>
 
         <button
-          onClick={() => {
-              alert("clicked");
-              openCreate();
-            }}
+          onClick={openCreate}
           className="h-11 rounded-2xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700"
         >
           + Add Server
@@ -208,15 +222,13 @@ export default function AdminWhatsappServers() {
           {servers.map((server) => (
             <div key={server.id} className={`${cardClass} overflow-hidden`}>
               <div className="p-6">
-
                 <div className="mb-4 flex items-start justify-between">
-
                   <div>
                     <h3 className="text-lg font-black text-slate-900">
                       {server.name}
                     </h3>
 
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-slate-500" dir="ltr">
                       {server.base_url}
                     </p>
                   </div>
@@ -230,37 +242,36 @@ export default function AdminWhatsappServers() {
                   >
                     {server.is_active ? "Active" : "Disabled"}
                   </span>
-
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-slate-500">Priority</p>
+                    <p className="font-black">{server.priority}</p>
+                  </div>
 
                   <div>
-                    <p className="text-slate-500">
-                      Priority
-                    </p>
-
+                    <p className="text-slate-500">Max Instances</p>
                     <p className="font-black">
-                      {server.priority}
+                      {server.max_instances ?? server.max_clients ?? "-"}
                     </p>
                   </div>
 
                   <div>
-                    <p className="text-slate-500">
-                      Max Clients
-                    </p>
-
-                    <p className="font-black">
-                      {server.max_clients || "-"}
-                    </p>
+                    <p className="text-slate-500">Integration</p>
+                    <p className="font-black">{server.integration || defaultIntegration}</p>
                   </div>
 
+                  <div>
+                    <p className="text-slate-500">Webhook</p>
+                    <p className="truncate font-bold" dir="ltr">
+                      {server.webhook_url || "-"}
+                    </p>
+                  </div>
                 </div>
-
               </div>
 
               <div className="flex gap-2 border-t border-slate-100 p-4">
-
                 <button
                   onClick={() => startEdit(server)}
                   className="flex-1 rounded-2xl border border-slate-200 px-3 py-2 text-xs font-bold hover:bg-slate-50"
@@ -274,13 +285,12 @@ export default function AdminWhatsappServers() {
                 >
                   حذف
                 </button>
-
               </div>
-
             </div>
           ))}
         </div>
       )}
+
       {drawerOpen && (
         <div
           className="fixed inset-0 z-50 flex justify-end bg-slate-950/40"
@@ -312,7 +322,6 @@ export default function AdminWhatsappServers() {
             </div>
 
             <div className="space-y-4">
-
               <div>
                 <label className="mb-1 block text-sm font-bold">
                   اسم السيرفر
@@ -321,97 +330,91 @@ export default function AdminWhatsappServers() {
                 <input
                   className={inputClass}
                   value={form.name}
-                  onChange={(e) =>
-                    setForm({ ...form, name: e.target.value })
-                  }
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-bold">
-                  Base URL
-                </label>
+                <label className="mb-1 block text-sm font-bold">Base URL</label>
 
                 <input
                   className={inputClass}
                   value={form.base_url}
-                  onChange={(e) =>
-                    setForm({ ...form, base_url: e.target.value })
-                  }
+                  onChange={(e) => setForm({ ...form, base_url: e.target.value })}
+                  placeholder="https://evo.example.com"
+                  dir="ltr"
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-bold">
-                  API Key
-                </label>
+                <label className="mb-1 block text-sm font-bold">API Key</label>
 
                 <input
                   className={inputClass}
                   value={form.api_key}
-                  onChange={(e) =>
-                    setForm({ ...form, api_key: e.target.value })
-                  }
+                  onChange={(e) => setForm({ ...form, api_key: e.target.value })}
+                  dir="ltr"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-sm font-bold">Webhook URL</label>
 
+                <input
+                  className={inputClass}
+                  value={form.webhook_url}
+                  onChange={(e) => setForm({ ...form, webhook_url: e.target.value })}
+                  placeholder="https://n8n.../webhook/evolution-inbound"
+                  dir="ltr"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-bold">Integration</label>
+
+                <select
+                  className={inputClass}
+                  value={form.integration}
+                  onChange={(e) => setForm({ ...form, integration: e.target.value })}
+                >
+                  <option value="WHATSAPP-BAILEYS">WHATSAPP-BAILEYS</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-sm font-bold">
-                    Priority
-                  </label>
+                  <label className="mb-1 block text-sm font-bold">Priority</label>
 
                   <input
                     type="number"
                     className={inputClass}
                     value={form.priority}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        priority: e.target.value,
-                      })
-                    }
+                    onChange={(e) => setForm({ ...form, priority: e.target.value })}
                   />
                 </div>
 
                 <div>
                   <label className="mb-1 block text-sm font-bold">
-                    Max Clients
+                    Max Instances
                   </label>
 
                   <input
                     type="number"
                     className={inputClass}
-                    value={form.max_clients}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        max_clients: e.target.value,
-                      })
-                    }
+                    value={form.max_instances}
+                    onChange={(e) => setForm({ ...form, max_instances: e.target.value })}
                   />
                 </div>
-
               </div>
 
               <label className="flex items-center gap-3 rounded-2xl border border-slate-200 p-4">
-
                 <input
                   type="checkbox"
                   checked={form.is_active}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      is_active: e.target.checked,
-                    })
-                  }
+                  onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
                 />
 
-                <span className="font-bold">
-                  السيرفر فعال
-                </span>
-
+                <span className="font-bold">السيرفر فعال</span>
               </label>
 
               <button
@@ -420,7 +423,6 @@ export default function AdminWhatsappServers() {
               >
                 {editingId ? "تحديث السيرفر" : "إضافة السيرفر"}
               </button>
-
             </div>
           </form>
         </div>
@@ -428,6 +430,3 @@ export default function AdminWhatsappServers() {
     </div>
   );
 }
-
-
-      
