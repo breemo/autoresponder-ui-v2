@@ -16,6 +16,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
+import WhatsAppEvolutionSection from "./WhatsAppEvolutionSection";
 
 function normalizeName(str) {
   return (str || "").toString().toLowerCase().replace(/\s+/g, "");
@@ -616,6 +617,13 @@ export default function ClientIntegrations() {
                             <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center text-sm text-slate-500">
                               لا توجد حقول مخصصة لهذا التكامل.
                             </div>
+                          )}
+
+                          {selectedFeature.slug === "whatsapp_evolution" && (
+                            <WhatsAppEvolutionSection
+                              clientId={clientId}
+                              integration={selectedIntegration}
+                            />
                           )}
                         </div>
 
