@@ -153,7 +153,7 @@ export default function WhatsAppEvolutionSection({ clientId, integration }) {
     setDrawerOpen(false);
   }
 
-  async function createNumber(e) {
+async function createNumber(e) {
   e.preventDefault();
 
   try {
@@ -170,12 +170,12 @@ export default function WhatsAppEvolutionSection({ clientId, integration }) {
 
     const duplicate = instances.some(
       (item) =>
-        `${item.display_name || item.instance_name || ""}`.toLowerCase() ===
+        `${item.display_name || ""}`.toLowerCase() ===
         displayName.toLowerCase()
     );
 
     if (duplicate) {
-      setError("اسم الرقم مستخدم مسبقاً لهذا العميل.");
+      setError("اسم الرقم مستخدم مسبقاً.");
       return;
     }
 
@@ -188,6 +188,7 @@ export default function WhatsAppEvolutionSection({ clientId, integration }) {
         },
         body: JSON.stringify({
           action: "create_instance",
+
           client_id: clientId,
           display_name: displayName,
           reply_mode: form.reply_mode,
@@ -198,26 +199,24 @@ export default function WhatsAppEvolutionSection({ clientId, integration }) {
     const result = await response.json();
 
     if (!response.ok) {
-      throw new Error(result.message || "Failed to create WhatsApp number");
+      throw new Error(result.message || "Failed");
     }
 
     setDrawerOpen(false);
 
-    setMessage(
-      "تم إنشاء الرقم بنجاح، ويتم الآن تجهيز QR Code..."
-    );
+    setMessage("تم إنشاء الرقم بنجاح.");
 
     await loadData();
+
   } catch (err) {
     console.error(err);
-    setError(err.message || "فشل إنشاء الرقم.");
+    setError(err.message);
   } finally {
     setCreating(false);
   }
 }
-
   async function deleteNumber(item) {
-    if (!window.confirm(`هل تريد حذف ${item.instance_name}؟`)) return;
+    if (!window.confirm(`هل تريد حذف ${item.display_name}؟`)) return;
 
     try {
       setError("");
