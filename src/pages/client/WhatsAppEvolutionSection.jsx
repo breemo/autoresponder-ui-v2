@@ -154,59 +154,67 @@ export default function WhatsAppEvolutionSection({ clientId, integration }) {
   }
 
   async function createNumber(e) {
-    e.preventDefault();
+  e.preventDefault();
 
-    try {
-      setCreating(true);
-      setError("");
-      setMessage("");
+  try {
+    setCreating(true);
+    setError("");
+    setMessage("");
 
-      const instanceName = form.instance_name.trim();
-      if (!instanceName) {
-        setError("يرجى إدخال اسم الرقم / Instance Name.");
-        return;
-      }
+    const displayName = form.instance_name.trim();
 
-      const duplicate = instances.some(
-        (item) => `${item.instance_name || ""}`.toLowerCase() === instanceName.toLowerCase()
-      );
-
-      if (duplicate) {
-        setError("اسم الرقم مستخدم مسبقاً لهذا العميل.");
-        return;
-      }
-
-      const server = await pickServer();
-      if (!server) {
-        setError("لا يوجد WhatsApp server متاح حالياً. يرجى التواصل مع الدعم.");
-        return;
-      }
-
-      const payload = {
-        client_id: clientId,
-        server_id: server.id,
-        instance_name: instanceName,
-        integration: "WHATSAPP-BAILEYS",
-        reply_mode: form.reply_mode,
-        status: "pending",
-      };
-
-      const { error: insertError } = await supabase
-        .from("client_whatsapp")
-        .insert([payload]);
-
-      if (insertError) throw insertError;
-
-      setDrawerOpen(false);
-      setMessage("تمت إضافة الرقم بنجاح. الخطوة التالية ستكون إنشاء الـ Instance وعرض QR.");
-      await loadData();
-    } catch (err) {
-      console.error(err);
-      setError(err.message || "فشل إضافة رقم واتساب.");
-    } finally {
-      setCreating(false);
+    if (!displayName) {
+      setError("يرجى إدخال اسم الرقم.");
+      return;
     }
+
+    const duplicate = instances.some(
+      (item) =>
+        `${item.display_name || item.instance_name || ""}`.toLowerCase() ===
+        displayName.toLowerCase()
+    );
+
+    if (duplicate) {
+      setError("اسم الرقم مستخدم مسبقاً لهذا العميل.");
+      return;
+    }
+
+    const response = await fetch(
+      "https://n8n-production-fcd4.up.railway.app/webhook/evolution-gateway",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "create_instance",
+          client_id: clientId,
+          display_name: displayName,
+          reply_mode: form.reply_mode,
+        }),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || "Failed to create WhatsApp number");
+    }
+
+    setDrawerOpen(false);
+
+    setMessage(
+      "تم إنشاء الرقم بنجاح، ويتم الآن تجهيز QR Code..."
+    );
+
+    await loadData();
+  } catch (err) {
+    console.error(err);
+    setError(err.message || "فشل إنشاء الرقم.");
+  } finally {
+    setCreating(false);
   }
+}
 
   async function deleteNumber(item) {
     if (!window.confirm(`هل تريد حذف ${item.instance_name}؟`)) return;
