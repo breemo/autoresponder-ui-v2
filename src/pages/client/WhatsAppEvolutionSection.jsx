@@ -179,23 +179,21 @@ async function createNumber(e) {
       return;
     }
 
-    const response = await fetch(
-      "https://n8n-production-fcd4.up.railway.app/webhook/evolution-gateway",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "create_instance",
 
-          client_id: clientId,
-          display_name: displayName,
-          reply_mode: form.reply_mode,
-        }),
-      }
-    );
+  const response = await fetch("/api/create-whatsapp-instance", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      action: "create_instance",
+      client_id: clientId,
+      display_name: displayName,
+      reply_mode: form.reply_mode,
+    }),
+  });
 
+    
     const result = await response.json();
 
     if (!response.ok) {
