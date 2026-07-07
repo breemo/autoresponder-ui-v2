@@ -15,7 +15,7 @@ const inputClass =
 function normalizeStatus(status) {
   const value = `${status || ""}`.toLowerCase();
   if (["connected", "open"].includes(value)) return "connected";
-  if (["pending", "connecting", "qr", "qrcode"].includes(value)) return "pending";
+  if (["pending", "connecting", "qr", "qrcode", "waiting_qr"].includes(value)) return "pending";
   if (["error", "failed"].includes(value)) return "error";
   return "disconnected";
 }
@@ -326,7 +326,7 @@ async function createNumber(e) {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <h4 className="truncate text-base font-bold text-slate-950">
-                        {item.instance_name || "WhatsApp Number"}
+                        {item.display_name || item.instance_name || "WhatsApp Number"}
                       </h4>
                       <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${meta.badge}`}>
                         {meta.label}
@@ -378,14 +378,24 @@ async function createNumber(e) {
                   </div>
 
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-center">
-                    {normalizedStatus === "pending" ? (
-                      <>
-                        <div className="flex h-36 items-center justify-center rounded-xl bg-white text-xs font-semibold text-slate-400">
-                          QR will appear here
-                        </div>
-                        <p className="mt-2 text-xs text-slate-500">Waiting for QR scan</p>
-                      </>
-                    ) : normalizedStatus === "connected" ? (
+                       {normalizedStatus === "pending" ? (
+                          <>
+                            <div className="flex h-36 items-center justify-center rounded-xl bg-white">
+                              {item.qr_code ? (
+                                <img
+                                  src={item.qr_code}
+                                  alt="WhatsApp QR"
+                                  className="h-32 w-32 rounded-lg object-contain"
+                                />
+                              ) : (
+                                <span className="text-xs font-semibold text-slate-400">
+                                  QR will appear here
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-2 text-xs text-slate-500">Waiting for QR scan</p>
+                          </>
+                        ) : normalizedStatus === "connected" ? (
                       <div className="grid h-36 place-items-center rounded-xl bg-emerald-50 text-emerald-700">
                         <div>
                           <CheckCircleIcon className="mx-auto h-8 w-8" />
