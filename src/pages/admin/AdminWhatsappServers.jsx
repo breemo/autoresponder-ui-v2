@@ -7,8 +7,11 @@ const inputClass =
 const cardClass =
   "rounded-3xl border border-slate-200 bg-white shadow-sm";
 
-const defaultWebhookUrl =
-  "https://n8n-production-fcd4.up.railway.app/webhook/evolution-inbound";
+const defaultGatewayWebhookUrl =
+  "https://n8n-production-fcd4.up.railway.app/webhook/evolution-gateway";
+
+const defaultEventsWebhookUrl =
+  "https://n8n-production-fcd4.up.railway.app/webhook/evolution-events";
 
 const defaultIntegration = "WHATSAPP-BAILEYS";
 
@@ -25,7 +28,8 @@ export default function AdminWhatsappServers() {
     name: "",
     base_url: "",
     api_key: "",
-    webhook_url: defaultWebhookUrl,
+    gateway_webhook_url: defaultGatewayWebhookUrl,
+    events_webhook_url: defaultEventsWebhookUrl,
     integration: defaultIntegration,
     priority: 1,
     max_instances: "",
@@ -61,7 +65,8 @@ export default function AdminWhatsappServers() {
       name: "",
       base_url: "",
       api_key: "",
-      webhook_url: defaultWebhookUrl,
+      gateway_webhook_url: defaultGatewayWebhookUrl,
+    events_webhook_url: defaultEventsWebhookUrl,
       integration: defaultIntegration,
       priority: 1,
       max_instances: "",
@@ -83,7 +88,13 @@ export default function AdminWhatsappServers() {
       name: server.name || "",
       base_url: server.base_url || "",
       api_key: server.api_key || "",
-      webhook_url: server.webhook_url || defaultWebhookUrl,
+      gateway_webhook_url:
+        server.gateway_webhook_url ||
+        "https://n8n-production-fcd4.up.railway.app/webhook/evolution-gateway",
+      events_webhook_url:
+        server.events_webhook_url ||
+        server.webhook_url ||
+        "https://n8n-production-fcd4.up.railway.app/webhook/evolution-events",
       integration: server.integration || defaultIntegration,
       priority: server.priority || 1,
       max_instances: server.max_instances ?? server.max_clients ?? "",
@@ -101,7 +112,8 @@ export default function AdminWhatsappServers() {
     if (!form.name.trim()) return setMsg("يرجى إدخال اسم السيرفر");
     if (!form.base_url.trim()) return setMsg("يرجى إدخال Base URL");
     if (!form.api_key.trim()) return setMsg("يرجى إدخال API Key");
-    if (!form.webhook_url.trim()) return setMsg("يرجى إدخال Webhook URL");
+    if (!form.gateway_webhook_url.trim()) return setMsg("يرجى إدخال Gateway Webhook URL");
+    if (!form.events_webhook_url.trim()) return setMsg("يرجى إدخال Events Webhook URL");
 
     const maxInstances = form.max_instances ? Number(form.max_instances) : null;
 
@@ -109,7 +121,9 @@ export default function AdminWhatsappServers() {
       name: form.name.trim(),
       base_url: form.base_url.trim().replace(/\/$/, ""),
       api_key: form.api_key.trim(),
-      webhook_url: form.webhook_url.trim(),
+      gateway_webhook_url: form.gateway_webhook_url.trim(),
+      events_webhook_url: form.events_webhook_url.trim(),
+      webhook_url: form.events_webhook_url.trim(),
       integration: form.integration || defaultIntegration,
       priority: Number(form.priority || 1),
       max_instances: maxInstances,
@@ -263,9 +277,16 @@ export default function AdminWhatsappServers() {
                   </div>
 
                   <div>
-                    <p className="text-slate-500">Webhook</p>
+                    <p className="text-slate-500">Gateway Webhook</p>
                     <p className="truncate font-bold" dir="ltr">
-                      {server.webhook_url || "-"}
+                      {server.gateway_webhook_url || "-"}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-slate-500">Events Webhook</p>
+                    <p className="truncate font-bold" dir="ltr">
+                      {server.events_webhook_url || server.webhook_url || "-"}
                     </p>
                   </div>
                 </div>
@@ -358,15 +379,43 @@ export default function AdminWhatsappServers() {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-bold">Webhook URL</label>
+                <label className="mb-1 block text-sm font-bold">
+                  Gateway Webhook URL
+                </label>
 
                 <input
                   className={inputClass}
-                  value={form.webhook_url}
-                  onChange={(e) => setForm({ ...form, webhook_url: e.target.value })}
-                  placeholder="https://n8n.../webhook/evolution-inbound"
+                  value={form.gateway_webhook_url}
+                  onChange={(e) =>
+                    setForm({ ...form, gateway_webhook_url: e.target.value })
+                  }
+                  placeholder="https://n8n.../webhook/evolution-gateway"
                   dir="ltr"
                 />
+
+                <p className="mt-1 text-xs text-slate-500">
+                  يستخدمه الموقع عند الضغط على Add Number لإنشاء Instance.
+                </p>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-bold">
+                  Events Webhook URL
+                </label>
+
+                <input
+                  className={inputClass}
+                  value={form.events_webhook_url}
+                  onChange={(e) =>
+                    setForm({ ...form, events_webhook_url: e.target.value })
+                  }
+                  placeholder="https://n8n.../webhook/evolution-events"
+                  dir="ltr"
+                />
+
+                <p className="mt-1 text-xs text-slate-500">
+                  يستخدمه Evolution لإرسال QR/status/messages.
+                </p>
               </div>
 
               <div>
