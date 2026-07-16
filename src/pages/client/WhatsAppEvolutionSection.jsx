@@ -73,7 +73,6 @@ export default function WhatsAppEvolutionSection({ clientId, integration }) {
   const [error, setError] = useState("");
   const [form, setForm] = useState({
     instance_name: "",
-    reply_mode: "ai",
   });
 
   useEffect(() => {
@@ -87,6 +86,12 @@ export default function WhatsAppEvolutionSection({ clientId, integration }) {
     const pending = instances.filter((item) => normalizeStatus(item.status) === "pending").length;
     return { total: instances.length, connected, pending };
   }, [instances]);
+
+  const integrationReplyMode =
+    integration?.config?.reply_mode ||
+    integration?.config?.["Reply Mode"] ||
+    integration?.config?.mode ||
+    "ai";
 
   async function loadData() {
     try {
@@ -145,7 +150,7 @@ export default function WhatsAppEvolutionSection({ clientId, integration }) {
   function openDrawer() {
     setError("");
     setMessage("");
-    setForm({ instance_name: "", reply_mode: "ai" });
+    setForm({ instance_name: "" });
     setDrawerOpen(true);
   }
 
@@ -189,7 +194,6 @@ async function createNumber(e) {
       action: "create_instance",
       client_id: clientId,
       display_name: displayName,
-      reply_mode: form.reply_mode,
     }),
   });
 
@@ -287,7 +291,7 @@ async function createNumber(e) {
         </div>
       )}
 
-      <div className="mt-4 grid gap-3 md:grid-cols-3">
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
           <p className="text-xs text-slate-500">Total numbers</p>
           <p className="mt-1 text-2xl font-bold text-slate-950">{summary.total}</p>
@@ -299,6 +303,12 @@ async function createNumber(e) {
         <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
           <p className="text-xs text-slate-500">Waiting QR</p>
           <p className="mt-1 text-2xl font-bold text-amber-600">{summary.pending}</p>
+        </div>
+        <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+          <p className="text-xs text-slate-500">General reply mode</p>
+          <p className="mt-1 text-lg font-bold capitalize text-indigo-700">
+            {integrationReplyMode}
+          </p>
         </div>
       </div>
 
@@ -332,8 +342,11 @@ async function createNumber(e) {
                         {meta.label}
                       </span>
                     </div>
-                    <p className="mt-1 text-sm text-slate-500">
+                    <p className="mt-1 text-sm text-slate-500" dir="ltr">
                       {item.phone || "Phone number will appear after scanning QR"}
+                    </p>
+                    <p className="mt-1 truncate text-xs text-slate-400" dir="ltr" title={item.instance_name || ""}>
+                      {item.instance_name || "-"}
                     </p>
                   </div>
 
@@ -356,24 +369,61 @@ async function createNumber(e) {
                 </div>
 
                 <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_220px]">
-                  <div className="grid gap-3 md:grid-cols-2">
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                      <p className="text-xs text-slate-500">Reply mode</p>
-                      <p className="mt-1 text-sm font-bold text-slate-900">{item.reply_mode || "ai"}</p>
+                      <p className="text-xs text-slate-500">Phone Number</p>
+                      <p className="mt-1 truncate text-sm font-bold text-slate-900" dir="ltr" title={item.phone || ""}>
+                        {item.phone || "Not connected yet"}
+                      </p>
                     </div>
+
                     <div className="rounded-2xl bg-slate-50 px-4 py-3">
                       <p className="text-xs text-slate-500">Server</p>
-                      <p className="mt-1 truncate text-sm font-bold text-slate-900">{getServerName(item.server_id)}</p>
+                      <p className="mt-1 truncate text-sm font-bold text-slate-900">
+                        {getServerName(item.server_id)}
+                      </p>
                     </div>
+
+                    <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                      <p className="text-xs text-slate-500">Status</p>
+                      <p className="mt-1 text-sm font-bold text-slate-900">
+                        {item.status || item.connection_status || "-"}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                      <p className="text-xs text-slate-500">Instance Name</p>
+                      <p className="mt-1 truncate text-xs font-semibold text-slate-700" dir="ltr" title={item.instance_name || ""}>
+                        {item.instance_name || "-"}
+                      </p>
+                    </div>
+
                     <div className="rounded-2xl bg-slate-50 px-4 py-3">
                       <p className="text-xs text-slate-500">Instance ID</p>
-                      <p className="mt-1 truncate text-xs font-semibold text-slate-700" dir="ltr">
+                      <p className="mt-1 truncate text-xs font-semibold text-slate-700" dir="ltr" title={item.instance_id || ""}>
                         {item.instance_id || "-"}
                       </p>
                     </div>
+
                     <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                      <p className="text-xs text-slate-500">Created at</p>
-                      <p className="mt-1 text-xs font-semibold text-slate-700">{formatDate(item.created_at)}</p>
+                      <p className="text-xs text-slate-500">Channel Key</p>
+                      <p className="mt-1 truncate text-xs font-semibold text-slate-700" dir="ltr" title={item.channel_key || ""}>
+                        {item.channel_key || "-"}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                      <p className="text-xs text-slate-500">Created At</p>
+                      <p className="mt-1 text-xs font-semibold text-slate-700">
+                        {formatDate(item.created_at)}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                      <p className="text-xs text-slate-500">General Reply Mode</p>
+                      <p className="mt-1 text-sm font-bold capitalize text-indigo-700">
+                        {integrationReplyMode}
+                      </p>
                     </div>
                   </div>
 
@@ -426,7 +476,7 @@ async function createNumber(e) {
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.25em] text-emerald-600">WhatsApp</p>
                 <h3 className="mt-1 text-2xl font-bold text-slate-950">Add Number</h3>
-                <p className="mt-1 text-sm text-slate-500">أدخل اسم الرقم وطريقة الرد، وسيتم اختيار السيرفر تلقائياً.</p>
+                <p className="mt-1 text-sm text-slate-500">أدخل اسم الرقم، وسيتم اختيار السيرفر وإنشاء الـ Instance تلقائياً.</p>
               </div>
               <button
                 type="button"
@@ -439,7 +489,7 @@ async function createNumber(e) {
 
             <div className="mt-6 space-y-4">
               <label className="block">
-                <span className="mb-1.5 block text-xs font-bold text-slate-600">Instance Name</span>
+                <span className="mb-1.5 block text-xs font-bold text-slate-600">Number Name</span>
                 <input
                   className={inputClass}
                   value={form.instance_name}
@@ -448,22 +498,9 @@ async function createNumber(e) {
                 />
               </label>
 
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-bold text-slate-600">Reply Mode</span>
-                <select
-                  className={inputClass}
-                  value={form.reply_mode}
-                  onChange={(event) => setForm((prev) => ({ ...prev, reply_mode: event.target.value }))}
-                >
-                  <option value="ai">AI</option>
-                  <option value="auto_reply">Auto Reply</option>
-                  <option value="manual">Manual</option>
-                  <option value="disabled">Disabled</option>
-                </select>
-              </label>
-
               <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-xs leading-6 text-emerald-800">
-                السيرفر، API Key، Webhook، والـ QR سيتم إدارتها تلقائياً من Jawab AI. العميل لا يحتاج لإدخال أي إعدادات تقنية.
+                السيرفر، API Key، Webhook، Channel Key، والـ QR سيتم إدارتها تلقائياً من Jawab AI.
+                وضع الرد الحالي للتكامل هو: <strong>{integrationReplyMode}</strong>.
               </div>
 
               <button
