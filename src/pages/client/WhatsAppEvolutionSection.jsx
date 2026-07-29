@@ -69,6 +69,7 @@ export default function WhatsAppEvolutionSection({ clientId, integration }) {
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [connectingId, setConnectingId] = useState(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [form, setForm] = useState({
@@ -217,6 +218,79 @@ async function createNumber(e) {
     setCreating(false);
   }
 }
+  async function connectNumber(item) {
+    try {
+      setConnectingId(item.id);
+      setError("");
+      setMessage("");
+
+      const response = await fetch("/api/create-whatsapp-instance", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "connect_instance",
+          client_id: clientId,
+          whatsapp_id: item.id,
+          instance_name: item.instance_name,
+        }),
+      });
+
+      let result = {};
+      try {
+        result = await response.json();
+      } catch {
+        result = {};
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          result.message ||
+            result.error ||
+            "فشل بدء ربط رقم واتساب."
+        );
+      }
+
+      const qrCode =
+        result.qr_code ||
+        result.qrCode ||
+        result.base64 ||
+        result?.data?.qr_code ||
+        result?.data?.qrCode ||
+        result?.data?.base64 ||
+        "";
+
+      if (qrCode) {
+        setInstances((current) =>
+          current.map((row) =>
+            row.id === item.id
+              ? {
+                  ...row,
+                  qr_code: qrCode,
+                  status: "pending",
+                  connection_status: "connecting",
+                }
+              : row
+          )
+        );
+      }
+
+      setMessage(
+        normalizeStatus(result.status || result.connection_status) === "connected"
+          ? "رقم واتساب متصل بالفعل."
+          : "تم بدء عملية الربط. امسح رمز QR لإكمال الاتصال."
+      );
+
+      await loadData();
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "فشل ربط رقم واتساب.");
+    } finally {
+      setConnectingId(null);
+    }
+  }
+
   async function deleteNumber(item) {
     if (!window.confirm(`هل تريد حذف ${item.display_name}؟`)) return;
 
@@ -345,12 +419,16 @@ async function createNumber(e) {
                   </div>
 
                   <div className="flex shrink-0 items-center gap-2">
-                    <button
-                      type="button"
-                      className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
-                    >
-                      Connect
-                    </button>
+                    {normalizedStatus !== "connected" && (
+                      <button
+                        type="button"
+                        onClick={() => connectNumber(item)}
+                        disabled={connectingId === item.id}
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {connectingId === item.id ? "Connecting..." : "Connect"}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => deleteNumber(item)}
