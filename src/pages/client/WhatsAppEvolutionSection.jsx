@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowPathIcon,
   CheckCircleIcon,
@@ -78,6 +78,7 @@ export default function WhatsAppEvolutionSection({ clientId, integration }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [connectingId, setConnectingId] = useState(null);
+  const pollingBusyRef = useRef(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [form, setForm] = useState({
@@ -89,6 +90,33 @@ export default function WhatsAppEvolutionSection({ clientId, integration }) {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId]);
+
+  useEffect(() => {
+    if (!clientId) return;
+
+    const hasPending = instances.some(
+      (item) => getInstanceStatus(item) === "pending"
+    );
+
+    if (!hasPending) return;
+
+    const intervalId = window.setInterval(async () => {
+      if (pollingBusyRef.current) return;
+
+      pollingBusyRef.current = true;
+      try {
+        await loadData({
+          preserveFeedback: true,
+          silent: true,
+        });
+      } finally {
+        pollingBusyRef.current = false;
+      }
+    }, 2500);
+
+    return () => window.clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId, instances]);
 
   const summary = useMemo(() => {
     const connected = instances.filter((item) => getInstanceStatus(item) === "connected").length;
@@ -103,10 +131,15 @@ export default function WhatsAppEvolutionSection({ clientId, integration }) {
     "ai";
 
   async function loadData(options = {}) {
-    const { preserveFeedback = false } = options;
+    const {
+      preserveFeedback = false,
+      silent = false,
+    } = options;
 
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
 
       if (!preserveFeedback) {
         setError("");
@@ -128,13 +161,35 @@ export default function WhatsAppEvolutionSection({ clientId, integration }) {
 
       if (serverError) throw serverError;
 
-      setInstances(whatsappRows || []);
+      const freshRows = whatsappRows || [];
+
+      setInstances((previousRows) => {
+        const newlyConnected = freshRows.find((fresh) => {
+          const old = previousRows.find((row) => row.id === fresh.id);
+          return (
+            old &&
+            getInstanceStatus(old) !== "connected" &&
+            getInstanceStatus(fresh) === "connected"
+          );
+        });
+
+        if (newlyConnected) {
+          setMessage(
+            `تم ربط ${newlyConnected.display_name || newlyConnected.instance_name || "رقم واتساب"} بنجاح.`
+          );
+        }
+
+        return freshRows;
+      });
+
       setServers(serverRows || []);
     } catch (err) {
       console.error(err);
       setError(err.message || "فشل تحميل أرقام واتساب.");
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }
 
@@ -520,6 +575,7 @@ async function createNumber(e) {
                             <div className="flex h-36 items-center justify-center rounded-xl bg-white">
                               {item.qr_code ? (
                                 <img
+                                  key={`${item.id}-${item.updated_at || item.qr_code?.slice(-24) || "qr"}`}
                                   src={item.qr_code}
                                   alt="WhatsApp QR"
                                   className="h-32 w-32 rounded-lg object-contain"
