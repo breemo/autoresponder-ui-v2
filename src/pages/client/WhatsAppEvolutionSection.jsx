@@ -20,6 +20,14 @@ function normalizeStatus(status) {
   return "disconnected";
 }
 
+function getInstanceStatus(item) {
+  return normalizeStatus(
+    item?.status ||
+    item?.connection_status ||
+    ""
+  );
+}
+
 function statusMeta(status) {
   const normalized = normalizeStatus(status);
 
@@ -83,8 +91,8 @@ export default function WhatsAppEvolutionSection({ clientId, integration }) {
   }, [clientId]);
 
   const summary = useMemo(() => {
-    const connected = instances.filter((item) => normalizeStatus(item.status) === "connected").length;
-    const pending = instances.filter((item) => normalizeStatus(item.status) === "pending").length;
+    const connected = instances.filter((item) => getInstanceStatus(item) === "connected").length;
+    const pending = instances.filter((item) => getInstanceStatus(item) === "pending").length;
     return { total: instances.length, connected, pending };
   }, [instances]);
 
@@ -94,11 +102,16 @@ export default function WhatsAppEvolutionSection({ clientId, integration }) {
     integration?.config?.mode ||
     "ai";
 
-  async function loadData() {
+  async function loadData(options = {}) {
+    const { preserveFeedback = false } = options;
+
     try {
       setLoading(true);
-      setError("");
-      setMessage("");
+
+      if (!preserveFeedback) {
+        setError("");
+        setMessage("");
+      }
 
       const { data: whatsappRows, error: whatsappError } = await supabase
         .from("client_whatsapp")
@@ -246,19 +259,27 @@ async function createNumber(e) {
 
       if (!response.ok) {
         throw new Error(
-          result.message ||
-            result.error ||
+          result?.message ||
+            result?.error ||
+            result?.data?.message ||
             "فشل بدء ربط رقم واتساب."
         );
       }
 
+      const responseRow =
+        Array.isArray(result)
+          ? result[0] || {}
+          : Array.isArray(result?.data)
+            ? result.data[0] || {}
+            : result?.data || result || {};
+
       const qrCode =
+        responseRow.qr_code ||
+        responseRow.qrCode ||
+        responseRow.base64 ||
         result.qr_code ||
         result.qrCode ||
         result.base64 ||
-        result?.data?.qr_code ||
-        result?.data?.qrCode ||
-        result?.data?.base64 ||
         "";
 
       if (qrCode) {
@@ -269,7 +290,6 @@ async function createNumber(e) {
                   ...row,
                   qr_code: qrCode,
                   status: "pending",
-                  connection_status: "connecting",
                 }
               : row
           )
@@ -277,12 +297,13 @@ async function createNumber(e) {
       }
 
       setMessage(
-        normalizeStatus(result.status || result.connection_status) === "connected"
+        getInstanceStatus(responseRow) === "connected"
           ? "رقم واتساب متصل بالفعل."
           : "تم بدء عملية الربط. امسح رمز QR لإكمال الاتصال."
       );
 
-      await loadData();
+      await new Promise((resolve) => window.setTimeout(resolve, 250));
+      await loadData({ preserveFeedback: true });
     } catch (err) {
       console.error(err);
       setError(err.message || "فشل ربط رقم واتساب.");
@@ -395,8 +416,8 @@ async function createNumber(e) {
       ) : (
         <div className="mt-4 grid gap-3">
           {instances.map((item) => {
-            const meta = statusMeta(item.status);
-            const normalizedStatus = normalizeStatus(item.status);
+            const normalizedStatus = getInstanceStatus(item);
+            const meta = statusMeta(normalizedStatus);
 
             return (
               <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
