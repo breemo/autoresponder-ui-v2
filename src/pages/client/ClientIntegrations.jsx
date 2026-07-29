@@ -322,6 +322,19 @@ export default function ClientIntegrations() {
     : null;
   const selectedFields = normalizeFields(selectedFeature);
 
+  const visibleSelectedFields = useMemo(() => {
+    const slug = `${selectedFeature?.slug || ""}`.toLowerCase();
+
+    if (slug === "whatsapp_evolution") {
+      return selectedFields.filter((field) => {
+        const key = normalizeName(field?.key || field?.label || "");
+        return key === "replymode" || key === "reply_mode";
+      });
+    }
+
+    return selectedFields;
+  }, [selectedFeature, selectedFields]);
+
   async function toggleActive(featureId, currentValue) {
     const { error: toggleError } = await supabase
       .from("client_feature_integrations")
@@ -588,9 +601,9 @@ export default function ClientIntegrations() {
                           <h3 className="text-sm font-semibold text-slate-950">Configuration</h3>
                           <p className="mt-1 text-xs text-slate-500">أدخل بيانات الربط الخاصة بهذه القناة.</p>
 
-                          {selectedFields.length > 0 ? (
+                          {visibleSelectedFields.length > 0 ? (
                             <div className="mt-4 grid gap-3 md:grid-cols-2">
-                              {selectedFields.map((field) => {
+                              {visibleSelectedFields.map((field) => {
                                 const cfg = selectedIntegration.config || {};
                                 let value = cfg[field.key];
                                 if (value === undefined) {
