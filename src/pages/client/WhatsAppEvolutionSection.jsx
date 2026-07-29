@@ -291,7 +291,7 @@ async function createNumber(e) {
         </div>
       )}
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
         <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
           <p className="text-xs text-slate-500">Total numbers</p>
           <p className="mt-1 text-2xl font-bold text-slate-950">{summary.total}</p>
@@ -303,12 +303,6 @@ async function createNumber(e) {
         <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
           <p className="text-xs text-slate-500">Waiting QR</p>
           <p className="mt-1 text-2xl font-bold text-amber-600">{summary.pending}</p>
-        </div>
-        <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-          <p className="text-xs text-slate-500">General reply mode</p>
-          <p className="mt-1 text-lg font-bold capitalize text-indigo-700">
-            {integrationReplyMode}
-          </p>
         </div>
       </div>
 
@@ -419,12 +413,6 @@ async function createNumber(e) {
                       </p>
                     </div>
 
-                    <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                      <p className="text-xs text-slate-500">General Reply Mode</p>
-                      <p className="mt-1 text-sm font-bold capitalize text-indigo-700">
-                        {integrationReplyMode}
-                      </p>
-                    </div>
                   </div>
 
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-center">
