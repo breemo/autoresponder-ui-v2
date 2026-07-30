@@ -367,27 +367,52 @@ async function createNumber(e) {
     }
   }
 
-  async function deleteNumber(item) {
-    if (!window.confirm(`هل تريد حذف ${item.display_name}؟`)) return;
+async function deleteNumber(item) {
+  if (!window.confirm(`هل تريد حذف ${item.display_name}؟`)) return;
+
+  try {
+    setError("");
+    setMessage("");
+
+    const response = await fetch("/api/create-whatsapp-instance", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        action: "delete_instance",
+        client_id: clientId,
+        whatsapp_id: item.id,
+        instance_name: item.instance_name,
+      }),
+    });
+
+    let result = {};
 
     try {
-      setError("");
-      setMessage("");
-
-      const { error: deleteError } = await supabase
-        .from("client_whatsapp")
-        .delete()
-        .eq("id", item.id);
-
-      if (deleteError) throw deleteError;
-
-      setMessage("تم حذف الرقم بنجاح.");
-      await loadData();
-    } catch (err) {
-      console.error(err);
-      setError(err.message || "فشل حذف الرقم.");
+      result = await response.json();
+    } catch {
+      result = {};
     }
+
+    if (!response.ok) {
+      throw new Error(
+        result?.message ||
+        result?.error ||
+        "فشل حذف رقم واتساب."
+      );
+    }
+
+    setMessage("تم حذف الرقم من Evolution والبورتال بنجاح.");
+
+    await loadData({
+      preserveFeedback: true,
+    });
+  } catch (err) {
+    console.error(err);
+    setError(err.message || "فشل حذف رقم واتساب.");
   }
+}
 
   function getServerName(serverId) {
     const server = servers.find((item) => item.id === serverId);
