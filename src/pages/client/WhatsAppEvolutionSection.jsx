@@ -403,11 +403,16 @@ async function deleteNumber(item) {
       );
     }
 
+    setInstances((current) =>
+      current.filter((row) => row.id !== item.id)
+    );
+    
     setMessage("تم حذف الرقم من Evolution والبورتال بنجاح.");
 
     await loadData({
       preserveFeedback: true,
     });
+        
   } catch (err) {
     console.error(err);
     setError(err.message || "فشل حذف رقم واتساب.");
