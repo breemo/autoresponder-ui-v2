@@ -516,7 +516,7 @@ async function createNumber(e) {
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_220px]">
+                <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_380px]">
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     <div className="rounded-2xl bg-slate-50 px-4 py-3">
                       <p className="text-xs text-slate-500">Phone Number</p>
@@ -572,13 +572,14 @@ async function createNumber(e) {
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-center">
                        {normalizedStatus === "pending" ? (
                           <>
-                            <div className="flex h-36 items-center justify-center rounded-xl bg-white">
+                            <div className="flex min-h-[360px] items-center justify-center rounded-xl bg-white p-4">
                               {item.qr_code ? (
                                 <img
                                   key={`${item.id}-${item.updated_at || item.qr_code?.slice(-24) || "qr"}`}
                                   src={item.qr_code}
                                   alt="WhatsApp QR"
-                                  className="h-32 w-32 rounded-lg object-contain"
+                                  className="h-[320px] w-[320px] max-w-full object-contain"
+                                  style={{ imageRendering: "pixelated" }}
                                 />
                               ) : (
                                 <span className="text-xs font-semibold text-slate-400">
@@ -589,14 +590,14 @@ async function createNumber(e) {
                             <p className="mt-2 text-xs text-slate-500">Waiting for QR scan</p>
                           </>
                         ) : normalizedStatus === "connected" ? (
-                      <div className="grid h-36 place-items-center rounded-xl bg-emerald-50 text-emerald-700">
+                      <div className="grid min-h-[360px] place-items-center rounded-xl bg-emerald-50 text-emerald-700">
                         <div>
                           <CheckCircleIcon className="mx-auto h-8 w-8" />
                           <p className="mt-2 text-xs font-bold">Connected</p>
                         </div>
                       </div>
                     ) : (
-                      <div className="flex h-36 items-center justify-center rounded-xl bg-white text-xs font-semibold text-slate-400">
+                      <div className="flex min-h-[360px] items-center justify-center rounded-xl bg-white text-xs font-semibold text-slate-400">
                         No QR yet
                       </div>
                     )}
