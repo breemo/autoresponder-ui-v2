@@ -403,15 +403,20 @@ async function deleteNumber(item) {
       );
     }
 
+    // Remove the deleted card immediately from the UI.
     setInstances((current) =>
       current.filter((row) => row.id !== item.id)
     );
-    
+
     setMessage("تم حذف الرقم من Evolution والبورتال بنجاح.");
 
-    await loadData({
-      preserveFeedback: true,
-    });
+    // Verify quietly after the backend delete settles.
+    window.setTimeout(() => {
+      loadData({
+        preserveFeedback: true,
+        silent: true,
+      });
+    }, 1500);
         
   } catch (err) {
     console.error(err);
