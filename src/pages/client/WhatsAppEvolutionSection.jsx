@@ -78,6 +78,7 @@ export default function WhatsAppEvolutionSection({ clientId, integration }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [connectingId, setConnectingId] = useState(null);
+  const [syncing, setSyncing] = useState(false);
   const pollingBusyRef = useRef(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -367,6 +368,52 @@ async function createNumber(e) {
     }
   }
 
+  async function syncNumbers() {
+    try {
+      setSyncing(true);
+      setError("");
+      setMessage("");
+
+      const response = await fetch("/api/create-whatsapp-instance", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "sync_instances",
+          client_id: clientId,
+        }),
+      });
+
+      let result = {};
+      try {
+        result = await response.json();
+      } catch {
+        result = {};
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          result?.message ||
+            result?.error ||
+            "فشل مزامنة أرقام واتساب."
+        );
+      }
+
+      await loadData({
+        preserveFeedback: true,
+        silent: true,
+      });
+
+      setMessage("تمت مزامنة أرقام واتساب مع Evolution بنجاح.");
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "فشل مزامنة أرقام واتساب.");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
 async function deleteNumber(item) {
   if (!window.confirm(`هل تريد حذف ${item.display_name}؟`)) return;
 
@@ -446,11 +493,12 @@ async function deleteNumber(item) {
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={loadData}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            onClick={syncNumbers}
+            disabled={syncing}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <ArrowPathIcon className="h-4 w-4" />
-            Refresh
+            <ArrowPathIcon className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Syncing..." : "Refresh"}
           </button>
 
           <button
