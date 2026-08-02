@@ -400,6 +400,9 @@ async function createNumber(e) {
         );
       }
 
+      // Give n8n/Supabase a brief moment to finish all insert/update/delete operations.
+      await new Promise((resolve) => window.setTimeout(resolve, 1200));
+
       await loadData({
         preserveFeedback: true,
         silent: true,
