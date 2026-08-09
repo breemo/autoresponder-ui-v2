@@ -2,43 +2,48 @@
 
 ## Purpose
 
-This document defines the standard development lifecycle for every feature in the Auto Responder project.
+This document defines the standard engineering lifecycle for every feature in the Auto Responder project.
 
-No feature should bypass this process.
+Every feature must follow this process before it can be released.
+
+No stage should be skipped unless explicitly approved.
 
 ---
 
-## Stage 1 — Feature Request
+# Stage 1 — Feature Request
 
-A new feature, improvement, or bug is identified.
+A new feature, enhancement, or bug is submitted.
 
 Output:
-- Feature description
+
 - Business objective
+- Feature description
+- Success criteria
 
 ---
 
-## Stage 2 — Requirements Review
+# Stage 2 — Planning
 
-Review the request.
+Review the request and determine:
 
-Determine:
-
-- What problem does it solve?
-- Is it really needed?
+- What problem is being solved?
+- Is the feature really needed?
 - Is it already implemented?
-- Is it in scope?
+- Is it within the project scope?
+- What are the expected deliverables?
 
 Output:
-- Approved or Rejected
+
+- Approved scope
+- Implementation priority
 
 ---
 
-## Stage 3 — Architecture Review
+# Stage 3 — Solution Design
 
-Analyze the impact.
+Analyze the technical impact.
 
-Affected areas:
+Review affected areas:
 
 - Frontend
 - Backend
@@ -48,64 +53,95 @@ Affected areas:
 - APIs
 - Infrastructure
 
+Define:
+
+- Implementation approach
+- Technical risks
+- Dependencies
+- Acceptance criteria
+
 Output:
-- Technical implementation plan
+
+- Approved implementation plan
 
 ---
 
-## Stage 4 — Implementation
+# Stage 4 — Implementation
 
-Develop the feature.
+Implement the approved design.
 
 Rules:
 
-- Follow coding standards.
-- Do not modify unrelated code.
-- Keep changes minimal.
+- Follow engineering standards.
+- Modify only approved files.
+- Keep changes as small as possible.
+- Reuse existing components whenever possible.
+- Avoid unnecessary refactoring.
 
 Output:
+
 - Completed implementation
 
 ---
 
-## Stage 5 — Verification
+# Stage 5 — QA Review
+
+Verify the implementation.
 
 Review:
 
 - Functionality
+- Acceptance criteria
 - Edge cases
-- Regression
+- Regression risks
 - Security
+- Database migrations
+- Performance (when applicable)
 
 Output:
-- Approved
+
+- Pass
 - Changes requested
 
 ---
 
-## Stage 6 — Documentation
+# Stage 6 — Documentation
 
-Update:
+Update engineering documentation when required.
+
+Possible updates include:
 
 - Knowledge Base
+- Architecture
 - Decisions
-- Architecture (if required)
+- API documentation
+- Database documentation
 
 Output:
+
 - Documentation updated
 
 ---
 
-## Stage 7 — Deployment
+# Stage 7 — Deployment
 
-Deploy according to deployment standards.
+Prepare the release.
+
+Verify:
+
+- Deployment checklist
+- Rollback plan
+- Environment requirements
+
+Deploy only after approval.
 
 Output:
+
 - Production release
 
 ---
 
-## Stage 8 — Closure
+# Stage 8 — Closure
 
 Mark the feature as completed.
 
@@ -113,3 +149,10 @@ Record:
 
 - Lessons learned
 - Follow-up items
+- Known limitations (if any)
+
+Archive implementation notes when required.
+
+Output:
+
+- Feature closed
