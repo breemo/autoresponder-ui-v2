@@ -72,11 +72,11 @@ Feature Request
 
 ↓
 
-Requirements Review
+Planning
 
 ↓
 
-Architecture Review
+Solution Design
 
 ↓
 
@@ -84,11 +84,11 @@ Implementation
 
 ↓
 
-Verification
+QA Review
 
 ↓
 
-Documentation Update
+Documentation
 
 ↓
 
@@ -96,11 +96,9 @@ Deployment
 
 ↓
 
-Feature Closed
+Closure
 
 Detailed workflows are documented inside the **processes/** directory.
-
----
 
 # Long-Term Goal
 
