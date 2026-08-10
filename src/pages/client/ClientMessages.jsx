@@ -105,12 +105,20 @@ export default function ClientMessages() {
   const [status, setStatus] = useState("all");
   const [leadsOnly, setLeadsOnly] = useState(false);
 
+  // Reply composer (Phase 2B): sends via /api/human-reply, never inserts
+  // into Supabase directly and never touches conversation_status/current_step.
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState("");
+  const sendingRef = useRef(false);
+
   // Message pane scroll behavior: jump to the latest message when a
   // conversation is opened, but don't yank the view down if the user has
   // scrolled up to read older messages.
   const messagesScrollRef = useRef(null);
   const isNearBottomRef = useRef(true);
   const lastLoadedConversationRef = useRef(null);
+  const selectedConversationIdRef = useRef(null);
 
   async function fetchConversations() {
     if (!clientId) return;
@@ -218,12 +226,18 @@ export default function ClientMessages() {
     }
   }
 
-  async function fetchConversationMessages(conversationId) {
-    if (!conversationId || !clientId) return;
+  // `silent: true` refetches in the background (used after sending a human
+  // reply, to reveal the outbound message n8n stores) without toggling the
+  // loading spinner or the page-level error banner. Returns the fetched rows
+  // so callers can check whether a new message has appeared yet.
+  async function fetchConversationMessages(conversationId, { silent = false } = {}) {
+    if (!conversationId || !clientId) return null;
 
     try {
-      setLoadingMessages(true);
-      setError("");
+      if (!silent) {
+        setLoadingMessages(true);
+        setError("");
+      }
 
       const { data, error } = await supabase
         .from("messages")
@@ -233,12 +247,15 @@ export default function ClientMessages() {
         .order("created_at", { ascending: true });
 
       if (error) throw error;
-      setConversationMessages((data || []).map((m) => ({ ...m, message_text: getMessageText(m) })));
+      const rows = (data || []).map((m) => ({ ...m, message_text: getMessageText(m) }));
+      setConversationMessages(rows);
+      return rows;
     } catch (err) {
       console.error(err);
-      setError(err.message || "فشل في جلب رسائل المحادثة");
+      if (!silent) setError(err.message || "فشل في جلب رسائل المحادثة");
+      return null;
     } finally {
-      setLoadingMessages(false);
+      if (!silent) setLoadingMessages(false);
     }
   }
 
@@ -312,6 +329,67 @@ export default function ClientMessages() {
     return applyStatusChange("waiting_human", { preserveStep: true });
   }
 
+  // After a successful send, n8n still needs to deliver through the channel
+  // and insert the outbound row — poll a few times with backoff instead of
+  // inserting a local fake message. Bails out early if the user has since
+  // switched conversations.
+  async function refreshMessagesAfterSend(conversationId, previousCount) {
+    const delaysMs = [600, 1200, 2000];
+
+    for (const delay of delaysMs) {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      if (selectedConversationIdRef.current !== conversationId) return;
+
+      const rows = await fetchConversationMessages(conversationId, { silent: true });
+      if (rows && rows.length > previousCount) return;
+    }
+  }
+
+  // Sends a human reply via the server-side proxy only. Must never insert
+  // into `messages` directly and must never touch conversation_status /
+  // current_step — those are owned by the explicit action buttons above.
+  async function sendHumanReply() {
+    const trimmed = draft.trim();
+    if (!trimmed || !selectedConversationId || sendingRef.current) return;
+
+    sendingRef.current = true;
+    setSending(true);
+    setSendError("");
+
+    const conversationId = selectedConversationId;
+    const previousCount = conversationMessages.length;
+
+    try {
+      const response = await fetch("/api/human-reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: conversationId, message: trimmed }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(data?.message || "فشل إرسال الرد");
+      }
+
+      setDraft("");
+      refreshMessagesAfterSend(conversationId, previousCount);
+    } catch (err) {
+      console.error(err);
+      setSendError(err.message || "فشل إرسال الرد، حاول مرة أخرى");
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
+    }
+  }
+
+  function handleComposerKeyDown(e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendHumanReply();
+    }
+  }
+
   useEffect(() => {
     if (clientId) fetchConversations();
   }, [clientId]);
@@ -340,6 +418,13 @@ export default function ClientMessages() {
   }, [filteredConversations, selectedConversationId]);
 
   useEffect(() => {
+    selectedConversationIdRef.current = selectedConversationId;
+
+    // Switching conversations abandons any in-progress draft/error for the
+    // previous one rather than carrying it over to the newly selected chat.
+    setDraft("");
+    setSendError("");
+
     if (selectedConversationId) {
       fetchConversationMessages(selectedConversationId);
       fetchSelectedLead(selectedConversationId);
@@ -529,6 +614,35 @@ export default function ClientMessages() {
                     })}
                   </div>
                 )}
+              </div>
+
+              <div className="shrink-0 border-t border-slate-100 bg-white p-3">
+                {sendError && (
+                  <div className="mb-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                    {sendError}
+                  </div>
+                )}
+
+                <div className="flex items-end gap-2">
+                  <textarea
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={handleComposerKeyDown}
+                    disabled={sending}
+                    placeholder="اكتب ردك هنا... (Enter للإرسال، Shift+Enter لسطر جديد)"
+                    rows={2}
+                    className="min-h-[44px] max-h-40 flex-1 resize-none rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50 disabled:bg-slate-50 disabled:text-slate-400"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={sendHumanReply}
+                    disabled={sending || !draft.trim()}
+                    className="h-11 shrink-0 rounded-2xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {sending ? "جارِ الإرسال..." : "إرسال"}
+                  </button>
+                </div>
               </div>
             </>
           )}

@@ -21,6 +21,7 @@ export default function AdminSettings() {
       title: "إعدادات النظام",
       desc: "خيارات تشغيل عامة وتجهيزات مستقبلية",
       icon: "🧩",
+      link: "/admin/settings/system",
     },
     {
       title: "WhatsApp Connection Servers",

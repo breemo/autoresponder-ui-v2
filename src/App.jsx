@@ -21,6 +21,7 @@ import AdminSettings from "./pages/admin/AdminSettings.jsx";
 import AdminClientSettings from "./pages/admin/AdminClientSettings.jsx";
 import AdminFeatures from "./pages/admin/AdminFeatures.jsx";
 import AdminWhatsappServers from "./pages/admin/AdminWhatsappServers";
+import AdminSystemSettings from "./pages/admin/AdminSystemSettings.jsx";
 
 // Client pages
 import ClientDashboard from "./pages/client/ClientDashboard.jsx";
@@ -131,7 +132,15 @@ export default function App() {
                 </AdminRoute>
               }
             />
-          
+          <Route
+              path="/admin/settings/system"
+              element={
+                <AdminRoute>
+                  <AdminSystemSettings />
+                </AdminRoute>
+              }
+            />
+
         </Routes>
       </Router>
     </AuthProvider>
