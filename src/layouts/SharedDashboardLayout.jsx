@@ -62,6 +62,12 @@ function getPageMeta(pathname, panel) {
   return panel === "admin" ? ["Admin Panel", "إدارة النظام"] : ["Client Panel", "لوحة تحكم العميل"];
 }
 
+// Pages listed here get a viewport-bound height (instead of the default
+// natural page scroll) so they can manage their own internal scroll areas
+// (e.g. the Inbox's conversation list / message pane). Opt-in by route only
+// — every other page keeps the existing scroll behavior untouched.
+const FULL_HEIGHT_ROUTES = ["/client/messages", "/admin/messages"];
+
 export default function SharedDashboardLayout({ children, panel = "client" }) {
   const { user, setUser } = useAuth();
   const navigate = useNavigate();
@@ -70,6 +76,7 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
   const navItems = isAdmin ? adminItems : clientItems;
   const displayName = user?.business_name || user?.name || (isAdmin ? "Admin" : "Client");
   const [title, subtitle] = getPageMeta(location.pathname, panel);
+  const fullHeight = FULL_HEIGHT_ROUTES.includes(location.pathname);
 
   function logout() {
     localStorage.removeItem("user");
@@ -78,7 +85,7 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F7FB] text-slate-900">
+    <div className={`bg-[#F5F7FB] text-slate-900 ${fullHeight ? "h-screen overflow-hidden" : "min-h-screen"}`}>
       <aside className="fixed left-0 top-0 z-40 hidden h-screen w-72 flex-col border-r border-slate-800/80 bg-[#0F172A] text-slate-100 lg:flex">
         <div className="flex h-20 items-center gap-3 border-b border-slate-800 px-5">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-600 shadow-lg shadow-indigo-950/30">
@@ -137,8 +144,8 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
         </div>
       </aside>
 
-      <div className="lg:pl-72">
-        <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl">
+      <div className={`lg:pl-72 ${fullHeight ? "flex h-full flex-col" : ""}`}>
+        <header className="sticky top-0 z-30 shrink-0 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl">
           <div className="flex min-h-20 items-center justify-between gap-4 px-5 py-4 md:px-8">
             <div>
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-indigo-600">
@@ -159,8 +166,8 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
           </div>
         </header>
 
-        <main className="min-h-[calc(100vh-5rem)] px-4 py-5 md:px-6 lg:px-8 lg:py-6">
-          <div className="mx-auto w-full max-w-[1800px] animate-[fadeIn_.2s_ease-out]">
+        <main className={fullHeight ? "flex min-h-0 flex-1 flex-col px-4 py-5 md:px-6 lg:px-8 lg:py-6" : "min-h-[calc(100vh-5rem)] px-4 py-5 md:px-6 lg:px-8 lg:py-6"}>
+          <div className={`mx-auto w-full max-w-[1800px] animate-[fadeIn_.2s_ease-out] ${fullHeight ? "flex min-h-0 flex-1 flex-col" : ""}`}>
             {children}
           </div>
         </main>

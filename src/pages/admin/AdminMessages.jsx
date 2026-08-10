@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 
 const channelStyle = {
@@ -130,6 +130,13 @@ export default function AdminMessages() {
   const [clientFilter, setClientFilter] = useState("all");
   const [channelFilter, setChannelFilter] = useState("all");
   const [directionFilter, setDirectionFilter] = useState("all");
+
+  // Message pane scroll behavior: jump to the latest message when a
+  // conversation is opened, but don't yank the view down if the admin has
+  // scrolled up to read older messages.
+  const messagesScrollRef = useRef(null);
+  const isNearBottomRef = useRef(true);
+  const lastSelectedKeyRef = useRef(null);
 
   useEffect(() => {
     loadData();
@@ -292,20 +299,41 @@ export default function AdminMessages() {
 
   const selectedConversation = filteredConversations.find((c) => c.key === selectedKey) || filteredConversations[0] || null;
   const conversationMessages = selectedConversation?.messages || [];
+
+  function handleMessagesScroll() {
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    isNearBottomRef.current = distanceFromBottom < 80;
+  }
+
+  // Jump to the latest message whenever a (new) conversation is opened. If
+  // already scrolled near the bottom, keep following; if scrolled up to read
+  // older messages, leave the scroll position alone.
+  useEffect(() => {
+    const el = messagesScrollRef.current;
+    if (!el || conversationMessages.length === 0) return;
+    const conversationChanged = lastSelectedKeyRef.current !== selectedConversation?.key;
+    lastSelectedKeyRef.current = selectedConversation?.key;
+    if (conversationChanged || isNearBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+      isNearBottomRef.current = true;
+    }
+  }, [conversationMessages, selectedConversation?.key]);
   const totalMessages = conversations.reduce((sum, c) => sum + c.messages_count, 0);
   const inbound = conversations.reduce((sum, c) => sum + c.inbound, 0);
   const outbound = conversations.reduce((sum, c) => sum + c.outbound, 0);
   const unread = conversations.reduce((sum, c) => sum + c.unread, 0);
 
   return (
-    <div className="space-y-2" dir="ltr">
-      <div className="flex items-center justify-end">
+    <div className="flex h-full min-h-0 flex-col gap-2" dir="ltr">
+      <div className="flex shrink-0 items-center justify-end">
         <button onClick={loadData} className="inline-flex h-8 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50">↻ تحديث</button>
       </div>
 
-      {error && <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>}
+      {error && <div className="shrink-0 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>}
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm">
+      <div className="shrink-0 rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm">
         <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-[1.6fr_1fr_0.75fr_0.75fr_auto]">
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث في الرسائل، المرسل، العميل، أو رقم المحادثة..." className="h-9 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-50" />
           <select value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} className="h-9 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-700 outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50">
@@ -322,13 +350,13 @@ export default function AdminMessages() {
         </div>
       </div>
 
-      <div className="grid h-[calc(100vh-154px)] min-h-[620px] grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:grid-cols-[330px_minmax(0,1fr)]" dir="rtl">
-        <aside className="border-l border-slate-100 bg-slate-50/40">
-          <div className="border-b border-slate-100 p-3">
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:grid-cols-[330px_minmax(0,1fr)]" dir="rtl">
+        <aside className="flex h-full min-h-0 flex-col border-l border-slate-100 bg-slate-50/40">
+          <div className="shrink-0 border-b border-slate-100 p-3">
             <h2 className="font-bold text-slate-950">قائمة المحادثات</h2>
             <p className="mt-1 text-sm text-slate-500">{filteredConversations.length} محادثة ظاهرة</p>
           </div>
-          <div className="h-[calc(100%-66px)] overflow-y-auto p-2">
+          <div className="flex-1 min-h-0 overflow-y-auto p-2">
             {loading ? <div className="p-8 text-center text-slate-500">جاري التحميل...</div> : filteredConversations.length === 0 ? <div className="p-8 text-center text-slate-400">لا توجد محادثات مطابقة.</div> : filteredConversations.map((conv) => (
               <button key={conv.key} onClick={() => setSelectedKey(conv.key)} className={`mb-1.5 flex w-full items-start gap-2 rounded-xl border p-2 text-right transition ${selectedConversation?.key === conv.key ? "border-indigo-200 bg-white shadow-sm ring-4 ring-indigo-50" : "border-transparent hover:bg-white"}`}>
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-xs font-bold text-white">{initials(conv.sender || conv.clientName)}</div>
@@ -344,6 +372,7 @@ export default function AdminMessages() {
                     <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${statusStyles[conv.conversation_status] || "bg-slate-100 text-slate-600 border-slate-200"}`}>{conv.conversation_status}</span>
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">{conv.messages_count} رسائل</span>
                     {conv.conversation_ids?.length > 1 && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-600">{conv.conversation_ids.length} sessions</span>}
+                    {conv.unread > 0 && <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[11px] font-bold text-white">{conv.unread} unread</span>}
                   </div>
                   {conv.conversation_ids?.[0] && <p className="mt-1 truncate font-mono text-[9px] text-slate-400">ID: {conv.conversation_ids[0]}</p>}
                 </div>
@@ -352,10 +381,10 @@ export default function AdminMessages() {
           </div>
         </aside>
 
-        <section className="flex min-h-0 flex-col">
+        <section className="flex h-full min-h-0 flex-col">
           {selectedConversation ? (
             <>
-              <div className="flex items-center justify-between border-b border-slate-100 p-3">
+              <div className="flex shrink-0 items-center justify-between border-b border-slate-100 p-3">
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-indigo-50 font-bold text-indigo-600">{initials(selectedConversation.sender || selectedConversation.clientName)}</div>
                   <div>
@@ -365,12 +394,12 @@ export default function AdminMessages() {
                 </div>
                 <div className="flex flex-col items-end gap-2">
                   <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">{formatDate(selectedConversation.last_message_at)}</span>
-                  {selectedConversation.conversation_ids?.length > 0 && <span className="max-w-[420px] truncate rounded-xl bg-indigo-50 px-3 py-1 font-mono text-[11px] font-bold text-indigo-600">{selectedConversation.conversation_ids.join(" • ")}</span>}
+                  {selectedConversation.conversation_ids?.length > 0 && <span className="max-w-[420px] truncate rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 font-mono text-[11px] text-slate-500">{selectedConversation.conversation_ids.join(" • ")}</span>}
                 </div>
               </div>
 
               {selectedConversation.lead && (
-                <div className="border-b border-slate-100 bg-slate-50/50 px-4 py-2">
+                <div className="shrink-0 border-b border-slate-100 bg-slate-50/50 px-4 py-2">
                   <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
                     <h3 className="text-sm font-bold text-slate-950">بيانات الـ Lead</h3>
                     <div className="mt-1 grid grid-cols-1 gap-2 text-xs md:grid-cols-2">
@@ -381,7 +410,7 @@ export default function AdminMessages() {
                 </div>
               )}
 
-              <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/40 p-3">
+              <div ref={messagesScrollRef} onScroll={handleMessagesScroll} className="min-h-0 flex-1 overflow-y-auto bg-slate-50/40 p-3">
                 {conversationMessages.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-400">لا توجد رسائل لهذه المحادثة.</div>
                 ) : (

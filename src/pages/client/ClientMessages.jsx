@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
 
@@ -105,6 +105,13 @@ export default function ClientMessages() {
   const [status, setStatus] = useState("all");
   const [leadsOnly, setLeadsOnly] = useState(false);
 
+  // Message pane scroll behavior: jump to the latest message when a
+  // conversation is opened, but don't yank the view down if the user has
+  // scrolled up to read older messages.
+  const messagesScrollRef = useRef(null);
+  const isNearBottomRef = useRef(true);
+  const lastLoadedConversationRef = useRef(null);
+
   async function fetchConversations() {
     if (!clientId) return;
 
@@ -120,7 +127,7 @@ export default function ClientMessages() {
           .order("updated_at", { ascending: false }),
         supabase
           .from("messages")
-          .select("id, client_id, conversation_id, message, created_at, direction, channel, sender")
+          .select("id, client_id, conversation_id, message, created_at, direction, channel, sender, is_read")
           .eq("client_id", clientId)
           .order("created_at", { ascending: false }),
         supabase
@@ -169,9 +176,11 @@ export default function ClientMessages() {
             lead_phone: lead?.phone || null,
             has_lead: !!lead,
             messages_count: 1,
+            unread_count: msg.is_read === false ? 1 : 0,
           });
         } else {
           existing.messages_count += 1;
+          if (msg.is_read === false) existing.unread_count += 1;
         }
       }
 
@@ -189,6 +198,7 @@ export default function ClientMessages() {
           lead_phone: lead?.phone || null,
           has_lead: !!lead,
           messages_count: 0,
+          unread_count: 0,
         });
       }
 
@@ -320,6 +330,28 @@ export default function ClientMessages() {
     }
   }, [selectedConversationId]);
 
+  function handleMessagesScroll() {
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    isNearBottomRef.current = distanceFromBottom < 80;
+  }
+
+  // Jump to the latest message whenever a (new) conversation finishes loading.
+  // If the user is mid-conversation and already scrolled near the bottom,
+  // keep following new messages; if they scrolled up to read older ones,
+  // leave their scroll position alone.
+  useEffect(() => {
+    const el = messagesScrollRef.current;
+    if (!el || conversationMessages.length === 0) return;
+    const conversationChanged = lastLoadedConversationRef.current !== selectedConversationId;
+    lastLoadedConversationRef.current = selectedConversationId;
+    if (conversationChanged || isNearBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+      isNearBottomRef.current = true;
+    }
+  }, [conversationMessages, selectedConversationId]);
+
   const selectedConversation = filteredConversations.find((c) => c.conversation_id === selectedConversationId) || null;
 
   const stats = useMemo(() => ({
@@ -330,16 +362,16 @@ export default function ClientMessages() {
   }), [conversations]);
 
   return (
-    <div className="space-y-2" dir="rtl">
-      <div className="flex items-center justify-end">
+    <div className="flex h-full min-h-0 flex-col gap-2" dir="rtl">
+      <div className="flex shrink-0 items-center justify-end">
         <button onClick={fetchConversations} className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50">↻ تحديث</button>
       </div>
 
-      {error && <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>}
+      {error && <div className="shrink-0 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>}
 
-      <div className="grid h-[calc(100vh-118px)] min-h-[640px] grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:grid-cols-[330px_minmax(0,1fr)]" dir="rtl">
-        <aside className="border-l border-slate-100 bg-slate-50/50">
-          <div className="border-b border-slate-100 p-3">
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:grid-cols-[330px_minmax(0,1fr)]" dir="rtl">
+        <aside className="flex h-full min-h-0 flex-col border-l border-slate-100 bg-slate-50/50">
+          <div className="shrink-0 border-b border-slate-100 p-3">
             <div className="mb-2 flex items-center justify-between gap-3">
               <div>
                 <h2 className="font-bold text-slate-950">قائمة المحادثات</h2>
@@ -374,7 +406,7 @@ export default function ClientMessages() {
             </div>
           </div>
 
-          <div className="h-[calc(100%-178px)] overflow-y-auto p-2">
+          <div className="flex-1 min-h-0 overflow-y-auto p-2">
             {loadingConversations ? (
               <div className="p-8 text-center text-sm text-slate-500">جارِ تحميل المحادثات...</div>
             ) : filteredConversations.length === 0 ? (
@@ -399,8 +431,10 @@ export default function ClientMessages() {
                           <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${platformClass}`}>{conv.channel || conv.platform || "unknown"}</span>
                           <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${statusClass}`}>{conv.conversation_status || "active"}</span>
                           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">{conv.messages_count} رسائل</span>
+                          {conv.unread_count > 0 && (
+                            <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[11px] font-bold text-white">{conv.unread_count} غير مقروءة</span>
+                          )}
                         </div>
-                        <p className="mt-1 truncate font-mono text-[9px] text-slate-400">ID: {conv.conversation_id}</p>
                       </div>
                     </div>
                   </button>
@@ -415,7 +449,7 @@ export default function ClientMessages() {
             <div className="flex flex-1 items-center justify-center text-sm text-slate-400">اختر محادثة من القائمة</div>
           ) : (
             <>
-              <div className="border-b border-slate-100 p-3">
+              <div className="shrink-0 border-b border-slate-100 p-3">
                 <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
                   <div className="flex items-start gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 font-bold text-indigo-600">{initials(selectedLead?.name || selectedConversation.sender || selectedConversation.sender_id)}</div>
@@ -429,12 +463,9 @@ export default function ClientMessages() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col items-start gap-2 lg:items-end">
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 font-mono text-[11px] text-slate-500">{selectedConversation.conversation_id}</div>
-                    <div className="flex flex-wrap gap-2">
-                      <button onClick={() => updateConversationStatus("active")} disabled={updatingStatus || selectedConversation.conversation_status === "active"} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">إعادة فتح</button>
-                      <button onClick={() => updateConversationStatus("closed")} disabled={updatingStatus || selectedConversation.conversation_status === "closed"} className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">إغلاق</button>
-                    </div>
+                  <div className="flex flex-wrap gap-2 lg:justify-end">
+                    <button onClick={() => updateConversationStatus("active")} disabled={updatingStatus || selectedConversation.conversation_status === "active"} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">إعادة فتح</button>
+                    <button onClick={() => updateConversationStatus("closed")} disabled={updatingStatus || selectedConversation.conversation_status === "closed"} className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">إغلاق</button>
                   </div>
                 </div>
 
@@ -445,7 +476,7 @@ export default function ClientMessages() {
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/40 p-3">
+              <div ref={messagesScrollRef} onScroll={handleMessagesScroll} className="min-h-0 flex-1 overflow-y-auto bg-slate-50/40 p-3">
                 {loadingMessages ? (
                   <div className="p-8 text-center text-sm text-slate-500">جارِ تحميل رسائل المحادثة...</div>
                 ) : conversationMessages.length === 0 ? (
