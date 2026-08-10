@@ -22,3 +22,6 @@ Thumbs.db
 
 # IDE
 .vscode/settings.json
+
+# n8n workflow backups/exports (may contain hardcoded credentials — never commit)
+n8n flow/
