@@ -265,32 +265,51 @@ export default function ClientMessages() {
     }
   }
 
-  async function updateConversationStatus(newStatus) {
+  // Shared status-update helper. `preserveStep: true` leaves current_step
+  // untouched in the DB (used by human takeover, which must not reset the
+  // AI flow's step). Otherwise `currentStep` is written explicitly.
+  async function applyStatusChange(newStatus, { currentStep = null, preserveStep = false } = {}) {
     if (!selectedConversationId || !clientId) return;
 
     try {
       setUpdatingStatus(true);
       setError("");
 
+      const payload = { conversation_status: newStatus, updated_at: new Date().toISOString() };
+      if (!preserveStep) payload.current_step = currentStep;
+
       const { error } = await supabase
         .from("conversation_state")
-        .update({
-          conversation_status: newStatus,
-          current_step: null,
-          updated_at: new Date().toISOString(),
-        })
+        .update(payload)
         .eq("client_id", clientId)
         .eq("conversation_id", selectedConversationId);
 
       if (error) throw error;
 
-      setConversations((prev) => prev.map((conv) => conv.conversation_id === selectedConversationId ? { ...conv, conversation_status: newStatus, current_step: null, updated_at: new Date().toISOString() } : conv));
+      setConversations((prev) => prev.map((conv) => conv.conversation_id === selectedConversationId ? { ...conv, ...payload } : conv));
     } catch (err) {
       console.error(err);
       setError(err.message || "فشل في تحديث حالة المحادثة");
     } finally {
       setUpdatingStatus(false);
     }
+  }
+
+  // Explicit close: conversation_status = closed, current_step = done.
+  function closeConversation() {
+    return applyStatusChange("closed", { currentStep: "done" });
+  }
+
+  // Explicit reopen/reset to normal AI flow: conversation_status = active,
+  // current_step = null.
+  function reopenConversation() {
+    return applyStatusChange("active", { currentStep: null });
+  }
+
+  // Explicit human takeover: conversation_status = waiting_human only.
+  // current_step must be preserved exactly, not reset.
+  function takeoverConversation() {
+    return applyStatusChange("waiting_human", { preserveStep: true });
   }
 
   useEffect(() => {
@@ -353,6 +372,7 @@ export default function ClientMessages() {
   }, [conversationMessages, selectedConversationId]);
 
   const selectedConversation = filteredConversations.find((c) => c.conversation_id === selectedConversationId) || null;
+  const conversationStatus = selectedConversation?.conversation_status || "active";
 
   const stats = useMemo(() => ({
     total: conversations.length,
@@ -369,7 +389,7 @@ export default function ClientMessages() {
 
       {error && <div className="shrink-0 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:grid-cols-[330px_minmax(0,1fr)]" dir="rtl">
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:grid-cols-[380px_minmax(0,1fr)]" dir="rtl">
         <aside className="flex h-full min-h-0 flex-col border-l border-slate-100 bg-slate-50/50">
           <div className="shrink-0 border-b border-slate-100 p-3">
             <div className="mb-2 flex items-center justify-between gap-3">
@@ -463,9 +483,19 @@ export default function ClientMessages() {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2 lg:justify-end">
-                    <button onClick={() => updateConversationStatus("active")} disabled={updatingStatus || selectedConversation.conversation_status === "active"} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">إعادة فتح</button>
-                    <button onClick={() => updateConversationStatus("closed")} disabled={updatingStatus || selectedConversation.conversation_status === "closed"} className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">إغلاق</button>
+                  <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                    {conversationStatus === "waiting_human" && (
+                      <span className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">بانتظار الرد البشري</span>
+                    )}
+                    {conversationStatus !== "waiting_human" && conversationStatus !== "closed" && (
+                      <button onClick={takeoverConversation} disabled={updatingStatus} className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">تحويل للرد البشري</button>
+                    )}
+                    {conversationStatus !== "closed" && (
+                      <button onClick={closeConversation} disabled={updatingStatus} className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">إغلاق</button>
+                    )}
+                    {conversationStatus === "closed" && (
+                      <button onClick={reopenConversation} disabled={updatingStatus} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">إعادة فتح</button>
+                    )}
                   </div>
                 </div>
 
