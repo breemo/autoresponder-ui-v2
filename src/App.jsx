@@ -1,7 +1,8 @@
 // src/App.jsx
 import React from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
+import { PERMISSIONS, hasUserPermission } from "./lib/permissions.js";
 import AdminPlanFeatures from "./pages/admin/AdminPlanFeatures.jsx";
 
 // Layouts
@@ -32,6 +33,10 @@ import ClientIntegrations from "./pages/client/ClientIntegrations.jsx";
 import ClientFeatureSettings from "./pages/client/ClientFeatureSettings.jsx";
 import ClientLeads from "./pages/client/ClientLeads.jsx";
 import ClientQuickReplies from "./pages/client/ClientQuickReplies.jsx";
+import ClientTeam from "./pages/client/ClientTeam.jsx";
+import ClientAccount from "./pages/client/ClientAccount.jsx";
+
+const ACCOUNT_PATH = "/client/account";
 
 function AdminRoute({ children }) {
   const { user } = useAuth();
@@ -39,9 +44,29 @@ function AdminRoute({ children }) {
   return <AdminLayout>{children}</AdminLayout>;
 }
 
-function ClientRoute({ children }) {
+// `permission` is optional — routes with no permission requirement (e.g. the
+// client dashboard, or the Account page itself) stay reachable by any
+// active client_users member. Routes that declare one redirect unauthorized
+// users back to /client instead of rendering, so a restricted page can't be
+// reached by typing its URL directly — hiding the nav link alone is not
+// enough.
+//
+// Mandatory first-password-change gate: while must_change_password is true,
+// every client route except the Account page itself redirects there. This
+// is enforced here (route level), not just as a UI message, so it can't be
+// bypassed by navigating straight to another client URL.
+function ClientRoute({ children, permission }) {
   const { user } = useAuth();
+  const location = useLocation();
+
   if (!user || user.role !== "client") return <Navigate to="/" replace />;
+
+  if (user.must_change_password && location.pathname !== ACCOUNT_PATH) {
+    return <Navigate to={ACCOUNT_PATH} replace />;
+  }
+
+  if (permission && !hasUserPermission(user, permission)) return <Navigate to="/client" replace />;
+
   return <ClientLayout>{children}</ClientLayout>;
 }
 
@@ -91,37 +116,45 @@ export default function App() {
 
           <Route
             path="/client"
-            element={<ClientRoute><ClientDashboard /></ClientRoute>}
+            element={<ClientRoute permission={PERMISSIONS.DASHBOARD}><ClientDashboard /></ClientRoute>}
           />
           <Route
             path="/client/messages"
-            element={<ClientRoute><ClientMessages /></ClientRoute>}
-          />         
+            element={<ClientRoute permission={PERMISSIONS.INBOX}><ClientMessages /></ClientRoute>}
+          />
           <Route
             path="/client/leads"
-            element={<ClientRoute><ClientLeads /></ClientRoute>}
+            element={<ClientRoute permission={PERMISSIONS.LEADS}><ClientLeads /></ClientRoute>}
           />
           <Route
             path="/client/auto-replies"
-            element={<ClientRoute><ClientAutoReplies /></ClientRoute>}
+            element={<ClientRoute permission={PERMISSIONS.AUTO_REPLIES}><ClientAutoReplies /></ClientRoute>}
           />
 
           <Route
             path="/client/quick-replies"
-            element={<ClientRoute><ClientQuickReplies /></ClientRoute>}
+            element={<ClientRoute permission={PERMISSIONS.AUTO_REPLIES}><ClientQuickReplies /></ClientRoute>}
           />
-          
+
           <Route
             path="/client/settings"
-            element={<ClientRoute><ClientSettings /></ClientRoute>}
+            element={<ClientRoute permission={PERMISSIONS.SETTINGS}><ClientSettings /></ClientRoute>}
           />
           <Route
             path="/client/integrations"
-            element={<ClientRoute><ClientIntegrations /></ClientRoute>}
+            element={<ClientRoute permission={PERMISSIONS.INTEGRATIONS}><ClientIntegrations /></ClientRoute>}
           />
           <Route
             path="/client/feature-settings"
-            element={<ClientRoute><ClientFeatureSettings /></ClientRoute>}
+            element={<ClientRoute permission={PERMISSIONS.AI_SETTINGS}><ClientFeatureSettings /></ClientRoute>}
+          />
+          <Route
+            path="/client/team"
+            element={<ClientRoute permission={PERMISSIONS.TEAM_MANAGEMENT}><ClientTeam /></ClientRoute>}
+          />
+          <Route
+            path={ACCOUNT_PATH}
+            element={<ClientRoute><ClientAccount /></ClientRoute>}
           />
 
           <Route

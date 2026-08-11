@@ -11,10 +11,12 @@ import {
   HomeIcon,
   PuzzlePieceIcon,
   Squares2X2Icon,
+  UserCircleIcon,
   UserGroupIcon,
   UsersIcon,
 } from "@heroicons/react/24/outline";
 import { useAuth } from "../context/AuthContext.jsx";
+import { PERMISSIONS, hasUserPermission } from "../lib/permissions.js";
 
 const adminItems = [
   { to: "/admin", label: "Dashboard", description: "نظرة عامة", icon: HomeIcon, end: true },
@@ -27,14 +29,16 @@ const adminItems = [
 ];
 
 const clientItems = [
-  { to: "/client", label: "Dashboard", description: "الرئيسية", icon: HomeIcon, end: true },
-  { to: "/client/messages", label: "Inbox", description: "المحادثات", icon: ChatBubbleLeftRightIcon },
-  { to: "/client/leads", label: "Leads", description: "أرقام الزبائن", icon: ChartBarIcon },
-  { to: "/client/auto-replies", label: "Auto Replies", description: "الردود", icon: BoltIcon },
-  { to: "/client/quick-replies", label: "Quick Replies", description: "الأزرار السريعة", icon: ChatBubbleOvalLeftEllipsisIcon },
-  { to: "/client/integrations", label: "Integrations", description: "ربط المنصات", icon: Squares2X2Icon },
-  { to: "/client/feature-settings", label: "Feature Settings", description: "إعدادات الميزات", icon: PuzzlePieceIcon },
-  { to: "/client/settings", label: "Settings", description: "الإعدادات", icon: Cog6ToothIcon },
+  { to: "/client", label: "Dashboard", description: "الرئيسية", icon: HomeIcon, end: true, permission: PERMISSIONS.DASHBOARD },
+  { to: "/client/messages", label: "Inbox", description: "المحادثات", icon: ChatBubbleLeftRightIcon, permission: PERMISSIONS.INBOX },
+  { to: "/client/leads", label: "Leads", description: "أرقام الزبائن", icon: ChartBarIcon, permission: PERMISSIONS.LEADS },
+  { to: "/client/auto-replies", label: "Auto Replies", description: "الردود", icon: BoltIcon, permission: PERMISSIONS.AUTO_REPLIES },
+  { to: "/client/quick-replies", label: "Quick Replies", description: "الأزرار السريعة", icon: ChatBubbleOvalLeftEllipsisIcon, permission: PERMISSIONS.AUTO_REPLIES },
+  { to: "/client/integrations", label: "Integrations", description: "ربط المنصات", icon: Squares2X2Icon, permission: PERMISSIONS.INTEGRATIONS },
+  { to: "/client/feature-settings", label: "Feature Settings", description: "إعدادات الميزات", icon: PuzzlePieceIcon, permission: PERMISSIONS.AI_SETTINGS },
+  { to: "/client/team", label: "Team", description: "فريق العمل", icon: UserGroupIcon, permission: PERMISSIONS.TEAM_MANAGEMENT },
+  { to: "/client/settings", label: "Settings", description: "الإعدادات", icon: Cog6ToothIcon, permission: PERMISSIONS.SETTINGS },
+  { to: "/client/account", label: "My Account", description: "حسابي", icon: UserCircleIcon },
 ];
 
 const pageTitles = {
@@ -52,7 +56,9 @@ const pageTitles = {
   "/client/quick-replies": ["Quick Replies", "إدارة الأزرار والخيارات السريعة"],
   "/client/integrations": ["Integrations", "ربط Telegram و Facebook وباقي القنوات"],
   "/client/feature-settings": ["Feature Settings", "إعدادات كل ميزة مفعلة"],
+  "/client/team": ["Team", "إدارة فريق العمل والصلاحيات"],
   "/client/settings": ["Settings", "رسائل الترحيب والإعدادات العامة"],
+  "/client/account": ["My Account", "بياناتك الشخصية وكلمة المرور"],
 };
 
 function getPageMeta(pathname, panel) {
@@ -73,7 +79,17 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
   const navigate = useNavigate();
   const location = useLocation();
   const isAdmin = panel === "admin";
-  const navItems = isAdmin ? adminItems : clientItems;
+  // Admin nav is unfiltered (unchanged). Client nav items with a
+  // `permission` are hidden for members who don't have it — this is
+  // presentation only, the actual enforcement is the route guard in
+  // App.jsx (a hidden link is not a security boundary by itself). While a
+  // mandatory password change is pending, every other item collapses away
+  // so the sidebar doesn't show links that would just redirect back.
+  const navItems = isAdmin
+    ? adminItems
+    : user?.must_change_password
+    ? clientItems.filter((item) => item.to === "/client/account")
+    : clientItems.filter((item) => !item.permission || hasUserPermission(user, item.permission));
   const displayName = user?.business_name || user?.name || (isAdmin ? "Admin" : "Client");
   const [title, subtitle] = getPageMeta(location.pathname, panel);
   const fullHeight = FULL_HEIGHT_ROUTES.includes(location.pathname);

@@ -287,6 +287,9 @@ createdSubscription = subscriptionData;
             name: form.business_name.trim(),
             role: "client",
             password: form.password,
+            // The Owner must change this on first login before using the
+            // Client Portal — see ClientRoute's mandatory-change gate.
+            must_change_password: true,
           },
         ])
         .select("id")

@@ -61,6 +61,13 @@ const handleLogin = async (e) => {
   localStorage.setItem("user", JSON.stringify(finalUser));
   setUser(finalUser);
 
+  // Best-effort last-login stamp (shown on the client Team page). Not
+  // awaited/blocking — a failure here must never prevent login.
+  supabase.from("users").update({ last_login_at: new Date().toISOString() }).eq("id", user.id).then(
+    () => {},
+    () => {}
+  );
+
   setMessage(`✅ مرحبًا ${user.role === "admin" ? "بالمدير" : "بالعميل"}!`);
 
   setTimeout(() => {

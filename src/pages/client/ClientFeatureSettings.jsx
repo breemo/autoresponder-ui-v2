@@ -1,13 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { supabase } from "../../lib/supabaseClient.js";
 import AdminClientSettings from "../admin/AdminClientSettings.jsx";
 
 export default function ClientFeatureSettings() {
   const { user } = useAuth();
-
-  const [clientId, setClientId] = useState(null);
-  const [error, setError] = useState("");
 
   // حماية الصفحة
   if (!user || user.role !== "client") {
@@ -18,41 +14,13 @@ export default function ClientFeatureSettings() {
     );
   }
 
-  // --------------------------------------------------
-  // 1) جلب بيانات العميل عبر الإيميل
-  // --------------------------------------------------
-  useEffect(() => {
-    async function loadClient() {
-      const { data: client, error } = await supabase
-        .from("clients")
-        .select("*")
-        .eq("email", user.email)
-        .single();
-
-      if (error || !client) {
-        setError("⚠️ لا يوجد حساب عميل مرتبط بهذا المستخدم");
-        return;
-      }
-
-      setClientId(client.id);
-    }
-
-    loadClient();
-  }, [user.email]);
-
-  // --------------------------------------------------
-  // 2) معالجة حالة عدم إيجاد العميل
-  // --------------------------------------------------
-  if (error) {
-    return <p className="text-red-500">{error}</p>;
-  }
+  // client_id يأتي من عضوية client_users المحلولة عند تسجيل الدخول
+  // (وليس بمطابقة الإيميل، لأن أكثر من مستخدم قد ينتمي لنفس العميل الآن).
+  const clientId = user.client_id;
 
   if (!clientId) {
-    return <p>جاري تحميل بيانات العميل...</p>;
+    return <p className="text-red-500">⚠️ لا يوجد حساب عميل مرتبط بهذا المستخدم</p>;
   }
 
-  // --------------------------------------------------
-  // 3) إعادة استخدام صفحة إعدادات الأدمن
-  // --------------------------------------------------
   return <AdminClientSettings clientIdOverride={clientId} />;
 }
