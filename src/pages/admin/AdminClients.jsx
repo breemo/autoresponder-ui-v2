@@ -301,6 +301,7 @@ createdSubscription = subscriptionData;
           {
             client_id: createdClient.id,
             user_id: createdUser.id,
+            role: "owner",
           },
         ]);
 

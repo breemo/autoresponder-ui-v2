@@ -26,24 +26,36 @@ const handleLogin = async (e) => {
     return;
   }
 
-  // 🔍 1) نجلب بيانات العميل من جدول clients
-  let clientData = null;
+  // 🔍 1) نجلب عضوية العميل من جدول client_users (مش عن طريق مطابقة الإيميل)
+  let finalUser = { ...user };
+
   if (user.role === "client") {
-    const { data: cData } = await supabase
-      .from("clients")
-      .select("id, business_name, email")
-      .eq("email", user.email)
-      .single();
+    const { data: membership, error: membershipError } = await supabase
+      .from("client_users")
+      .select("client_id, role, is_active, permissions_overrides, clients(id, business_name, email)")
+      .eq("user_id", user.id)
+      .maybeSingle();
 
-    clientData = cData;
+    if (membershipError || !membership) {
+      setMessage("❌ هذا الحساب غير مرتبط بأي عميل");
+      return;
+    }
+
+    if (membership.is_active === false) {
+      setMessage("❌ تم إيقاف هذا الحساب، يرجى التواصل مع مالك الحساب");
+      return;
+    }
+
+    // 🧠 2) ندمج ال user مع بيانات العضوية بحيث يصير عنده client_id ودوره
+    finalUser = {
+      ...user,
+      client_id: membership.client_id,
+      business_name: membership.clients?.business_name || null,
+      client_role: membership.role,
+      is_active: membership.is_active,
+      permissions_overrides: membership.permissions_overrides,
+    };
   }
-
-  // 🧠 2) ندمج ال user مع clientData بحيث يصير عنده client_id
-  const finalUser = {
-    ...user,
-    client_id: clientData?.id || null,
-    business_name: clientData?.business_name || null,
-  };
 
   // 💾 3) نخزن البيانات الصحيحة للـ user
   localStorage.setItem("user", JSON.stringify(finalUser));
