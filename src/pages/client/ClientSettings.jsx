@@ -7,8 +7,9 @@ const cardClass = "rounded-3xl border border-slate-200 bg-white shadow-sm";
 
 export default function ClientSettings() {
   const { user } = useAuth();
-  const clientId = user?.client_id || user?.id;
-  const [form, setForm] = useState({ business_name: "", email: "", phone: "", address: "", business_description: "", welcome_message: "", default_reply: "", closing_message: "", password: "" });
+  // client_id is resolved once at login via client_users (see Login.jsx).
+  const clientId = user?.client_id || null;
+  const [form, setForm] = useState({ business_name: "", email: "", phone: "", address: "", business_description: "", welcome_message: "", default_reply: "", closing_message: "" });
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -17,7 +18,7 @@ export default function ClientSettings() {
   async function loadClient() {
     const { data, error } = await supabase.from("clients").select("*").eq("id", clientId).single();
     if (error) return console.error("Error loading client settings:", error);
-    if (data) setForm({ business_name: data.business_name || "", email: data.email || "", phone: data.phone || "", address: data.address || "", business_description: data.business_description || "", welcome_message: data.welcome_message || "", default_reply: data.default_reply || "", closing_message: data.closing_message || "", password: "" });
+    if (data) setForm({ business_name: data.business_name || "", email: data.email || "", phone: data.phone || "", address: data.address || "", business_description: data.business_description || "", welcome_message: data.welcome_message || "", default_reply: data.default_reply || "", closing_message: data.closing_message || "" });
   }
 
   async function handleSave() {
@@ -25,12 +26,7 @@ export default function ClientSettings() {
       setLoading(true); setMsg("");
       const { error: clientError } = await supabase.from("clients").update({ business_name: form.business_name, phone: form.phone, address: form.address, business_description: form.business_description, welcome_message: form.welcome_message, default_reply: form.default_reply, closing_message: form.closing_message }).eq("id", clientId);
       if (clientError) throw clientError;
-      if (form.password) {
-        const { error: userError } = await supabase.from("users").update({ password: form.password }).eq("id", user.id);
-        if (userError) throw userError;
-      }
       setMsg("تم حفظ الإعدادات بنجاح");
-      setForm((prev) => ({ ...prev, password: "" }));
     } catch (err) {
       console.error(err); setMsg("حدث خطأ أثناء حفظ الإعدادات");
     } finally { setLoading(false); }
@@ -70,11 +66,6 @@ export default function ClientSettings() {
               <div><label className="mb-1 block text-sm font-bold text-slate-700">الرد الافتراضي</label><textarea rows={4} className={inputClass} value={form.default_reply} onChange={(e) => update("default_reply", e.target.value)} placeholder="شكراً لتواصلك معنا..." /></div>
               <div><label className="mb-1 block text-sm font-bold text-slate-700">رسالة الإغلاق</label><textarea rows={3} className={inputClass} value={form.closing_message} onChange={(e) => update("closing_message", e.target.value)} placeholder="سعدنا بخدمتك..." /></div>
             </div>
-          </div>
-
-          <div className={`${cardClass} p-6`}>
-            <div className="mb-4 flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-xl">🔐</div><div><h3 className="font-black text-slate-950">الأمان</h3><p className="text-xs text-slate-500">اترك كلمة المرور فارغة إذا لا تريد تغييرها</p></div></div>
-            <input type="password" className={inputClass} placeholder="كلمة مرور جديدة" value={form.password} onChange={(e) => update("password", e.target.value)} />
           </div>
         </div>
       </div>

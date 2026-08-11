@@ -25,6 +25,7 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
+import { PERMISSIONS, hasUserPermission } from "../../lib/permissions.js";
 
 const SOURCE_LABELS = {
   ai: "AI",
@@ -120,7 +121,13 @@ function StatCard({ title, value, subtitle, icon: Icon, tone = "violet", hint })
 
 export default function ClientDashboard() {
   const { user } = useAuth();
-  const [realClientId, setRealClientId] = useState(null);
+  // client_id is resolved once at login via client_users (see Login.jsx) —
+  // every user of this client (Owner/Agent/IT) shares the same client_id,
+  // so they all resolve the same business data below. Previously this page
+  // re-derived it by matching clients.email === user.email, which only
+  // worked for the original owner account and silently broke for any other
+  // team member.
+  const realClientId = user?.client_id || null;
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -132,29 +139,11 @@ export default function ClientDashboard() {
   const [integrations, setIntegrations] = useState([]);
 
   useEffect(() => {
-    async function loadClient() {
-      if (!user?.email) return;
-      setError("");
-
-      const { data: client, error: clientError } = await supabase
-        .from("clients")
-        .select("id")
-        .eq("email", user.email)
-        .single();
-
-      if (!clientError && client?.id) {
-        setRealClientId(client.id);
-      } else {
-        setError("⚠️ لم يتم العثور على حسابك كعميل");
-        setLoading(false);
-      }
+    if (!realClientId) {
+      setError("⚠️ لم يتم العثور على حسابك كعميل");
+      setLoading(false);
+      return;
     }
-
-    loadClient();
-  }, [user?.email]);
-
-  useEffect(() => {
-    if (!realClientId) return;
     loadDashboard();
   }, [realClientId]);
 
@@ -225,6 +214,7 @@ export default function ClientDashboard() {
     const autoReplies = outbound.filter((m) => m.reply_source === "auto").length;
     const systemReplies = outbound.filter((m) => m.reply_source === "system").length;
     const quickReplies = outbound.filter((m) => m.reply_source === "quick_reply").length;
+    const humanReplies = outbound.filter((m) => m.reply_source === "human").length;
 
     const conversationMap = new Map();
     messages.forEach((msg) => {
@@ -271,8 +261,11 @@ export default function ClientDashboard() {
       })
       .sort((a, b) => new Date(b.updatedAt || b.lastAt) - new Date(a.updatedAt || a.lastAt));
 
-    const openConversations = conversations.filter(
-      (c) => !["closed", "done"].includes(c.status)
+    // Derived directly from conversation_state (the real conversation model)
+    // rather than from the last-500-messages-derived `conversations` list
+    // above, so it isn't skewed by conversations with no recent messages.
+    const openConversations = conversationStates.filter(
+      (s) => !["closed", "done"].includes(s.conversation_status)
     ).length;
 
     const days = {};
@@ -295,6 +288,7 @@ export default function ClientDashboard() {
       { key: "ai", label: "AI replies", value: aiReplies, percentage: Math.round((aiReplies / sourceTotal) * 100) },
       { key: "auto", label: "Auto replies", value: autoReplies, percentage: Math.round((autoReplies / sourceTotal) * 100) },
       { key: "quick_reply", label: "Quick replies", value: quickReplies, percentage: Math.round((quickReplies / sourceTotal) * 100) },
+      { key: "human", label: "Human replies", value: humanReplies, percentage: Math.round((humanReplies / sourceTotal) * 100) },
       { key: "system", label: "System replies", value: systemReplies, percentage: Math.round((systemReplies / sourceTotal) * 100) },
     ];
 
@@ -541,22 +535,30 @@ export default function ClientDashboard() {
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-black text-slate-950">Quick Actions</h2>
             <div className="mt-4 grid grid-cols-2 gap-3">
-              <Link to="/client/messages" className="rounded-2xl border border-slate-200 p-4 transition hover:border-violet-200 hover:bg-violet-50/40">
-                <InboxIcon className="mb-3 h-5 w-5 text-violet-700" />
-                <p className="text-sm font-black text-slate-900">فتح Inbox</p>
-              </Link>
-              <Link to="/client/auto-replies" className="rounded-2xl border border-slate-200 p-4 transition hover:border-violet-200 hover:bg-violet-50/40">
-                <PlusIcon className="mb-3 h-5 w-5 text-violet-700" />
-                <p className="text-sm font-black text-slate-900">Auto Reply</p>
-              </Link>
-              <Link to="/client/quick-replies" className="rounded-2xl border border-slate-200 p-4 transition hover:border-violet-200 hover:bg-violet-50/40">
-                <CheckCircleIcon className="mb-3 h-5 w-5 text-violet-700" />
-                <p className="text-sm font-black text-slate-900">Quick Replies</p>
-              </Link>
-              <Link to="/client/settings" className="rounded-2xl border border-slate-200 p-4 transition hover:border-violet-200 hover:bg-violet-50/40">
-                <Cog6ToothIcon className="mb-3 h-5 w-5 text-violet-700" />
-                <p className="text-sm font-black text-slate-900">Settings</p>
-              </Link>
+              {hasUserPermission(user, PERMISSIONS.INBOX) && (
+                <Link to="/client/messages" className="rounded-2xl border border-slate-200 p-4 transition hover:border-violet-200 hover:bg-violet-50/40">
+                  <InboxIcon className="mb-3 h-5 w-5 text-violet-700" />
+                  <p className="text-sm font-black text-slate-900">فتح Inbox</p>
+                </Link>
+              )}
+              {hasUserPermission(user, PERMISSIONS.AUTO_REPLIES) && (
+                <Link to="/client/auto-replies" className="rounded-2xl border border-slate-200 p-4 transition hover:border-violet-200 hover:bg-violet-50/40">
+                  <PlusIcon className="mb-3 h-5 w-5 text-violet-700" />
+                  <p className="text-sm font-black text-slate-900">Auto Reply</p>
+                </Link>
+              )}
+              {hasUserPermission(user, PERMISSIONS.AUTO_REPLIES) && (
+                <Link to="/client/quick-replies" className="rounded-2xl border border-slate-200 p-4 transition hover:border-violet-200 hover:bg-violet-50/40">
+                  <CheckCircleIcon className="mb-3 h-5 w-5 text-violet-700" />
+                  <p className="text-sm font-black text-slate-900">Quick Replies</p>
+                </Link>
+              )}
+              {hasUserPermission(user, PERMISSIONS.SETTINGS) && (
+                <Link to="/client/settings" className="rounded-2xl border border-slate-200 p-4 transition hover:border-violet-200 hover:bg-violet-50/40">
+                  <Cog6ToothIcon className="mb-3 h-5 w-5 text-violet-700" />
+                  <p className="text-sm font-black text-slate-900">Settings</p>
+                </Link>
+              )}
             </div>
           </div>
         </div>

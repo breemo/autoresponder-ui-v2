@@ -1,5 +1,8 @@
 {
-  "buildCommand": "pnpm install && pnpm run build", 
+  "buildCommand": "pnpm install && pnpm run build",
   "installCommand": "pnpm install",
-  "outputDirectory": "dist"
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
 }

@@ -8,6 +8,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { supabase } from "../../lib/supabaseClient";
+import { useAuth } from "../../context/AuthContext.jsx";
 
 const inputClass =
   "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-emerald-300 focus:ring-4 focus:ring-emerald-50";
@@ -71,7 +72,8 @@ function formatDate(value) {
   }
 }
 
-export default function WhatsAppEvolutionSection({ clientId, integration }) {
+export default function WhatsAppEvolutionSection({ clientId, integration, maxConnections = null, subscriptionActive = true }) {
+  const { user } = useAuth();
   const [instances, setInstances] = useState([]);
   const [servers, setServers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -124,6 +126,17 @@ export default function WhatsAppEvolutionSection({ clientId, integration }) {
     const pending = instances.filter((item) => getInstanceStatus(item) === "pending").length;
     return { total: instances.length, connected, pending };
   }, [instances]);
+
+  // Plan connection limit (plan_features.max_connections) — null/undefined
+  // means unlimited. Server-side enforcement is authoritative
+  // (api/create-whatsapp-instance.js); this only disables the UI early with
+  // a clear reason instead of letting the request fail server-side first.
+  const limitReached = maxConnections != null && instances.length >= maxConnections;
+  const addDisabledReason = !subscriptionActive
+    ? "اشتراكك غير نشط — لا يمكن إضافة أرقام جديدة حتى تجديد الاشتراك"
+    : limitReached
+    ? `وصلت للحد الأقصى المسموح (${maxConnections}) لأرقام واتساب ضمن خطتك`
+    : null;
 
   const integrationReplyMode =
     integration?.config?.reply_mode ||
@@ -264,6 +277,7 @@ async function createNumber(e) {
       action: "create_instance",
       client_id: clientId,
       display_name: displayName,
+      actor_user_id: user?.id,
     }),
   });
 
@@ -303,6 +317,7 @@ async function createNumber(e) {
           client_id: clientId,
           whatsapp_id: item.id,
           instance_name: item.instance_name,
+          actor_user_id: user?.id,
         }),
       });
 
@@ -382,6 +397,7 @@ async function createNumber(e) {
         body: JSON.stringify({
           action: "sync_instances",
           client_id: clientId,
+          actor_user_id: user?.id,
         }),
       });
 
@@ -434,6 +450,7 @@ async function deleteNumber(item) {
         client_id: clientId,
         whatsapp_id: item.id,
         instance_name: item.instance_name,
+        actor_user_id: user?.id,
       }),
     });
 
@@ -507,13 +524,21 @@ async function deleteNumber(item) {
           <button
             type="button"
             onClick={openDrawer}
-            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
+            disabled={!!addDisabledReason}
+            title={addDisabledReason || undefined}
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <PlusIcon className="h-4 w-4" />
             Add Number
           </button>
         </div>
       </div>
+
+      {addDisabledReason && (
+        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+          {addDisabledReason}
+        </div>
+      )}
 
       {(error || message) && (
         <div
@@ -585,7 +610,8 @@ async function deleteNumber(item) {
                       <button
                         type="button"
                         onClick={() => connectNumber(item)}
-                        disabled={connectingId === item.id}
+                        disabled={connectingId === item.id || !subscriptionActive}
+                        title={!subscriptionActive ? "اشتراكك غير نشط — لا يمكن ربط الأرقام حتى تجديد الاشتراك" : undefined}
                         className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {connectingId === item.id ? "Connecting..." : "Connect"}

@@ -17,6 +17,8 @@ import {
 } from "@heroicons/react/24/outline";
 import { useAuth } from "../context/AuthContext.jsx";
 import { PERMISSIONS, hasUserPermission } from "../lib/permissions.js";
+import { clearSessionExpiry } from "../lib/session.js";
+import SubscriptionBanner from "../components/SubscriptionBanner.jsx";
 
 const adminItems = [
   { to: "/admin", label: "Dashboard", description: "نظرة عامة", icon: HomeIcon, end: true },
@@ -96,6 +98,7 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
 
   function logout() {
     localStorage.removeItem("user");
+    clearSessionExpiry();
     setUser(null);
     navigate("/");
   }
@@ -184,6 +187,7 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
 
         <main className={fullHeight ? "flex min-h-0 flex-1 flex-col px-4 py-5 md:px-6 lg:px-8 lg:py-6" : "min-h-[calc(100vh-5rem)] px-4 py-5 md:px-6 lg:px-8 lg:py-6"}>
           <div className={`mx-auto w-full max-w-[1800px] animate-[fadeIn_.2s_ease-out] ${fullHeight ? "flex min-h-0 flex-1 flex-col" : ""}`}>
+            {!isAdmin && <SubscriptionBanner />}
             {children}
           </div>
         </main>

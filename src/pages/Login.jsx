@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../context/AuthContext";
+import { writeSessionExpiry } from "../lib/session.js";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -59,6 +60,7 @@ const handleLogin = async (e) => {
 
   // 💾 3) نخزن البيانات الصحيحة للـ user
   localStorage.setItem("user", JSON.stringify(finalUser));
+  writeSessionExpiry();
   setUser(finalUser);
 
   // Best-effort last-login stamp (shown on the client Team page). Not

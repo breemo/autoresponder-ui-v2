@@ -21,14 +21,9 @@ export default function ClientAutoReplies() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [form, setForm] = useState({ id: null, trigger_text: "", reply_text: "", is_active: true });
 
+  // client_id is resolved once at login via client_users (see Login.jsx).
   useEffect(() => {
-    async function loadClientId() {
-      if (!user) return;
-      if (user.client_id) return setClientId(user.client_id);
-      const { data } = await supabase.from("clients").select("id").eq("email", user.email).single();
-      if (data?.id) setClientId(data.id);
-    }
-    loadClientId();
+    if (user?.client_id) setClientId(user.client_id);
   }, [user]);
 
   async function loadData() {

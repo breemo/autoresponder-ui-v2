@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
+import ChannelIcon from "../../lib/channelIcons.jsx";
 import {
   ArrowPathIcon,
   ClipboardDocumentIcon,
@@ -10,7 +11,11 @@ import {
   UserPlusIcon,
   CalendarDaysIcon,
   ChatBubbleLeftRightIcon,
+  ChevronRightIcon,
+  ChevronLeftIcon,
 } from "@heroicons/react/24/outline";
+
+const PAGE_SIZE = 20;
 
 function formatDate(value) {
   if (!value) return "—";
@@ -25,13 +30,6 @@ function formatDate(value) {
   } catch {
     return "—";
   }
-}
-
-function initials(name, phone) {
-  const label = String(name || phone || "Lead").trim();
-  const words = label.split(/\s+/).filter(Boolean);
-  if (words.length >= 2) return `${words[0][0]}${words[1][0]}`.toUpperCase();
-  return label.slice(0, 2).toUpperCase();
 }
 
 function normalizePhone(phone) {
@@ -53,34 +51,19 @@ function isLastSevenDays(dateValue) {
 
 export default function ClientLeads() {
   const { user } = useAuth();
-  const [clientId, setClientId] = useState(user?.client_id || null);
+  // client_id is resolved once at login via client_users (see Login.jsx) —
+  // every user of this client shares the same client_id.
+  const clientId = user?.client_id || null;
 
   const [leads, setLeads] = useState([]);
+  // conversation_id -> platform, enriched separately since `leads` itself
+  // has no channel column — read-only display enrichment, no schema change.
+  const [channelByConversation, setChannelByConversation] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [copied, setCopied] = useState("");
-
-  useEffect(() => {
-    async function resolveClientId() {
-      if (user?.client_id) {
-        setClientId(user.client_id);
-        return;
-      }
-
-      if (!user?.email) return;
-
-      const { data, error } = await supabase
-        .from("clients")
-        .select("id")
-        .eq("email", user.email)
-        .maybeSingle();
-
-      if (!error && data?.id) setClientId(data.id);
-    }
-
-    resolveClientId();
-  }, [user?.client_id, user?.email]);
 
   async function fetchLeads() {
     if (!clientId) {
@@ -99,7 +82,27 @@ export default function ClientLeads() {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setLeads(data || []);
+      const rows = data || [];
+      setLeads(rows);
+
+      const conversationIds = [...new Set(rows.map((r) => r.conversation_id).filter(Boolean))];
+      if (conversationIds.length > 0) {
+        const { data: stateRows, error: stateError } = await supabase
+          .from("conversation_state")
+          .select("conversation_id, platform")
+          .eq("client_id", clientId)
+          .in("conversation_id", conversationIds);
+
+        if (!stateError) {
+          const map = {};
+          (stateRows || []).forEach((s) => {
+            if (s.conversation_id) map[s.conversation_id] = s.platform;
+          });
+          setChannelByConversation(map);
+        }
+      } else {
+        setChannelByConversation({});
+      }
     } catch (err) {
       console.error(err);
       setError("فشل في جلب بيانات العملاء المهتمين");
@@ -110,8 +113,12 @@ export default function ClientLeads() {
 
   useEffect(() => {
     fetchLeads();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId]);
 
+  // Search filters the full fetched dataset (not just the current page)
+  // before pagination slices it, so results aren't limited to whatever 20
+  // rows happen to be showing.
   const filteredLeads = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return leads;
@@ -122,6 +129,18 @@ export default function ClientLeads() {
         .includes(q);
     });
   }, [leads, search]);
+
+  // Reset to page 1 whenever the filtered set changes shape (new search).
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredLeads.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedLeads = useMemo(
+    () => filteredLeads.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
+    [filteredLeads, safePage]
+  );
 
   const stats = useMemo(() => {
     const uniquePhones = new Set(leads.map((lead) => normalizePhone(lead.phone)).filter(Boolean));
@@ -253,85 +272,117 @@ export default function ClientLeads() {
             <p className="mt-1 text-sm text-slate-400">جرّب تغيير كلمة البحث أو تحديث الصفحة.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-right text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-5 py-4 font-bold">العميل</th>
-                  <th className="px-5 py-4 font-bold">رقم الهاتف</th>
-                  <th className="px-5 py-4 font-bold">المحادثة</th>
-                  <th className="px-5 py-4 font-bold">تاريخ الالتقاط</th>
-                  <th className="px-5 py-4 font-bold">إجراءات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredLeads.map((lead) => {
-                  const phone = normalizePhone(lead.phone);
-                  const whatsappPhone = phone.startsWith("+") ? phone.slice(1) : phone;
-                  const whatsappLink = phone ? `https://wa.me/${whatsappPhone}` : null;
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px] text-right text-sm">
+                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-5 py-4 font-bold">العميل</th>
+                    <th className="px-5 py-4 font-bold">القناة</th>
+                    <th className="px-5 py-4 font-bold">رقم الهاتف</th>
+                    <th className="px-5 py-4 font-bold">المحادثة</th>
+                    <th className="px-5 py-4 font-bold">تاريخ الالتقاط</th>
+                    <th className="px-5 py-4 font-bold">إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {pagedLeads.map((lead) => {
+                    const phone = normalizePhone(lead.phone);
+                    const whatsappPhone = phone.startsWith("+") ? phone.slice(1) : phone;
+                    const whatsappLink = phone ? `https://wa.me/${whatsappPhone}` : null;
+                    const channel = channelByConversation[lead.conversation_id];
 
-                  return (
-                    <tr key={lead.id} className="transition hover:bg-slate-50/70">
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-sm font-bold text-white shadow-sm">
-                            {initials(lead.name, lead.phone)}
+                    return (
+                      <tr key={lead.id} className="transition hover:bg-slate-50/70">
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <ChannelIcon channel={channel} size="h-11 w-11" />
+                            <div>
+                              <p className="font-bold text-slate-950">{lead.name || "بدون اسم"}</p>
+                              <p className="text-xs text-slate-400">Sender: {lead.sender_id || "—"}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="font-bold text-slate-950">{lead.name || "بدون اسم"}</p>
-                            <p className="text-xs text-slate-400">Sender: {lead.sender_id || "—"}</p>
+                        </td>
+
+                        <td className="px-5 py-4 text-xs font-semibold text-slate-500">
+                          {channel || "—"}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-bold text-emerald-700 ring-1 ring-emerald-100">
+                            <PhoneIcon className="h-4 w-4" />
+                            {lead.phone || "—"}
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      <td className="px-5 py-4">
-                        <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-bold text-emerald-700 ring-1 ring-emerald-100">
-                          <PhoneIcon className="h-4 w-4" />
-                          {lead.phone || "—"}
-                        </div>
-                      </td>
-
-                      <td className="px-5 py-4">
-                        {lead.conversation_id ? (
-                          <span className="inline-flex max-w-[220px] truncate rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-100">
-                            {lead.conversation_id}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-
-                      <td className="px-5 py-4 text-slate-600">{formatDate(lead.created_at)}</td>
-
-                      <td className="px-5 py-4">
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => copyValue(lead.phone)}
-                            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
-                          >
-                            <ClipboardDocumentIcon className="h-4 w-4" />
-                            {copied === lead.phone ? "تم النسخ" : "نسخ"}
-                          </button>
-
-                          {whatsappLink && (
-                            <a
-                              href={whatsappLink}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700"
-                            >
-                              WhatsApp
-                            </a>
+                        <td className="px-5 py-4">
+                          {lead.conversation_id ? (
+                            <span className="inline-flex max-w-[220px] truncate rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-100">
+                              {lead.conversation_id}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">—</span>
                           )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        </td>
+
+                        <td className="px-5 py-4 text-slate-600">{formatDate(lead.created_at)}</td>
+
+                        <td className="px-5 py-4">
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => copyValue(lead.phone)}
+                              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+                            >
+                              <ClipboardDocumentIcon className="h-4 w-4" />
+                              {copied === lead.phone ? "تم النسخ" : "نسخ"}
+                            </button>
+
+                            {whatsappLink && (
+                              <a
+                                href={whatsappLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700"
+                              >
+                                WhatsApp
+                              </a>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-5 py-4">
+              <p className="text-xs font-semibold text-slate-500">
+                صفحة {safePage} من {totalPages}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={safePage <= 1}
+                  className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <ChevronRightIcon className="h-4 w-4" />
+                  السابق
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safePage >= totalPages}
+                  className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  التالي
+                  <ChevronLeftIcon className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </>
         )}
       </div>
     </div>

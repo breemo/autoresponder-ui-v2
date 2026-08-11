@@ -221,14 +221,42 @@ export default function ClientIntegrations() {
   const [selectedIntegrationId, setSelectedIntegrationId] = useState(null);
   const [showAdvancedSetup, setShowAdvancedSetup] = useState(true);
   const [query, setQuery] = useState("");
+  // Informational/UX only (mirrors SubscriptionBanner) — disables the
+  // obvious "activate a new service" buttons as a hint. This is NOT an
+  // authorization boundary: n8n is the authoritative source for whether
+  // subscription/plan entitlement allows service actions, checked at
+  // message-processing time. The API this page writes to
+  // (api/client-integrations.js) intentionally does not duplicate that
+  // check — see its header comment.
+  const [subscriptionActive, setSubscriptionActive] = useState(true);
 
-  const clientId = user?.client_id || user?.clientId || user?.id || null;
+  // client_id is resolved once at login via client_users (see Login.jsx) —
+  // never re-derived here from clients.email or user.id.
+  const clientId = user?.client_id || null;
 
   useEffect(() => {
     if (!clientId) return;
     fetchData();
+    fetchSubscriptionStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId]);
+
+  async function fetchSubscriptionStatus() {
+    const { data, error } = await supabase
+      .from("client_subscription_status")
+      .select("is_active")
+      .eq("client_id", clientId)
+      .maybeSingle();
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    // No subscription row at all → treat as active/unrestricted (plans are
+    // optional at client creation — see SubscriptionBanner.jsx).
+    setSubscriptionActive(data ? !!data.is_active : true);
+  }
 
   async function fetchData() {
     try {
@@ -249,10 +277,14 @@ export default function ClientIntegrations() {
       if (clientData.plan_id) {
         const { data: pf, error: pfError } = await supabase
           .from("plan_features")
-          .select("feature_id")
+          .select("feature_id, max_connections")
           .eq("plan_id", clientData.plan_id);
 
         if (pfError) throw pfError;
+
+        const maxConnectionsByFeatureId = new Map(
+          (pf || []).map((row) => [row.feature_id, row.max_connections])
+        );
 
         const featureIds = (pf || []).map((x) => x.feature_id);
         if (featureIds.length > 0) {
@@ -262,7 +294,12 @@ export default function ClientIntegrations() {
             .in("id", featureIds);
 
           if (fError) throw fError;
-          featuresList = featuresData || [];
+          // max_connections travels with the feature so WhatsAppEvolutionSection
+          // can enforce/display the plan's per-channel connection limit.
+          featuresList = (featuresData || []).map((feature) => ({
+            ...feature,
+            max_connections: maxConnectionsByFeatureId.get(feature.id) ?? null,
+          }));
         }
       }
 
@@ -335,23 +372,35 @@ export default function ClientIntegrations() {
     return selectedFields;
   }, [selectedFeature, selectedFields]);
 
-  async function toggleActive(featureId, currentValue) {
-    const { error: toggleError } = await supabase
-      .from("client_feature_integrations")
-      .update({ is_active: !currentValue })
-      .eq("client_id", clientId)
-      .eq("feature_id", featureId);
+  async function callIntegrationAction(action, payload = {}) {
+    const response = await fetch("/api/client-integrations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, actor_user_id: user?.id, ...payload }),
+    });
 
-    if (toggleError) {
-      setError(toggleError.message || "فشل تغيير حالة التكامل.");
-      return;
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data?.success === false) {
+      throw new Error(data?.message || "فشل تنفيذ العملية");
     }
+    return data;
+  }
 
-    setIntegrations((prev) =>
-      prev.map((item) =>
-        item.feature_id === featureId ? { ...item, is_active: !currentValue } : item
-      )
-    );
+  async function toggleActive(featureId, currentValue) {
+    setError("");
+    setSuccess("");
+
+    try {
+      await callIntegrationAction("set_active", { feature_id: featureId, is_active: !currentValue });
+
+      setIntegrations((prev) =>
+        prev.map((item) =>
+          item.feature_id === featureId ? { ...item, is_active: !currentValue } : item
+        )
+      );
+    } catch (err) {
+      setError(err.message || "فشل تغيير حالة التكامل.");
+    }
   }
 
   function handleFieldChange(integrationId, key, value) {
@@ -378,15 +427,14 @@ export default function ClientIntegrations() {
       setError("");
       setSuccess("");
 
-      const { error: updateError } = await supabase
-        .from("client_feature_integrations")
-        .update({
-          is_active: integration.is_active,
-          config: integration.config || {},
-        })
-        .eq("id", integration.id);
+      // is_active is persisted separately by toggleActive (an immediate,
+      // subscription-gated action) — this only saves configuration, which
+      // stays available as maintenance even when the subscription lapses.
+      await callIntegrationAction("save_config", {
+        feature_id: integration.feature_id,
+        config: integration.config || {},
+      });
 
-      if (updateError) throw updateError;
       setSuccess("تم حفظ إعدادات التكامل بنجاح.");
     } catch (err) {
       console.error(err);
@@ -402,18 +450,7 @@ export default function ClientIntegrations() {
       setError("");
       setSuccess("");
 
-      const { data, error: insertError } = await supabase
-        .from("client_feature_integrations")
-        .insert({
-          client_id: clientId,
-          feature_id: feature.id,
-          is_active: true,
-          config: {},
-        })
-        .select()
-        .single();
-
-      if (insertError) throw insertError;
+      const { integration: data } = await callIntegrationAction("add", { feature_id: feature.id });
 
       const normalized = { ...data, config: data.config || {} };
       setIntegrations((prev) => [...prev, normalized]);
@@ -577,7 +614,9 @@ export default function ClientIntegrations() {
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => toggleActive(selectedIntegration.feature_id, selectedIntegration.is_active)}
-                            className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                            disabled={!selectedIntegration.is_active && !subscriptionActive}
+                            title={!selectedIntegration.is_active && !subscriptionActive ? "اشتراكك غير نشط — لا يمكن تفعيل تكامل جديد" : undefined}
+                            className={`rounded-xl px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
                               selectedIntegration.is_active
                                 ? "bg-slate-100 text-slate-700 hover:bg-slate-200"
                                 : "bg-emerald-600 text-white hover:bg-emerald-700"
@@ -636,6 +675,8 @@ export default function ClientIntegrations() {
                             <WhatsAppEvolutionSection
                               clientId={clientId}
                               integration={selectedIntegration}
+                              maxConnections={selectedFeature.max_connections}
+                              subscriptionActive={subscriptionActive}
                             />
                           )}
                         </div>
@@ -738,11 +779,12 @@ export default function ClientIntegrations() {
                   <p className="mt-3 line-clamp-2 text-xs text-slate-500">{feature.description || meta.description}</p>
                   <button
                     onClick={() => handleAddIntegration(feature)}
-                    disabled={savingId === feature.id}
-                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                    disabled={savingId === feature.id || !subscriptionActive}
+                    title={!subscriptionActive ? "اشتراكك غير نشط — لا يمكن إضافة تكامل جديد" : undefined}
+                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <PlusIcon className="h-4 w-4" />
-                    {savingId === feature.id ? "Activating..." : "Activate"}
+                    {savingId === feature.id ? "Activating..." : !subscriptionActive ? "Subscription inactive" : "Activate"}
                   </button>
                 </div>
               );

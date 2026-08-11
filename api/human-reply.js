@@ -1,4 +1,6 @@
 import { getSupabaseServerClient } from "./_lib/supabaseServer.js";
+import { resolveActingMembership, actorHasPermission } from "./_lib/clientAuthz.js";
+import { PERMISSIONS } from "../src/lib/permissions.js";
 
 const SETTING_KEY = "human_reply_webhook_url";
 
@@ -6,6 +8,22 @@ const SETTING_KEY = "human_reply_webhook_url";
 // fetch-and-relay shape as api/create-whatsapp-instance.js. n8n resolves
 // client/channel/integration from conversation_id and owns both channel
 // delivery and the outbound Supabase insert — this endpoint does neither.
+//
+// Authorization: the caller must resolve to an active client_users
+// membership with `inbox` permission. Same documented limitation as
+// elsewhere: only `actor_user_id` is trusted, and it isn't cryptographically
+// verified (no session tokens exist in this app).
+//
+// Architecture boundary: subscription/plan entitlement (is the client's
+// subscription active, expired, does the plan allow sending, does it
+// support AI, etc.) is intentionally NOT re-checked here. The n8n workflow
+// this proxies to already performs that check authoritatively, early in
+// its own flow, against the same Supabase data. Duplicating that business
+// logic here would create two independent implementations that can drift
+// and disagree — this endpoint only ever enforces identity/permission
+// authorization and multi-tenant isolation, not runtime service
+// entitlement. See supabase/migrations/20260814_client_subscription_status_view.sql
+// for the (UI-only) subscription status read-model this app still owns.
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ success: false, message: "Method not allowed" });
@@ -13,10 +31,11 @@ export default async function handler(req, res) {
 
   const conversation_id = req.body?.conversation_id;
   const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+  const actor_user_id = req.body?.actor_user_id;
 
   // Future: an authenticated user-identity field (e.g. sent_by_user_id) can
-  // be added to this payload once client multi-user support exists, without
-  // changing the shape of this handler.
+  // be recorded alongside the outbound message once client multi-user
+  // attribution is needed, without changing the shape of this handler.
 
   if (!conversation_id || !message) {
     return res.status(400).json({
@@ -31,6 +50,20 @@ export default async function handler(req, res) {
   } catch (error) {
     return res.status(500).json({ success: false, message: "Server is not configured" });
   }
+
+  const actor = await resolveActingMembership(supabase, actor_user_id);
+  if (!actor) {
+    return res.status(401).json({ success: false, message: "Unauthorized" });
+  }
+  if (actor.user.must_change_password) {
+    return res.status(403).json({ success: false, message: "يجب تغيير كلمة المرور المؤقتة أولاً" });
+  }
+  if (!actorHasPermission(actor.membership, PERMISSIONS.INBOX)) {
+    return res.status(403).json({ success: false, message: "Forbidden" });
+  }
+
+  // No subscription/entitlement check here — see the architecture note
+  // above. n8n decides whether this client is allowed to send.
 
   const { data: setting, error: settingError } = await supabase
     .from("system_settings")

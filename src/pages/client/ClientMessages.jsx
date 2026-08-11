@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { PaperClipIcon } from "@heroicons/react/24/outline";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
+import ChannelIcon from "../../lib/channelIcons.jsx";
 
 function formatDate(value) {
   if (!value) return "—";
@@ -20,15 +22,6 @@ function relativeTime(value) {
   if (hours < 24) return `منذ ${hours} س`;
   return `منذ ${Math.floor(hours / 24)} يوم`;
 }
-
-function initials(text = "") {
-  const clean = String(text).trim();
-  if (!clean) return "?";
-  const parts = clean.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
-}
-
 
 function getMessageText(msg = {}) {
   return (
@@ -88,7 +81,8 @@ function StatCard({ label, value, hint, icon, tone = "indigo" }) {
 
 export default function ClientMessages() {
   const { user } = useAuth();
-  const clientId = user?.client_id || user?.id;
+  // client_id is resolved once at login via client_users (see Login.jsx).
+  const clientId = user?.client_id || null;
 
   const [conversations, setConversations] = useState([]);
   const [selectedConversationId, setSelectedConversationId] = useState(null);
@@ -363,7 +357,7 @@ export default function ClientMessages() {
       const response = await fetch("/api/human-reply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation_id: conversationId, message: trimmed }),
+        body: JSON.stringify({ conversation_id: conversationId, message: trimmed, actor_user_id: user?.id }),
       });
 
       const data = await response.json().catch(() => ({}));
@@ -525,7 +519,7 @@ export default function ClientMessages() {
                 return (
                   <button key={conv.conversation_id} onClick={() => setSelectedConversationId(conv.conversation_id)} className={`mb-1.5 w-full rounded-xl border p-2 text-right transition ${isActive ? "border-indigo-200 bg-white shadow-sm ring-4 ring-indigo-50" : "border-transparent hover:border-slate-200 hover:bg-white"}`}>
                     <div className="flex items-start gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-xs font-bold text-white">{initials(conv.lead_name || conv.sender || conv.sender_id)}</div>
+      <ChannelIcon channel={conv.channel || conv.platform} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
                           <p className="truncate text-sm font-bold text-slate-950">{conv.lead_name || conv.sender || conv.sender_id || "بدون اسم"}</p>
@@ -557,7 +551,7 @@ export default function ClientMessages() {
               <div className="shrink-0 border-b border-slate-100 p-3">
                 <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
                   <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 font-bold text-indigo-600">{initials(selectedLead?.name || selectedConversation.sender || selectedConversation.sender_id)}</div>
+                    <ChannelIcon channel={selectedConversation.channel || selectedConversation.platform} size="h-10 w-10" />
                     <div>
                       <h2 className="text-base font-bold text-slate-950">{selectedLead?.name || selectedConversation.lead_name || selectedConversation.sender || selectedConversation.sender_id || "بدون اسم"}</h2>
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -624,6 +618,19 @@ export default function ClientMessages() {
                 )}
 
                 <div className="flex items-end gap-2">
+                  {/* Prepared for future media/attachment sending — not wired to any
+                      send path yet. Kept visibly disabled so the composer's
+                      architecture is ready without faking a capability the
+                      channel/n8n side doesn't support today. */}
+                  <button
+                    type="button"
+                    disabled
+                    title="إرفاق صورة/صوت/ملف — قريباً"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
+                  >
+                    <PaperClipIcon className="h-5 w-5" />
+                  </button>
+
                   <textarea
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
