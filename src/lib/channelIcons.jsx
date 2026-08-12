@@ -58,7 +58,7 @@ export function getChannelIconMeta(channel) {
     };
   }
   if (key.includes("ai")) {
-    return { icon: CpuChipIcon, className: "bg-violet-600 text-white", label: "AI Auto Reply" };
+    return { icon: CpuChipIcon, className: "bg-violet-600 text-white", label: "الذكاء الاصطناعي" };
   }
 
   return { icon: ChatBubbleLeftRightIcon, className: "bg-slate-500 text-white", label: channel || "Unknown" };

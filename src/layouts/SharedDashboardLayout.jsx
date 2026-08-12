@@ -21,53 +21,53 @@ import { clearSessionExpiry } from "../lib/session.js";
 import SubscriptionBanner from "../components/SubscriptionBanner.jsx";
 
 const adminItems = [
-  { to: "/admin", label: "Dashboard", description: "نظرة عامة", icon: HomeIcon, end: true },
-  { to: "/admin/clients", label: "Clients", description: "إدارة العملاء", icon: UsersIcon },
-  { to: "/admin/messages", label: "Messages", description: "كل الرسائل", icon: ChatBubbleLeftRightIcon },
-  { to: "/admin/auto-replies", label: "Auto Replies", description: "الردود", icon: BoltIcon },
-  { to: "/admin/plans", label: "Plans", description: "الباقات", icon: CreditCardIcon },
-  { to: "/admin/features", label: "Features", description: "الميزات", icon: PuzzlePieceIcon },
-  { to: "/admin/settings", label: "Settings", description: "الإعدادات", icon: Cog6ToothIcon },
+  { to: "/admin", label: "نظرة عامة", description: "نظرة عامة", icon: HomeIcon, end: true },
+  { to: "/admin/clients", label: "العملاء", description: "إدارة العملاء", icon: UsersIcon },
+  { to: "/admin/messages", label: "الرسائل", description: "كل الرسائل", icon: ChatBubbleLeftRightIcon },
+  { to: "/admin/auto-replies", label: "الردود التلقائية", description: "الردود", icon: BoltIcon },
+  { to: "/admin/plans", label: "الباقات", description: "الباقات", icon: CreditCardIcon },
+  { to: "/admin/features", label: "الميزات", description: "الميزات", icon: PuzzlePieceIcon },
+  { to: "/admin/settings", label: "الإعدادات", description: "الإعدادات", icon: Cog6ToothIcon },
 ];
 
 const clientItems = [
-  { to: "/client", label: "Dashboard", description: "الرئيسية", icon: HomeIcon, end: true, permission: PERMISSIONS.DASHBOARD },
-  { to: "/client/messages", label: "Inbox", description: "المحادثات", icon: ChatBubbleLeftRightIcon, permission: PERMISSIONS.INBOX },
-  { to: "/client/leads", label: "Leads", description: "أرقام الزبائن", icon: ChartBarIcon, permission: PERMISSIONS.LEADS },
-  { to: "/client/auto-replies", label: "Auto Replies", description: "الردود", icon: BoltIcon, permission: PERMISSIONS.AUTO_REPLIES },
-  { to: "/client/quick-replies", label: "Quick Replies", description: "الأزرار السريعة", icon: ChatBubbleOvalLeftEllipsisIcon, permission: PERMISSIONS.AUTO_REPLIES },
-  { to: "/client/integrations", label: "Integrations", description: "ربط المنصات", icon: Squares2X2Icon, permission: PERMISSIONS.INTEGRATIONS },
-  { to: "/client/feature-settings", label: "Feature Settings", description: "إعدادات الميزات", icon: PuzzlePieceIcon, permission: PERMISSIONS.AI_SETTINGS },
-  { to: "/client/team", label: "Team", description: "فريق العمل", icon: UserGroupIcon, permission: PERMISSIONS.TEAM_MANAGEMENT },
-  { to: "/client/settings", label: "Settings", description: "الإعدادات", icon: Cog6ToothIcon, permission: PERMISSIONS.SETTINGS },
-  { to: "/client/account", label: "My Account", description: "حسابي", icon: UserCircleIcon },
+  { to: "/client", label: "نظرة عامة", description: "الرئيسية", icon: HomeIcon, end: true, permission: PERMISSIONS.DASHBOARD },
+  { to: "/client/messages", label: "المحادثات", description: "إدارة الرسائل", icon: ChatBubbleLeftRightIcon, permission: PERMISSIONS.INBOX },
+  { to: "/client/leads", label: "العملاء المحتملون", description: "العملاء المحتملون", icon: ChartBarIcon, permission: PERMISSIONS.LEADS },
+  { to: "/client/auto-replies", label: "الردود التلقائية", description: "الردود", icon: BoltIcon, permission: PERMISSIONS.AUTO_REPLIES },
+  { to: "/client/quick-replies", label: "الردود السريعة", description: "الردود السريعة", icon: ChatBubbleOvalLeftEllipsisIcon, permission: PERMISSIONS.AUTO_REPLIES },
+  { to: "/client/integrations", label: "التكاملات", description: "ربط المنصات", icon: Squares2X2Icon, permission: PERMISSIONS.INTEGRATIONS },
+  { to: "/client/feature-settings", label: "إعدادات الميزات", description: "إعدادات الميزات", icon: PuzzlePieceIcon, permission: PERMISSIONS.AI_SETTINGS },
+  { to: "/client/team", label: "فريق العمل", description: "فريق العمل", icon: UserGroupIcon, permission: PERMISSIONS.TEAM_MANAGEMENT },
+  { to: "/client/settings", label: "الإعدادات", description: "الإعدادات", icon: Cog6ToothIcon, permission: PERMISSIONS.SETTINGS },
+  { to: "/client/account", label: "حسابي", description: "حسابي", icon: UserCircleIcon },
 ];
 
 const pageTitles = {
-  "/admin": ["Dashboard", "راقب أداء النظام والعملاء من مكان واحد"],
-  "/admin/clients": ["Clients", "إدارة العملاء، الباقات، وحالة التفعيل"],
-  "/admin/messages": ["Messages", "متابعة الرسائل الواردة والصادرة عبر كل المنصات"],
-  "/admin/auto-replies": ["Auto Replies", "إدارة الردود التلقائية وقواعد التشغيل"],
-  "/admin/plans": ["Plans", "إدارة الباقات وربط الميزات"],
-  "/admin/features": ["Features", "إعداد ميزات وقنوات النظام"],
-  "/admin/settings": ["Settings", "إعدادات النظام العامة"],
-  "/client": ["Dashboard", "ملخص نشاط الردود والمحادثات"],
-  "/client/messages": ["Inbox", "إدارة المحادثات والرسائل من مكان واحد"],
-  "/client/leads": ["Leads", "أرقام وتفاصيل العملاء المهتمين"],
-  "/client/auto-replies": ["Auto Replies", "إعداد الردود التلقائية الخاصة بك"],
-  "/client/quick-replies": ["Quick Replies", "إدارة الأزرار والخيارات السريعة"],
-  "/client/integrations": ["Integrations", "ربط Telegram و Facebook وباقي القنوات"],
-  "/client/feature-settings": ["Feature Settings", "إعدادات كل ميزة مفعلة"],
-  "/client/team": ["Team", "إدارة فريق العمل والصلاحيات"],
-  "/client/settings": ["Settings", "رسائل الترحيب والإعدادات العامة"],
-  "/client/account": ["My Account", "بياناتك الشخصية وكلمة المرور"],
+  "/admin": ["نظرة عامة", "راقب أداء النظام والعملاء من مكان واحد"],
+  "/admin/clients": ["العملاء", "إدارة العملاء، الباقات، وحالة التفعيل"],
+  "/admin/messages": ["الرسائل", "متابعة الرسائل الواردة والصادرة عبر كل المنصات"],
+  "/admin/auto-replies": ["الردود التلقائية", "إدارة الردود التلقائية وقواعد التشغيل"],
+  "/admin/plans": ["الباقات", "إدارة الباقات وربط الميزات"],
+  "/admin/features": ["الميزات", "إعداد ميزات وقنوات النظام"],
+  "/admin/settings": ["الإعدادات", "إعدادات النظام العامة"],
+  "/client": ["نظرة عامة", "ملخص نشاط الردود والمحادثات"],
+  "/client/messages": ["المحادثات", "إدارة المحادثات والرسائل من مكان واحد"],
+  "/client/leads": ["العملاء المحتملون", "أرقام وتفاصيل العملاء المحتملين"],
+  "/client/auto-replies": ["الردود التلقائية", "إعداد الردود التلقائية الخاصة بك"],
+  "/client/quick-replies": ["الردود السريعة", "إدارة الأزرار والخيارات السريعة"],
+  "/client/integrations": ["التكاملات", "ربط Telegram و Facebook وباقي القنوات"],
+  "/client/feature-settings": ["إعدادات الميزات", "إعدادات كل ميزة مفعّلة"],
+  "/client/team": ["فريق العمل", "إدارة فريق العمل والصلاحيات"],
+  "/client/settings": ["الإعدادات", "رسائل الترحيب والإعدادات العامة"],
+  "/client/account": ["حسابي", "بياناتك الشخصية وكلمة المرور"],
 };
 
 function getPageMeta(pathname, panel) {
   if (pageTitles[pathname]) return pageTitles[pathname];
-  if (pathname.startsWith("/admin/client/")) return ["Client Settings", "إدارة إعدادات عميل محدد"];
-  if (pathname.startsWith("/admin/plan-features/")) return ["Plan Features", "تحديد ميزات الباقة"];
-  return panel === "admin" ? ["Admin Panel", "إدارة النظام"] : ["Client Panel", "لوحة تحكم العميل"];
+  if (pathname.startsWith("/admin/client/")) return ["إعدادات العميل", "إدارة إعدادات عميل محدد"];
+  if (pathname.startsWith("/admin/plan-features/")) return ["ميزات الباقة", "تحديد ميزات الباقة"];
+  return panel === "admin" ? ["بوابة الإدارة", "إدارة النظام"] : ["بوابة المشترك", "لوحة تحكم العميل"];
 }
 
 // Pages listed here get a viewport-bound height (instead of the default
@@ -168,7 +168,7 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
           <div className="flex min-h-20 items-center justify-between gap-4 px-5 py-4 md:px-8">
             <div>
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-indigo-600">
-                {isAdmin ? "Admin" : "Client"} Portal
+                {isAdmin ? "بوابة الإدارة" : "بوابة المشترك"}
               </p>
               <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{title}</h2>
               <p className="mt-1 text-sm text-slate-500">{subtitle}</p>

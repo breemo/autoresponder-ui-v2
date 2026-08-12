@@ -121,7 +121,7 @@ export default function ClientAccount() {
             <p className="mt-1 font-bold text-slate-900">{user?.name || "—"}</p>
           </div>
           <div>
-            <p className="text-slate-500">الإيميل</p>
+            <p className="text-slate-500">البريد الإلكتروني</p>
             <p className="mt-1 font-bold text-slate-900" dir="ltr">{user?.email || "—"}</p>
           </div>
           <div>
@@ -132,7 +132,7 @@ export default function ClientAccount() {
             <p className="text-slate-500">الحالة</p>
             <p className="mt-1">
               <span className={`rounded-full px-3 py-1 text-xs font-bold ${user?.is_active ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
-                {user?.is_active ? "نشط" : "موقوف"}
+                {user?.is_active ? "مفعّل" : "معطّل"}
               </span>
             </p>
           </div>

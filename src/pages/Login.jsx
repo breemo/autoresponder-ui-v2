@@ -82,10 +82,11 @@ const handleLogin = async (e) => {
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <form
         onSubmit={handleLogin}
+        dir="rtl"
         className="bg-white shadow-md rounded-lg px-8 py-6 w-96 border border-gray-100"
       >
         <h2 className="text-2xl font-bold mb-4 text-center text-blue-600">
-          Auto Responder Login
+          AutoResponder
         </h2>
 
         {message && (

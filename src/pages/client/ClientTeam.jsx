@@ -148,7 +148,7 @@ export default function ClientTeam() {
     const email = addForm.email.trim();
 
     if (!name || !email) {
-      setError("يرجى إدخال الاسم والإيميل");
+      setError("يرجى إدخال الاسم والبريد الإلكتروني");
       return;
     }
 
@@ -339,7 +339,7 @@ export default function ClientTeam() {
               <thead className="border-b border-slate-100 bg-slate-50/60 text-right text-xs font-bold uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3">الاسم</th>
-                  <th className="px-4 py-3">الإيميل</th>
+                  <th className="px-4 py-3">البريد الإلكتروني</th>
                   <th className="px-4 py-3">الدور</th>
                   <th className="px-4 py-3">الحالة</th>
                   <th className="px-4 py-3">تاريخ الإضافة</th>
@@ -375,7 +375,7 @@ export default function ClientTeam() {
                       </td>
                       <td className="px-4 py-3">
                         <span className={`rounded-full px-3 py-1 text-xs font-bold ${member.is_active ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
-                          {member.is_active ? "نشط" : "موقوف"}
+                          {member.is_active ? "مفعّل" : "معطّل"}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-500">{formatDate(member.created_at)}</td>
@@ -410,7 +410,7 @@ export default function ClientTeam() {
                           <button
                             onClick={() => handleRemove(member)}
                             disabled={busy || lastOwner}
-                            title={lastOwner ? "لا يمكن حذف آخر مالك نشط" : undefined}
+                            title={lastOwner ? "لا يمكن إزالة آخر مالك نشط" : undefined}
                             className="rounded-xl bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100 disabled:opacity-50"
                           >
                             إزالة
@@ -462,7 +462,7 @@ export default function ClientTeam() {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-bold">الإيميل</label>
+                <label className="mb-1 block text-sm font-bold">البريد الإلكتروني</label>
                 <input
                   type="email"
                   className={inputClass}

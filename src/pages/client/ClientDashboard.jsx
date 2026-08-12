@@ -26,11 +26,11 @@ import {
 import { PERMISSIONS, hasUserPermission } from "../../lib/permissions.js";
 
 const SOURCE_LABELS = {
-  ai: "AI",
+  ai: "الذكاء الاصطناعي",
   auto: "Auto",
   system: "System",
   quick_reply: "Quick",
-  human: "Human",
+  human: "موظف",
 };
 
 const SOURCE_COLORS = {
@@ -42,7 +42,7 @@ const SOURCE_COLORS = {
 };
 
 const SUBSCRIPTION_STATUS_LABELS = {
-  active: "نشط",
+  active: "مفعّل",
   trial: "تجريبي",
   cancelled: "ملغى",
   expired: "منتهي",
@@ -258,7 +258,7 @@ export default function ClientDashboard() {
       }
     } catch (err) {
       console.error(err);
-      setError("حدث خطأ أثناء تحميل بيانات الداشبورد");
+      setError("حدث خطأ أثناء تحميل بيانات النظرة العامة");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -384,8 +384,8 @@ export default function ClientDashboard() {
       {/* 1. Conversations */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard title="المحادثات المفتوحة" value={loading ? "..." : dashboard.openConversations} subtitle="تحتاج متابعة أو رد" icon={ChatBubbleLeftRightIcon} tone="violet" />
-        <StatCard title="بانتظار موظف" value={loading ? "..." : dashboard.waitingHuman} subtitle="تم تحويلها للرد البشري" icon={ClockIcon} tone="amber" />
-        <StatCard title="Leads Captured" value={loading ? "..." : leadsCount} subtitle="أرقام وبيانات تم التقاطها" icon={UserPlusIcon} tone="emerald" />
+        <StatCard title="بانتظار موظف" value={loading ? "..." : dashboard.waitingHuman} subtitle="تم تحويلها لموظف" icon={ClockIcon} tone="amber" />
+        <StatCard title="العملاء المحتملون" value={loading ? "..." : leadsCount} subtitle="أرقام وبيانات تم التقاطها" icon={UserPlusIcon} tone="emerald" />
         <StatCard title="القنوات المفعّلة" value={loading ? "..." : dashboard.connectedIntegrations} subtitle="منصات ربط نشطة" icon={UserGroupIcon} tone="blue" />
       </div>
 
@@ -396,7 +396,7 @@ export default function ClientDashboard() {
             subtitle="آخر النشاط عبر كل القنوات"
             action={
               <Link to="/client/messages" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50">
-                فتح Inbox
+                فتح المحادثات
               </Link>
             }
           >
@@ -447,7 +447,7 @@ export default function ClientDashboard() {
 
       {/* 5/6/7. Plan, Subscription, Usage */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <SectionCard title="الباقة الحالية" subtitle="Current Plan">
+        <SectionCard title="الباقة الحالية" subtitle={null}>
           {plan ? (
             <div>
               <p className="text-2xl font-black text-slate-950">{plan.name}</p>
@@ -463,7 +463,7 @@ export default function ClientDashboard() {
           )}
         </SectionCard>
 
-        <SectionCard title="تفاصيل الاشتراك" subtitle="Subscription Details">
+        <SectionCard title="تفاصيل الاشتراك" subtitle={null}>
           {subscription ? (
             <div className="space-y-3 text-sm">
               <div className="flex items-center justify-between">
@@ -498,11 +498,11 @@ export default function ClientDashboard() {
           )}
         </SectionCard>
 
-        <SectionCard title="الاستخدام" subtitle="Usage">
+        <SectionCard title="الاستخدام" subtitle={null}>
           {subscription && plan ? (
             <div className="space-y-4">
               <UsageBar label="الرسائل" used={subscription.messages_used} limit={plan.messages_limit} />
-              <UsageBar label="ردود AI" used={subscription.ai_replies_used} limit={plan.ai_replies_limit} />
+              <UsageBar label="ردود الذكاء الاصطناعي" used={subscription.ai_replies_used} limit={plan.ai_replies_limit} />
               <UsageBar label="ردود تلقائية" used={subscription.auto_replies_used} limit={plan.auto_replies_limit} />
             </div>
           ) : (
@@ -560,11 +560,11 @@ export default function ClientDashboard() {
                         <ChannelIcon channel={slug} size="h-10 w-10" />
                         <div>
                           <p className="text-sm font-black text-slate-900">{item.features?.name || slug}</p>
-                          <p className="text-xs font-semibold text-slate-400">{item.is_active ? "مفعّلة" : "موقوفة"}</p>
+                          <p className="text-xs font-semibold text-slate-400">{item.is_active ? "مفعّل" : "معطّل"}</p>
                         </div>
                       </div>
                       <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${item.is_active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                        {item.is_active ? "Active" : "Paused"}
+                        {item.is_active ? "مفعّل" : "معطّل"}
                       </span>
                     </div>
                   );
@@ -578,25 +578,25 @@ export default function ClientDashboard() {
               {hasUserPermission(user, PERMISSIONS.INBOX) && (
                 <Link to="/client/messages" className="rounded-2xl border border-slate-200 p-4 transition hover:border-violet-200 hover:bg-violet-50/40">
                   <InboxIcon className="mb-3 h-5 w-5 text-violet-700" />
-                  <p className="text-sm font-black text-slate-900">فتح Inbox</p>
+                  <p className="text-sm font-black text-slate-900">فتح المحادثات</p>
                 </Link>
               )}
               {hasUserPermission(user, PERMISSIONS.AUTO_REPLIES) && (
                 <Link to="/client/auto-replies" className="rounded-2xl border border-slate-200 p-4 transition hover:border-violet-200 hover:bg-violet-50/40">
                   <PlusIcon className="mb-3 h-5 w-5 text-violet-700" />
-                  <p className="text-sm font-black text-slate-900">Auto Reply</p>
+                  <p className="text-sm font-black text-slate-900">الردود التلقائية</p>
                 </Link>
               )}
               {hasUserPermission(user, PERMISSIONS.AUTO_REPLIES) && (
                 <Link to="/client/quick-replies" className="rounded-2xl border border-slate-200 p-4 transition hover:border-violet-200 hover:bg-violet-50/40">
                   <CheckCircleIcon className="mb-3 h-5 w-5 text-violet-700" />
-                  <p className="text-sm font-black text-slate-900">Quick Replies</p>
+                  <p className="text-sm font-black text-slate-900">الردود السريعة</p>
                 </Link>
               )}
               {hasUserPermission(user, PERMISSIONS.SETTINGS) && (
                 <Link to="/client/settings" className="rounded-2xl border border-slate-200 p-4 transition hover:border-violet-200 hover:bg-violet-50/40">
                   <Cog6ToothIcon className="mb-3 h-5 w-5 text-violet-700" />
-                  <p className="text-sm font-black text-slate-900">Settings</p>
+                  <p className="text-sm font-black text-slate-900">الإعدادات</p>
                 </Link>
               )}
             </div>

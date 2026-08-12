@@ -104,7 +104,7 @@ export default function ClientLeads() {
       }
     } catch (err) {
       console.error(err);
-      setError("فشل في جلب بيانات العملاء المهتمين");
+      setError("فشل في جلب بيانات العملاء المحتملين");
     } finally {
       setLoading(false);
     }
@@ -168,9 +168,9 @@ export default function ClientLeads() {
         <div>
           <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">
             <UserPlusIcon className="h-4 w-4" />
-            Leads Center
+            العملاء المحتملون
           </div>
-          <h1 className="text-2xl font-bold text-slate-950">أرقام التواصل للزبائن</h1>
+          <h1 className="text-2xl font-bold text-slate-950">العملاء المحتملون</h1>
           <p className="mt-1 text-sm text-slate-500">
             العملاء الذين تركوا بياناتهم من المحادثات، مع إمكانية البحث والنسخ السريع.
           </p>
@@ -196,7 +196,7 @@ export default function ClientLeads() {
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-slate-500">إجمالي Leads</p>
+              <p className="text-sm font-medium text-slate-500">إجمالي العملاء المحتملين</p>
               <p className="mt-3 text-3xl font-bold text-slate-950">{stats.total}</p>
             </div>
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100">
@@ -245,9 +245,9 @@ export default function ClientLeads() {
       <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-lg font-bold text-slate-950">قائمة العملاء المهتمين</h2>
+            <h2 className="text-lg font-bold text-slate-950">قائمة العملاء المحتملين</h2>
             <p className="text-sm text-slate-500">
-              ظاهر {filteredLeads.length} من أصل {leads.length} lead
+              ظاهر {filteredLeads.length} من أصل {leads.length} عميل محتمل
             </p>
           </div>
 
@@ -267,7 +267,7 @@ export default function ClientLeads() {
         ) : filteredLeads.length === 0 ? (
           <div className="p-10 text-center">
             <UserPlusIcon className="mx-auto mb-3 h-10 w-10 text-slate-300" />
-            <p className="font-semibold text-slate-700">لا يوجد Leads مطابقين للبحث</p>
+            <p className="font-semibold text-slate-700">لا يوجد عملاء محتملون مطابقون للبحث</p>
             <p className="mt-1 text-sm text-slate-400">جرّب تغيير كلمة البحث أو تحديث الصفحة.</p>
           </div>
         ) : (
@@ -363,7 +363,7 @@ export default function ClientLeads() {
 
             <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-100 px-5 py-4 sm:flex-row">
               <p className="text-xs font-semibold text-slate-500">
-                صفحة {safePage} من {totalPages} — {filteredLeads.length} lead إجمالاً
+                صفحة {safePage} من {totalPages} — {filteredLeads.length} عميل محتمل إجمالاً
               </p>
               <Pagination page={safePage} totalPages={totalPages} onPageChange={setPage} />
             </div>

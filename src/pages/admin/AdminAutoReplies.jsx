@@ -74,13 +74,13 @@ export default function AdminAutoReplies() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <div className={`${cardClass} p-5`}><p className="text-sm text-slate-500">إجمالي الردود</p><p className="mt-2 text-3xl font-black">{replies.length}</p></div>
         <div className={`${cardClass} p-5`}><p className="text-sm text-slate-500">مفعّلة</p><p className="mt-2 text-3xl font-black text-emerald-600">{activeCount}</p></div>
-        <div className={`${cardClass} p-5`}><p className="text-sm text-slate-500">معطلة</p><p className="mt-2 text-3xl font-black text-amber-600">{inactiveCount}</p></div>
+        <div className={`${cardClass} p-5`}><p className="text-sm text-slate-500">معطّلة</p><p className="mt-2 text-3xl font-black text-amber-600">{inactiveCount}</p></div>
         <div className={`${cardClass} p-5`}><p className="text-sm text-slate-500">عملاء لديهم ردود</p><p className="mt-2 text-3xl font-black text-indigo-600">{uniqueClients}</p></div>
       </div>
 
       <div className={`${cardClass} overflow-hidden`}>
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 p-4">
-          <input className={`${inputClass} min-w-[260px] flex-1`} placeholder="ابحث بالعميل، التريغر، أو نص الرد..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input className={`${inputClass} min-w-[260px] flex-1`} placeholder="ابحث بالعميل، الكلمة المفتاحية، أو نص الرد..." value={search} onChange={(e) => setSearch(e.target.value)} />
           <select className={`${inputClass} min-w-[220px]`} value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}>
             <option value="all">كل العملاء</option>
             {clients.map((c) => <option key={c.id} value={c.id}>{c.business_name} - {c.email}</option>)}
@@ -88,12 +88,12 @@ export default function AdminAutoReplies() {
           <select className={`${inputClass} min-w-[150px]`} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="all">كل الحالات</option>
             <option value="active">مفعّلة</option>
-            <option value="inactive">غير مفعّلة</option>
+            <option value="inactive">معطّلة</option>
           </select>
         </div>
 
         {loading ? (
-          <div className="p-8 text-center text-slate-500">جاري التحميل...</div>
+          <div className="p-8 text-center text-slate-500">جارِ التحميل...</div>
         ) : filteredReplies.length === 0 ? (
           <div className="p-10 text-center text-slate-400">لا توجد ردود مطابقة.</div>
         ) : (
@@ -102,7 +102,7 @@ export default function AdminAutoReplies() {
               <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="px-5 py-4 text-right">العميل</th>
-                  <th className="px-5 py-4 text-right">Trigger</th>
+                  <th className="px-5 py-4 text-right">الكلمة المفتاحية</th>
                   <th className="px-5 py-4 text-right">الرد</th>
                   <th className="px-5 py-4 text-right">الحالة</th>
                   <th className="px-5 py-4 text-right">التاريخ</th>

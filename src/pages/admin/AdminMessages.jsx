@@ -203,7 +203,7 @@ export default function AdminMessages() {
           threadMap.set(key, {
             key,
             client_id: msg.client_id || state?.client_id,
-            clientName: client.business_name || "Unknown client",
+            clientName: client.business_name || "عميل غير معروف",
             clientEmail: client.email || "",
             sender: leadName(lead) || customerId || "بدون مرسل",
             sender_id: customerId || "",
@@ -247,7 +247,7 @@ export default function AdminMessages() {
         threadMap.set(key, {
           key,
           client_id: state.client_id,
-          clientName: client.business_name || "Unknown client",
+          clientName: client.business_name || "عميل غير معروف",
           clientEmail: client.email || "",
           sender: leadName(lead) || state.sender_id || "بدون مرسل",
           sender_id: state.sender_id || "",
@@ -371,8 +371,8 @@ export default function AdminMessages() {
                     <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${channelStyle[conv.channel] || "border-slate-100 bg-slate-50 text-slate-500"}`}>{conv.channel}</span>
                     <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${statusStyles[conv.conversation_status] || "bg-slate-100 text-slate-600 border-slate-200"}`}>{conv.conversation_status}</span>
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">{conv.messages_count} رسائل</span>
-                    {conv.conversation_ids?.length > 1 && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-600">{conv.conversation_ids.length} sessions</span>}
-                    {conv.unread > 0 && <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[11px] font-bold text-white">{conv.unread} unread</span>}
+                    {conv.conversation_ids?.length > 1 && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-600">{conv.conversation_ids.length} جلسة</span>}
+                    {conv.unread > 0 && <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[11px] font-bold text-white">{conv.unread} غير مقروءة</span>}
                   </div>
                   {conv.conversation_ids?.[0] && <p className="mt-1 truncate font-mono text-[9px] text-slate-400">ID: {conv.conversation_ids[0]}</p>}
                 </div>
@@ -388,8 +388,8 @@ export default function AdminMessages() {
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-indigo-50 font-bold text-indigo-600">{initials(selectedConversation.sender || selectedConversation.clientName)}</div>
                   <div>
-                    <h2 className="font-bold text-slate-950">{selectedConversation.sender || selectedConversation.clientName || "Unknown"}</h2>
-                    <p className="text-sm text-slate-500">{selectedConversation.clientName} • {selectedConversation.clientEmail || "بدون بريد"}</p>
+                    <h2 className="font-bold text-slate-950">{selectedConversation.sender || selectedConversation.clientName || "غير معروف"}</h2>
+                    <p className="text-sm text-slate-500">{selectedConversation.clientName} • {selectedConversation.clientEmail || "بدون بريد إلكتروني"}</p>
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-2">
@@ -401,7 +401,7 @@ export default function AdminMessages() {
               {selectedConversation.lead && (
                 <div className="shrink-0 border-b border-slate-100 bg-slate-50/50 px-4 py-2">
                   <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                    <h3 className="text-sm font-bold text-slate-950">بيانات الـ Lead</h3>
+                    <h3 className="text-sm font-bold text-slate-950">بيانات العميل المحتمل</h3>
                     <div className="mt-1 grid grid-cols-1 gap-2 text-xs md:grid-cols-2">
                       <div><p className="text-xs text-slate-400">الاسم</p><p className="font-semibold text-slate-800">{leadName(selectedConversation.lead) || "—"}</p></div>
                       <div><p className="text-xs text-slate-400">رقم الهاتف</p><p className="font-semibold text-slate-800">{leadPhone(selectedConversation.lead) || "—"}</p></div>

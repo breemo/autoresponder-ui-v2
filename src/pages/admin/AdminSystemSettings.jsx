@@ -45,7 +45,7 @@ export default function AdminSystemSettings() {
     const trimmed = value.trim();
     if (!trimmed) {
       setIsError(true);
-      setMsg("يرجى إدخال Human Reply Webhook URL");
+      setMsg("يرجى إدخال رابط Webhook لرد الموظف");
       return;
     }
 
@@ -116,7 +116,7 @@ export default function AdminSystemSettings() {
       <form onSubmit={handleSubmit} className={`${cardClass} space-y-4 p-6`}>
         <div>
           <label className="mb-1 block text-sm font-bold">
-            Human Reply Webhook URL
+            رابط Webhook لرد الموظف
           </label>
 
           <input
@@ -129,8 +129,8 @@ export default function AdminSystemSettings() {
           />
 
           <p className="mt-1 text-xs text-slate-500">
-            رابط n8n Human Reply workflow المستخدم عند إرسال رد بشري من صندوق
-            الوارد الخاص بالعميل. رابط واحد مشترك بين جميع العملاء.
+            رابط n8n Human Reply workflow المستخدم عند إرسال رد الموظف من
+            المحادثات الخاصة بالعميل. رابط واحد مشترك بين جميع العملاء.
           </p>
         </div>
 

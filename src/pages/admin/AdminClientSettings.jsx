@@ -42,7 +42,7 @@ const FEATURE_META = {
     description: "ربط WhatsApp Cloud API لإدارة الرسائل والردود.",
   },
   ai_auto_reply: {
-    title: "AI Auto Reply",
+    title: "الذكاء الاصطناعي",
     accent: "violet",
     icon: SparklesIcon,
     description: "إعدادات الرد الذكي ونبرة الرد ومعلومات النشاط.",
@@ -59,10 +59,28 @@ const ACCENT_CLASSES = {
   slate: "bg-slate-100 text-slate-700 ring-slate-200",
 };
 
+// Display-only translation maps — same terminology used on the Client
+// Dashboard for the identical subscriptions.status / subscription_type
+// values, so admins and clients see the same Arabic labels for the same
+// data instead of a raw English enum on this page only.
+const STATUS_LABELS = {
+  active: "مفعّل",
+  trial: "تجريبي",
+  expired: "منتهي",
+  suspended: "موقوف",
+  cancelled: "ملغى",
+  upgraded: "تمت الترقية",
+};
+
+const SUBSCRIPTION_TYPE_LABELS = {
+  trial: "تجريبي",
+  paid: "مدفوع",
+};
+
 function getFeatureMeta(feature) {
   const slug = String(feature?.slug || "").toLowerCase();
   const fallback = {
-    title: feature?.name || slug || "Feature",
+    title: feature?.name || slug || "ميزة",
     accent: "slate",
     icon: Cog6ToothIcon,
     description: feature?.description || "إعدادات هذه الميزة للعميل.",
@@ -164,18 +182,18 @@ function getUsagePercent(used, limit) {
 function getUsageStatus(percent) {
   if (percent >= 100)
     return {
-      label: "Limit Reached",
+      label: "تم الوصول للحد الأقصى",
       color: "text-rose-600",
     };
 
   if (percent >= 80)
     return {
-      label: "Near Limit",
+      label: "قريب من الحد الأقصى",
       color: "text-amber-600",
     };
 
   return {
-    label: "Healthy",
+    label: "جيد",
     color: "text-emerald-600",
   };
 }
@@ -518,10 +536,7 @@ async function saveSubscription() {
   } catch (err) {
     console.error(err);
 
-    setMsg(
-      "❌ فشل إنشاء الاشتراك: " +
-      (err?.message || "Unknown Error")
-    );
+    setMsg("❌ فشل إنشاء الاشتراك. يرجى المحاولة مرة أخرى.");
   }
 
   setSavingSubscription(false);
@@ -708,7 +723,7 @@ function calculateEndDate(subscriptionType, duration) {
       }
     } catch (err) {
       console.error("Save Error:", err);
-      setMsg("❌ خطأ أثناء حفظ الإعدادات: " + (err?.message || "غير معروف"));
+      setMsg("❌ حدث خطأ أثناء حفظ الإعدادات. يرجى المحاولة مرة أخرى.");
     }
 
     setSaving(false);
@@ -752,7 +767,7 @@ function calculateEndDate(subscriptionType, duration) {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" dir="rtl">
       <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-100">
@@ -862,7 +877,7 @@ function calculateEndDate(subscriptionType, duration) {
                   </div>
                   <div className="rounded-2xl bg-slate-50 p-3">
                     <p className="text-xs text-slate-400">الحالة</p>
-                    <p className="mt-1 font-bold text-slate-800">{row?.is_active === false ? "معطلة" : "مفعلة"}</p>
+                    <p className="mt-1 font-bold text-slate-800">{row?.is_active === false ? "معطّلة" : "مفعّلة"}</p>
                   </div>
                   <div className="rounded-2xl bg-slate-50 p-3">
                     <p className="text-xs text-slate-400">Channel Key</p>
@@ -889,7 +904,7 @@ function calculateEndDate(subscriptionType, duration) {
 <div className="flex items-center justify-between">
   <div>
     <h3 className="text-xl font-bold text-slate-950">
-      Current Subscription
+      الاشتراك الحالي
     </h3>
 
     <p className="mt-1 text-sm text-slate-500">
@@ -906,7 +921,7 @@ function calculateEndDate(subscriptionType, duration) {
       onClick={renewSubscription}
       className="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
     >
-      Renew
+      تجديد
     </button>
 
     <button
@@ -914,7 +929,7 @@ function calculateEndDate(subscriptionType, duration) {
       onClick={cancelSubscription}
       className="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
     >
-      Cancel Subscription
+      إلغاء الاشتراك
     </button>
   </div>
 )}
@@ -928,7 +943,7 @@ function calculateEndDate(subscriptionType, duration) {
     <div className="mt-5 grid gap-4 md:grid-cols-3">
       <div className="rounded-2xl bg-slate-50 p-4">
         <div className="text-xs text-slate-500">
-          Plan
+          الباقة
         </div>
 
         <div className="mt-2 text-lg font-bold">
@@ -938,27 +953,27 @@ function calculateEndDate(subscriptionType, duration) {
 
       <div className="rounded-2xl bg-slate-50 p-4">
         <div className="text-xs text-slate-500">
-          Type
+          النوع
         </div>
 
         <div className="mt-2 text-lg font-bold">
-          {activeSubscription.subscription_type}
+          {SUBSCRIPTION_TYPE_LABELS[activeSubscription.subscription_type] || activeSubscription.subscription_type}
         </div>
       </div>
 
       <div className="rounded-2xl bg-slate-50 p-4">
         <div className="text-xs text-slate-500">
-          Status
+          الحالة
         </div>
 
         <div className="mt-2 text-lg font-bold text-emerald-600">
-          {activeSubscription.status}
+          {STATUS_LABELS[activeSubscription.status] || activeSubscription.status}
         </div>
       </div>
 
       <div className="rounded-2xl bg-slate-50 p-4">
         <div className="text-xs text-slate-500">
-          Start Date
+          تاريخ البدء
         </div>
 
         <div className="mt-2 font-semibold">
@@ -968,7 +983,7 @@ function calculateEndDate(subscriptionType, duration) {
 
       <div className="rounded-2xl bg-slate-50 p-4">
         <div className="text-xs text-slate-500">
-          End Date
+          تاريخ الانتهاء
         </div>
 
         <div className="mt-2 font-semibold">
@@ -978,13 +993,13 @@ function calculateEndDate(subscriptionType, duration) {
 
       <div className="rounded-2xl bg-slate-50 p-4">
         <div className="text-xs text-slate-500">
-          Remaining
+          المتبقي
         </div>
 
         <div className="mt-2 text-lg font-bold text-indigo-600">
           {getRemainingDays(
             activeSubscription.end_date
-          )} Days
+          )} يوم
         </div>
       </div>
     </div>
@@ -995,14 +1010,14 @@ function calculateEndDate(subscriptionType, duration) {
 {activeSubscription && (
   <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
     <h3 className="text-xl font-bold text-slate-950">
-      Remaining Usage
+      الاستخدام المتبقي
     </h3>
 
     <div className="mt-5 grid gap-4 md:grid-cols-3">
 
       <div className="rounded-2xl bg-slate-50 p-4">
         <div className="text-xs text-slate-500">
-          Messages Left
+          المتبقي من الرسائل
         </div>
 
         <div className="mt-2 text-2xl font-bold text-indigo-600">
@@ -1014,7 +1029,7 @@ function calculateEndDate(subscriptionType, duration) {
 
       <div className="rounded-2xl bg-slate-50 p-4">
         <div className="text-xs text-slate-500">
-          AI Replies Left
+          المتبقي من ردود الذكاء الاصطناعي
         </div>
 
         <div className="mt-2 text-2xl font-bold text-violet-600">
@@ -1026,7 +1041,7 @@ function calculateEndDate(subscriptionType, duration) {
 
       <div className="rounded-2xl bg-slate-50 p-4">
         <div className="text-xs text-slate-500">
-          Days Left
+          الأيام المتبقية
         </div>
 
         <div className="mt-2 text-2xl font-bold text-emerald-600">
@@ -1068,7 +1083,7 @@ function calculateEndDate(subscriptionType, duration) {
 
       <div className="flex items-center justify-between">
         <h3 className="text-xl font-bold">
-          Usage Statistics
+          إحصائيات الاستخدام
         </h3>
 
         <span className={`font-semibold ${status.color}`}>
@@ -1092,19 +1107,19 @@ function calculateEndDate(subscriptionType, duration) {
 
 		{aiLeft <= 0 && (
 		  <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
-			🚫 تم استهلاك كامل رصيد AI.
+			🚫 تم استهلاك كامل رصيد الذكاء الاصطناعي.
 		  </div>
 		)}
 
 		{aiLeft > 0 && aiPercent >= 80 && (
 		  <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-700">
-			⚠️ تم استهلاك أكثر من 80% من رصيد AI.
+			⚠️ تم استهلاك أكثر من 80% من رصيد الذكاء الاصطناعي.
 		  </div>
 		)}
 
         <div>
           <div className="mb-2 flex justify-between text-sm">
-            <span>Messages</span>
+            <span>الرسائل</span>
 
             <span>
               {activeSubscription.messages_used || 0}
@@ -1125,7 +1140,7 @@ function calculateEndDate(subscriptionType, duration) {
 
         <div>
           <div className="mb-2 flex justify-between text-sm">
-            <span>AI Replies</span>
+            <span>ردود الذكاء الاصطناعي</span>
 
             <span>
               {activeSubscription.ai_replies_used || 0}
@@ -1146,7 +1161,7 @@ function calculateEndDate(subscriptionType, duration) {
 
         <div>
           <div className="mb-2 flex justify-between text-sm">
-            <span>Auto Replies</span>
+            <span>الردود التلقائية</span>
 
             <span>
               {activeSubscription.auto_replies_used || 0}
@@ -1166,7 +1181,7 @@ function calculateEndDate(subscriptionType, duration) {
   <div className="mb-5 flex items-center justify-between">
     <div>
       <h3 className="text-xl font-bold text-slate-950">
-        Subscription History
+        سجل الاشتراكات
       </h3>
 
       <p className="mt-1 text-sm text-slate-500">
@@ -1181,7 +1196,7 @@ function calculateEndDate(subscriptionType, duration) {
     onClick={openSubscriptionDrawer}
     className="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
   >
-    + New Subscription
+    + اشتراك جديد
   </button>
 )}
 
@@ -1198,28 +1213,28 @@ function calculateEndDate(subscriptionType, duration) {
         <thead>
           <tr className="border-b border-slate-100 text-left">
             <th className="py-3 font-semibold text-slate-500">
-              Plan
+              الباقة
             </th>
 			<th className="py-3 font-semibold text-slate-500">
-			  Type
+			  النوع
 			</th>
             <th className="py-3 font-semibold text-slate-500">
-              Status
+              الحالة
             </th>
 			<th className="py-3 font-semibold text-slate-500">
-			  Current
+			  الحالي
 			</th>
             <th className="py-3 font-semibold text-slate-500">
-              Start Date
+              تاريخ البدء
             </th>
             <th className="py-3 font-semibold text-slate-500">
-              End Date
+              تاريخ الانتهاء
             </th>
 			<th className="py-3 font-semibold text-slate-500">
-			  Closed
+			  تاريخ الإغلاق
 			</th>
 			<th className="py-3 font-semibold text-slate-500">
-			  Created
+			  تاريخ الإنشاء
 			</th>
           </tr>
         </thead>
@@ -1240,20 +1255,20 @@ function calculateEndDate(subscriptionType, duration) {
 					  ? "bg-blue-50 text-blue-700"
 					  : "bg-violet-50 text-violet-700"
 				  }`}>
-					{sub.subscription_type}
+					{SUBSCRIPTION_TYPE_LABELS[sub.subscription_type] || sub.subscription_type}
 				  </span>
 				</td>
 
               <td className="py-4">
 				<span className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${getStatusClass(sub.status)}`}>
-				  {sub.status}
+				  {STATUS_LABELS[sub.status] || sub.status}
 				</span>
               </td>
 
 				<td className="py-4">
 				  {(sub.status === "active") ? (
 					<span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
-					  Current
+					  الحالي
 					</span>
 				  ) : (
 					"-"
@@ -1294,7 +1309,7 @@ function calculateEndDate(subscriptionType, duration) {
       <div className="border-b p-5">
         <div className="flex items-center justify-between">
           <h3 className="text-xl font-bold">
-            New Subscription
+            اشتراك جديد
           </h3>
 
           <button
@@ -1310,7 +1325,7 @@ function calculateEndDate(subscriptionType, duration) {
 
         <div>
           <label className="mb-2 block text-sm font-semibold">
-            Plan
+            الباقة
           </label>
 
           <select
@@ -1324,7 +1339,7 @@ function calculateEndDate(subscriptionType, duration) {
             className="w-full rounded-2xl border px-4 py-3"
           >
             <option value="">
-              Select Plan
+              اختر الباقة
             </option>
 
             {plansList.map((plan) => (
@@ -1340,7 +1355,7 @@ function calculateEndDate(subscriptionType, duration) {
 
 <div>
   <label className="mb-2 block text-sm font-semibold">
-    Subscription Type
+    نوع الاشتراك
   </label>
 
   <select
@@ -1354,11 +1369,11 @@ function calculateEndDate(subscriptionType, duration) {
     className="w-full rounded-2xl border px-4 py-3"
   >
     <option value="paid">
-      Paid
+      مدفوع
     </option>
 
     <option value="trial">
-      Trial
+      تجريبي
     </option>
   </select>
 </div>
@@ -1366,7 +1381,7 @@ function calculateEndDate(subscriptionType, duration) {
         {subscriptionForm.subscription_type === "paid" && (
           <div>
             <label className="mb-2 block text-sm font-semibold">
-              Duration
+              المدة
             </label>
 
             <select
@@ -1379,10 +1394,10 @@ function calculateEndDate(subscriptionType, duration) {
               }
               className="w-full rounded-2xl border px-4 py-3"
             >
-              <option value="1">1 Month</option>
-              <option value="3">3 Months</option>
-              <option value="6">6 Months</option>
-              <option value="12">12 Months</option>
+              <option value="1">شهر واحد</option>
+              <option value="3">3 أشهر</option>
+              <option value="6">6 أشهر</option>
+              <option value="12">12 شهر</option>
             </select>
           </div>
         )}
@@ -1394,8 +1409,8 @@ function calculateEndDate(subscriptionType, duration) {
 		  className="w-full rounded-2xl bg-indigo-600 py-3 font-semibold text-white disabled:opacity-50"
 		>
 		  {savingSubscription
-			? "Saving..."
-			: "Save Subscription"}
+				? "جارٍ الحفظ..."
+				: "حفظ الاشتراك"}
 		</button>
 
       </div>

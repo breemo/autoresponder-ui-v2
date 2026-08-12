@@ -51,7 +51,7 @@ export default function AdminPlans() {
 
   const handleSubmit = async (e) => {
     e?.preventDefault?.(); setMsg("");
-    if (!form.name.trim()) return setMsg("يرجى إدخال اسم الخطة");
+    if (!form.name.trim()) return setMsg("يرجى إدخال اسم الباقة");
     const priceNumber = form.price === "" ? 0 : Number.isNaN(Number(form.price)) ? 0 : Number(form.price);
     
 	const payload = {
@@ -80,9 +80,9 @@ export default function AdminPlans() {
     try {
       const { error } = editingId ? await supabase.from("plans").update(payload).eq("id", editingId) : await supabase.from("plans").insert([payload]);
       if (error) throw error;
-      setMsg(editingId ? "تم تحديث الخطة بنجاح" : "تم إضافة الخطة بنجاح");
+      setMsg(editingId ? "تم تحديث الباقة بنجاح" : "تم إضافة الباقة بنجاح");
       setDrawerOpen(false); resetForm(); fetchPlans();
-    } catch (err) { console.error(err); setMsg("حدث خطأ أثناء حفظ الخطة"); }
+    } catch (err) { console.error(err); setMsg("حدث خطأ أثناء حفظ الباقة"); }
   };
   const startEdit = (plan) => { 
   
@@ -98,7 +98,7 @@ export default function AdminPlans() {
 	}); 
   
   setEditingId(plan.id); setDrawerOpen(true); setMsg(""); };
-  const deletePlan = async (id) => { if (!window.confirm("هل أنت متأكد من حذف هذه الخطة؟")) return; const { error } = await supabase.from("plans").delete().eq("id", id); if (error) setMsg("فشل في حذف الخطة"); else { setMsg("تم حذف الخطة بنجاح"); fetchPlans(); } };
+  const deletePlan = async (id) => { if (!window.confirm("هل أنت متأكد من حذف هذه الباقة؟")) return; const { error } = await supabase.from("plans").delete().eq("id", id); if (error) setMsg("فشل في حذف الباقة"); else { setMsg("تم حذف الباقة بنجاح"); fetchPlans(); } };
 
   const totalMessages = plans.reduce((sum, p) => sum + Number(p.messages_limit || 0), 0);
 
@@ -120,7 +120,7 @@ export default function AdminPlans() {
 	  </div>
 	  
 	  <div className="flex justify-between">
-		  <span className="text-slate-500">حد ردود AI</span>
+		  <span className="text-slate-500">حد ردود الذكاء الاصطناعي</span>
 		  <b>{p.ai_replies_limit ?? "—"}</b>
 		</div>
 
@@ -147,7 +147,7 @@ export default function AdminPlans() {
 	  
 	  
 	  
-      {drawerOpen && <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/40" onClick={() => setDrawerOpen(false)}><form onSubmit={handleSubmit} className="h-full w-full max-w-xl overflow-y-auto bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}><div className="mb-6 flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.25em] text-indigo-600">PLAN</p><h3 className="mt-1 text-2xl font-black text-slate-950">{editingId ? "تعديل باقة" : "إضافة باقة"}</h3></div><button type="button" onClick={() => setDrawerOpen(false)} className="rounded-xl border px-3 py-2 text-sm">إغلاق</button></div><div className="space-y-4"><div><label className="mb-1 block text-sm font-bold">اسم الخطة</label><input className={inputClass} name="name" value={form.name} onChange={handleChange} /></div><div className="grid grid-cols-2 gap-3"><div><label className="mb-1 block text-sm font-bold">السعر</label><input type="number" step="0.01" className={inputClass} name="price" value={form.price} onChange={handleChange} /></div><div><label className="mb-1 block text-sm font-bold">حد الرسائل</label><input type="number" className={inputClass} name="messages_limit" value={form.messages_limit} onChange={handleChange} /></div></div><div><label className="mb-1 block text-sm font-bold">الوصف</label><textarea className={`${inputClass} min-h-[100px]`} name="description" value={form.description} onChange={handleChange} /></div>
+      {drawerOpen && <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/40" onClick={() => setDrawerOpen(false)}><form onSubmit={handleSubmit} className="h-full w-full max-w-xl overflow-y-auto bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}><div className="mb-6 flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.25em] text-indigo-600">PLAN</p><h3 className="mt-1 text-2xl font-black text-slate-950">{editingId ? "تعديل باقة" : "إضافة باقة"}</h3></div><button type="button" onClick={() => setDrawerOpen(false)} className="rounded-xl border px-3 py-2 text-sm">إغلاق</button></div><div className="space-y-4"><div><label className="mb-1 block text-sm font-bold">اسم الباقة</label><input className={inputClass} name="name" value={form.name} onChange={handleChange} /></div><div className="grid grid-cols-2 gap-3"><div><label className="mb-1 block text-sm font-bold">السعر</label><input type="number" step="0.01" className={inputClass} name="price" value={form.price} onChange={handleChange} /></div><div><label className="mb-1 block text-sm font-bold">حد الرسائل</label><input type="number" className={inputClass} name="messages_limit" value={form.messages_limit} onChange={handleChange} /></div></div><div><label className="mb-1 block text-sm font-bold">الوصف</label><textarea className={`${inputClass} min-h-[100px]`} name="description" value={form.description} onChange={handleChange} /></div>
 	  
 	  <div className="grid grid-cols-3 gap-3">
 	  <div>
@@ -157,7 +157,7 @@ export default function AdminPlans() {
 	  
 		<div>
 		  <label className="mb-1 block text-sm font-bold">
-			حد ردود AI
+			حد ردود الذكاء الاصطناعي
 		  </label>
 		  <input
 			type="number"
@@ -174,7 +174,7 @@ export default function AdminPlans() {
 	  </div>
 	  </div>
 	  
-	  <label className="flex items-center gap-3 rounded-2xl border border-slate-200 p-4 text-sm font-bold"><input type="checkbox" checked={form.allow_self_edit} onChange={(e) => setForm((prev) => ({ ...prev, allow_self_edit: e.target.checked }))} /> السماح للعميل بتعديل إعدادات الميزات</label><button type="submit" className="h-12 w-full rounded-2xl bg-indigo-600 font-bold text-white shadow-lg shadow-indigo-200">{editingId ? "تحديث الخطة" : "إضافة خطة"}</button></div></form></div>}
+	  <label className="flex items-center gap-3 rounded-2xl border border-slate-200 p-4 text-sm font-bold"><input type="checkbox" checked={form.allow_self_edit} onChange={(e) => setForm((prev) => ({ ...prev, allow_self_edit: e.target.checked }))} /> السماح للعميل بتعديل إعدادات الميزات</label><button type="submit" className="h-12 w-full rounded-2xl bg-indigo-600 font-bold text-white shadow-lg shadow-indigo-200">{editingId ? "تحديث الباقة" : "إضافة باقة"}</button></div></form></div>}
     </div>
   );
 }

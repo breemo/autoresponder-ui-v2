@@ -52,7 +52,7 @@ export default function ClientAutoReplies() {
   function startEdit(r) { setForm({ id: r.id, trigger_text: r.trigger_text || "", reply_text: r.reply_text || "", is_active: r.is_active }); setDrawerOpen(true); }
 
   async function saveReply() {
-    if (!form.trigger_text.trim() || !form.reply_text.trim()) return setError("نص التريغر ونص الرد مطلوبان");
+    if (!form.trigger_text.trim() || !form.reply_text.trim()) return setError("الكلمة المفتاحية ونص الرد مطلوبان");
     if (!form.id && autoLimit > 0 && replies.length >= autoLimit) return setError("لقد وصلت للحد الأقصى للردود التلقائية المتاحة في خطتك");
     try {
       setSaving(true); setError("");
@@ -95,7 +95,7 @@ export default function ClientAutoReplies() {
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.35em] text-indigo-600">AUTO REPLIES</p>
           <h2 className="mt-1 text-2xl font-black text-slate-950">الردود التلقائية</h2>
-          <p className="mt-1 text-sm text-slate-500">عرّف كلمات trigger وردود جاهزة تظهر تلقائياً للزبائن.</p>
+          <p className="mt-1 text-sm text-slate-500">عرّف الكلمات المفتاحية وردود جاهزة تظهر تلقائياً للزبائن.</p>
         </div>
         <button onClick={openCreate} className="h-11 rounded-2xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700">+ إضافة رد</button>
       </div>
@@ -110,13 +110,13 @@ export default function ClientAutoReplies() {
 
       <div className={`${cardClass} overflow-hidden`}>
         <div className="flex items-center gap-3 border-b border-slate-100 p-4">
-          <input className={`${inputClass} max-w-xl`} placeholder="ابحث في التريغر أو الرد..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input className={`${inputClass} max-w-xl`} placeholder="ابحث في الكلمة المفتاحية أو الرد..." value={search} onChange={(e) => setSearch(e.target.value)} />
           <button onClick={loadData} className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50">↻ تحديث</button>
         </div>
-        {loading ? <div className="p-10 text-center text-slate-500">جاري التحميل...</div> : filtered.length === 0 ? <div className="p-10 text-center text-slate-400">لا توجد ردود بعد.</div> : (
+        {loading ? <div className="p-10 text-center text-slate-500">جارِ التحميل...</div> : filtered.length === 0 ? <div className="p-10 text-center text-slate-400">لا توجد ردود بعد.</div> : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[780px] text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-4 text-right">Trigger</th><th className="px-5 py-4 text-right">نص الرد</th><th className="px-5 py-4 text-right">الحالة</th><th className="px-5 py-4 text-right">إجراءات</th></tr></thead>
+              <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-4 text-right">الكلمة المفتاحية</th><th className="px-5 py-4 text-right">نص الرد</th><th className="px-5 py-4 text-right">الحالة</th><th className="px-5 py-4 text-right">إجراءات</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {filtered.map((r) => <tr key={r.id} className="hover:bg-slate-50/70"><td className="px-5 py-4"><span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">{r.trigger_text}</span></td><td className="max-w-xl px-5 py-4 text-slate-600"><p className="line-clamp-2">{r.reply_text}</p></td><td className="px-5 py-4"><button onClick={() => toggleActive(r)}><StatusBadge active={r.is_active} /></button></td><td className="px-5 py-4"><div className="flex gap-2"><button onClick={() => startEdit(r)} className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">تعديل</button><button onClick={() => deleteReply(r.id)} className="rounded-xl bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100">حذف</button></div></td></tr>)}
               </tbody>
@@ -125,7 +125,7 @@ export default function ClientAutoReplies() {
         )}
       </div>
 
-      {drawerOpen && <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/40" onClick={() => setDrawerOpen(false)}><div className="h-full w-full max-w-xl overflow-y-auto bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}><div className="mb-6 flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.25em] text-indigo-600">AUTO REPLY</p><h3 className="mt-1 text-2xl font-black text-slate-950">{form.id ? "تعديل رد" : "إضافة رد جديد"}</h3></div><button onClick={() => setDrawerOpen(false)} className="rounded-xl border px-3 py-2 text-sm">إغلاق</button></div><div className="space-y-4"><div><label className="mb-1 block text-sm font-bold text-slate-700">نص التريغر</label><input className={inputClass} value={form.trigger_text} onChange={(e) => setForm((f) => ({ ...f, trigger_text: e.target.value }))} placeholder="مثال: السعر" /></div><div><label className="mb-1 block text-sm font-bold text-slate-700">نص الرد</label><textarea className={`${inputClass} min-h-[170px]`} value={form.reply_text} onChange={(e) => setForm((f) => ({ ...f, reply_text: e.target.value }))} placeholder="اكتب الرد الذي سيرسله النظام..." /></div><div><label className="mb-1 block text-sm font-bold text-slate-700">الحالة</label><select className={inputClass} value={form.is_active ? "1" : "0"} onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.value === "1" }))}><option value="1">مفعّل</option><option value="0">معطّل</option></select></div><button onClick={saveReply} disabled={saving} className="h-12 w-full rounded-2xl bg-indigo-600 font-bold text-white shadow-lg shadow-indigo-200 disabled:opacity-60">{saving ? "جارٍ الحفظ..." : form.id ? "حفظ التعديلات" : "إضافة الرد"}</button></div></div></div>}
+      {drawerOpen && <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/40" onClick={() => setDrawerOpen(false)}><div className="h-full w-full max-w-xl overflow-y-auto bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}><div className="mb-6 flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.25em] text-indigo-600">AUTO REPLY</p><h3 className="mt-1 text-2xl font-black text-slate-950">{form.id ? "تعديل رد" : "إضافة رد جديد"}</h3></div><button onClick={() => setDrawerOpen(false)} className="rounded-xl border px-3 py-2 text-sm">إغلاق</button></div><div className="space-y-4"><div><label className="mb-1 block text-sm font-bold text-slate-700">الكلمة المفتاحية</label><input className={inputClass} value={form.trigger_text} onChange={(e) => setForm((f) => ({ ...f, trigger_text: e.target.value }))} placeholder="مثال: السعر" /></div><div><label className="mb-1 block text-sm font-bold text-slate-700">نص الرد</label><textarea className={`${inputClass} min-h-[170px]`} value={form.reply_text} onChange={(e) => setForm((f) => ({ ...f, reply_text: e.target.value }))} placeholder="اكتب الرد الذي سيرسله النظام..." /></div><div><label className="mb-1 block text-sm font-bold text-slate-700">الحالة</label><select className={inputClass} value={form.is_active ? "1" : "0"} onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.value === "1" }))}><option value="1">مفعّل</option><option value="0">معطّل</option></select></div><button onClick={saveReply} disabled={saving} className="h-12 w-full rounded-2xl bg-indigo-600 font-bold text-white shadow-lg shadow-indigo-200 disabled:opacity-60">{saving ? "جارٍ الحفظ..." : form.id ? "حفظ التعديلات" : "إضافة الرد"}</button></div></div></div>}
     </div>
   );
 }

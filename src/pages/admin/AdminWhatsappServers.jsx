@@ -184,7 +184,7 @@ export default function AdminWhatsappServers() {
           </p>
 
           <h2 className="mt-1 text-2xl font-black text-slate-950">
-            WhatsApp Connection Servers
+            سيرفرات WhatsApp
           </h2>
 
           <p className="mt-1 text-sm text-slate-500">
@@ -196,7 +196,7 @@ export default function AdminWhatsappServers() {
           onClick={openCreate}
           className="h-11 rounded-2xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700"
         >
-          + Add Server
+          + إضافة سيرفر
         </button>
       </div>
 
@@ -254,37 +254,37 @@ export default function AdminWhatsappServers() {
                         : "bg-red-100 text-red-700"
                     }`}
                   >
-                    {server.is_active ? "Active" : "Disabled"}
+                    {server.is_active ? "مفعّل" : "معطّل"}
                   </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <p className="text-slate-500">Priority</p>
+                    <p className="text-slate-500">الأولوية</p>
                     <p className="font-black">{server.priority}</p>
                   </div>
 
                   <div>
-                    <p className="text-slate-500">Max Instances</p>
+                    <p className="text-slate-500">الحد الأقصى للأرقام</p>
                     <p className="font-black">
                       {server.max_instances ?? server.max_clients ?? "-"}
                     </p>
                   </div>
 
                   <div>
-                    <p className="text-slate-500">Integration</p>
+                    <p className="text-slate-500">نوع الربط</p>
                     <p className="font-black">{server.integration || defaultIntegration}</p>
                   </div>
 
                   <div>
-                    <p className="text-slate-500">Gateway Webhook</p>
+                    <p className="text-slate-500">Webhook الاتصال</p>
                     <p className="truncate font-bold" dir="ltr">
                       {server.gateway_webhook_url || "-"}
                     </p>
                   </div>
 
                   <div>
-                    <p className="text-slate-500">Events Webhook</p>
+                    <p className="text-slate-500">Webhook الأحداث</p>
                     <p className="truncate font-bold" dir="ltr">
                       {server.events_webhook_url || server.webhook_url || "-"}
                     </p>
@@ -380,7 +380,7 @@ export default function AdminWhatsappServers() {
 
               <div>
                 <label className="mb-1 block text-sm font-bold">
-                  Gateway Webhook URL
+                  رابط Webhook الاتصال
                 </label>
 
                 <input
@@ -400,7 +400,7 @@ export default function AdminWhatsappServers() {
 
               <div>
                 <label className="mb-1 block text-sm font-bold">
-                  Events Webhook URL
+                  رابط Webhook الأحداث
                 </label>
 
                 <input
@@ -419,7 +419,7 @@ export default function AdminWhatsappServers() {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-bold">Integration</label>
+                <label className="mb-1 block text-sm font-bold">نوع الربط</label>
 
                 <select
                   className={inputClass}
@@ -444,7 +444,7 @@ export default function AdminWhatsappServers() {
 
                 <div>
                   <label className="mb-1 block text-sm font-bold">
-                    Max Instances
+                    الحد الأقصى للأرقام
                   </label>
 
                   <input
@@ -463,7 +463,7 @@ export default function AdminWhatsappServers() {
                   onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
                 />
 
-                <span className="font-bold">السيرفر فعال</span>
+                <span className="font-bold">السيرفر مفعّل</span>
               </label>
 
               <button

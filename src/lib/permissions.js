@@ -27,8 +27,8 @@ export const PERMISSIONS = {
 };
 
 export const PERMISSION_LABELS = {
-  [PERMISSIONS.DASHBOARD]: "لوحة التحكم",
-  [PERMISSIONS.INBOX]: "صندوق الوارد",
+  [PERMISSIONS.DASHBOARD]: "نظرة عامة",
+  [PERMISSIONS.INBOX]: "المحادثات",
   [PERMISSIONS.LEADS]: "العملاء المحتملون",
   [PERMISSIONS.AUTO_REPLIES]: "الردود التلقائية",
   [PERMISSIONS.INTEGRATIONS]: "التكاملات",

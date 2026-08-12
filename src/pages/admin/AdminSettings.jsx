@@ -24,7 +24,7 @@ export default function AdminSettings() {
       link: "/admin/settings/system",
     },
     {
-      title: "WhatsApp Connection Servers",
+      title: "إعدادات سيرفرات WhatsApp",
       desc: "إدارة سيرفرات Evolution API وتوزيع العملاء عليها",
       icon: "💬",
       link: "/admin/settings/whatsapp-servers",

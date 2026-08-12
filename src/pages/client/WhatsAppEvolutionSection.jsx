@@ -34,7 +34,7 @@ function statusMeta(status) {
 
   if (normalized === "connected") {
     return {
-      label: "Connected",
+      label: "متصل",
       dot: "bg-emerald-500",
       badge: "bg-emerald-50 text-emerald-700 border-emerald-100",
     };
@@ -42,7 +42,7 @@ function statusMeta(status) {
 
   if (normalized === "pending") {
     return {
-      label: "Waiting QR",
+      label: "بانتظار QR",
       dot: "bg-amber-500",
       badge: "bg-amber-50 text-amber-700 border-amber-100",
     };
@@ -50,14 +50,14 @@ function statusMeta(status) {
 
   if (normalized === "error") {
     return {
-      label: "Error",
+      label: "خطأ",
       dot: "bg-rose-500",
       badge: "bg-rose-50 text-rose-700 border-rose-100",
     };
   }
 
   return {
-    label: "Not Connected",
+    label: "غير متصل",
     dot: "bg-slate-400",
     badge: "bg-slate-50 text-slate-600 border-slate-100",
   };
@@ -493,7 +493,7 @@ async function deleteNumber(item) {
 
   function getServerName(serverId) {
     const server = servers.find((item) => item.id === serverId);
-    return server?.name || "Auto assigned";
+    return server?.name || "يُحدد تلقائياً";
   }
 
   return (
@@ -504,7 +504,7 @@ async function deleteNumber(item) {
             <QrCodeIcon className="h-4 w-4" />
             WhatsApp Evolution
           </div>
-          <h3 className="mt-3 text-lg font-bold text-slate-950">WhatsApp Numbers</h3>
+          <h3 className="mt-3 text-lg font-bold text-slate-950">أرقام WhatsApp</h3>
           <p className="mt-1 text-sm text-slate-500">
             أضف أكثر من رقم واتساب حسب حدود خطتك، وسيتم اختيار السيرفر تلقائياً.
           </p>
@@ -518,7 +518,7 @@ async function deleteNumber(item) {
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <ArrowPathIcon className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "Syncing..." : "Refresh"}
+            {syncing ? "جارٍ المزامنة..." : "تحديث"}
           </button>
 
           <button
@@ -529,7 +529,7 @@ async function deleteNumber(item) {
             className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <PlusIcon className="h-4 w-4" />
-            Add Number
+            إضافة رقم
           </button>
         </div>
       </div>
@@ -554,15 +554,15 @@ async function deleteNumber(item) {
 
       <div className="mt-4 grid gap-3 md:grid-cols-3">
         <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-          <p className="text-xs text-slate-500">Total numbers</p>
+          <p className="text-xs text-slate-500">إجمالي الأرقام</p>
           <p className="mt-1 text-2xl font-bold text-slate-950">{summary.total}</p>
         </div>
         <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-          <p className="text-xs text-slate-500">Connected</p>
+          <p className="text-xs text-slate-500">متصلة</p>
           <p className="mt-1 text-2xl font-bold text-emerald-600">{summary.connected}</p>
         </div>
         <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-          <p className="text-xs text-slate-500">Waiting QR</p>
+          <p className="text-xs text-slate-500">بانتظار QR</p>
           <p className="mt-1 text-2xl font-bold text-amber-600">{summary.pending}</p>
         </div>
       </div>
@@ -577,7 +577,7 @@ async function deleteNumber(item) {
             <QrCodeIcon className="h-6 w-6" />
           </div>
           <h4 className="mt-3 text-base font-bold text-slate-950">لا يوجد أرقام واتساب بعد</h4>
-          <p className="mt-1 text-sm text-slate-500">اضغط Add Number لإضافة أول رقم.</p>
+          <p className="mt-1 text-sm text-slate-500">اضغط إضافة رقم لإضافة أول رقم.</p>
         </div>
       ) : (
         <div className="mt-4 grid gap-3">
@@ -591,14 +591,14 @@ async function deleteNumber(item) {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <h4 className="truncate text-base font-bold text-slate-950">
-                        {item.display_name || item.instance_name || "WhatsApp Number"}
+                        {item.display_name || item.instance_name || "رقم WhatsApp"}
                       </h4>
                       <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${meta.badge}`}>
                         {meta.label}
                       </span>
                     </div>
                     <p className="mt-1 text-sm text-slate-500" dir="ltr">
-                      {item.phone || "Phone number will appear after scanning QR"}
+                      {item.phone || "سيظهر رقم الهاتف بعد مسح رمز QR"}
                     </p>
                     <p className="mt-1 truncate text-xs text-slate-400" dir="ltr" title={item.instance_name || ""}>
                       {item.instance_name || "-"}
@@ -614,7 +614,7 @@ async function deleteNumber(item) {
                         title={!subscriptionActive ? "اشتراكك غير نشط — لا يمكن ربط الأرقام حتى تجديد الاشتراك" : undefined}
                         className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {connectingId === item.id ? "Connecting..." : "Connect"}
+                        {connectingId === item.id ? "جارٍ الربط..." : "ربط"}
                       </button>
                     )}
                     <button
@@ -623,7 +623,7 @@ async function deleteNumber(item) {
                       className="inline-flex items-center gap-1 rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-100"
                     >
                       <TrashIcon className="h-4 w-4" />
-                      Delete
+                      حذف
                     </button>
                   </div>
                 </div>
@@ -631,35 +631,35 @@ async function deleteNumber(item) {
                 <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_380px]">
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                      <p className="text-xs text-slate-500">Phone Number</p>
+                      <p className="text-xs text-slate-500">رقم الهاتف</p>
                       <p className="mt-1 truncate text-sm font-bold text-slate-900" dir="ltr" title={item.phone || ""}>
-                        {item.phone || "Not connected yet"}
+                        {item.phone || "غير متصل بعد"}
                       </p>
                     </div>
 
                     <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                      <p className="text-xs text-slate-500">Server</p>
+                      <p className="text-xs text-slate-500">السيرفر</p>
                       <p className="mt-1 truncate text-sm font-bold text-slate-900">
                         {getServerName(item.server_id)}
                       </p>
                     </div>
 
                     <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                      <p className="text-xs text-slate-500">Status</p>
+                      <p className="text-xs text-slate-500">الحالة</p>
                       <p className="mt-1 text-sm font-bold text-slate-900">
                         {item.status || item.connection_status || "-"}
                       </p>
                     </div>
 
                     <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                      <p className="text-xs text-slate-500">Instance Name</p>
+                      <p className="text-xs text-slate-500">اسم Instance</p>
                       <p className="mt-1 truncate text-xs font-semibold text-slate-700" dir="ltr" title={item.instance_name || ""}>
                         {item.instance_name || "-"}
                       </p>
                     </div>
 
                     <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                      <p className="text-xs text-slate-500">Instance ID</p>
+                      <p className="text-xs text-slate-500">معرّف Instance</p>
                       <p className="mt-1 truncate text-xs font-semibold text-slate-700" dir="ltr" title={item.instance_id || ""}>
                         {item.instance_id || "-"}
                       </p>
@@ -673,7 +673,7 @@ async function deleteNumber(item) {
                     </div>
 
                     <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                      <p className="text-xs text-slate-500">Created At</p>
+                      <p className="text-xs text-slate-500">تاريخ الإنشاء</p>
                       <p className="mt-1 text-xs font-semibold text-slate-700">
                         {formatDate(item.created_at)}
                       </p>
@@ -695,22 +695,22 @@ async function deleteNumber(item) {
                                 />
                               ) : (
                                 <span className="text-xs font-semibold text-slate-400">
-                                  QR will appear here
+                                  سيظهر رمز QR هنا
                                 </span>
                               )}
                             </div>
-                            <p className="mt-2 text-xs text-slate-500">Waiting for QR scan</p>
+                            <p className="mt-2 text-xs text-slate-500">بانتظار مسح رمز QR</p>
                           </>
                         ) : normalizedStatus === "connected" ? (
                       <div className="grid min-h-[360px] place-items-center rounded-xl bg-emerald-50 text-emerald-700">
                         <div>
                           <CheckCircleIcon className="mx-auto h-8 w-8" />
-                          <p className="mt-2 text-xs font-bold">Connected</p>
+                          <p className="mt-2 text-xs font-bold">متصل</p>
                         </div>
                       </div>
                     ) : (
                       <div className="flex min-h-[360px] items-center justify-center rounded-xl bg-white text-xs font-semibold text-slate-400">
-                        No QR yet
+                        لا يوجد QR بعد
                       </div>
                     )}
                   </div>
@@ -731,7 +731,7 @@ async function deleteNumber(item) {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.25em] text-emerald-600">WhatsApp</p>
-                <h3 className="mt-1 text-2xl font-bold text-slate-950">Add Number</h3>
+                <h3 className="mt-1 text-2xl font-bold text-slate-950">إضافة رقم</h3>
                 <p className="mt-1 text-sm text-slate-500">أدخل اسم الرقم، وسيتم اختيار السيرفر وإنشاء الـ Instance تلقائياً.</p>
               </div>
               <button
@@ -745,17 +745,17 @@ async function deleteNumber(item) {
 
             <div className="mt-6 space-y-4">
               <label className="block">
-                <span className="mb-1.5 block text-xs font-bold text-slate-600">Number Name</span>
+                <span className="mb-1.5 block text-xs font-bold text-slate-600">اسم الرقم</span>
                 <input
                   className={inputClass}
                   value={form.instance_name}
                   onChange={(event) => setForm((prev) => ({ ...prev, instance_name: event.target.value }))}
-                  placeholder="Reception / Sales / Support"
+                  placeholder="استقبال / مبيعات / دعم"
                 />
               </label>
 
               <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-xs leading-6 text-emerald-800">
-                السيرفر، API Key، Webhook، Channel Key، والـ QR سيتم إدارتها تلقائياً من Jawab AI.
+                السيرفر، API Key، Webhook، Channel Key، والـ QR سيتم إدارتها تلقائياً من AutoResponder.
                 وضع الرد الحالي للتكامل هو: <strong>{integrationReplyMode}</strong>.
               </div>
 
@@ -764,7 +764,7 @@ async function deleteNumber(item) {
                 disabled={creating}
                 className="h-12 w-full rounded-2xl bg-emerald-600 text-sm font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60"
               >
-                {creating ? "Creating..." : "Create Number"}
+                {creating ? "جارٍ الإنشاء..." : "إنشاء الرقم"}
               </button>
             </div>
           </form>

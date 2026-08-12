@@ -111,30 +111,30 @@ export default function AdminDashboard() {
   const activeIntegrations = stats.integrations.filter((i) => i.is_active !== false).slice(0, 4);
 
   return (
-    <div className="space-y-5" dir="ltr">
+    <div className="space-y-5" dir="rtl">
       <div className="flex items-center justify-end">
-        <button onClick={fetchStats} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50">↻ Refresh</button>
+        <button onClick={fetchStats} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50">↻ تحديث</button>
       </div>
 
       {error && <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>}
 
-      {loading ? <EmptyBox>جارِ تحميل بيانات الداشبورد...</EmptyBox> : (
+      {loading ? <EmptyBox>جارِ تحميل بيانات النظرة العامة...</EmptyBox> : (
         <>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <StatCard title="Total Messages" value={stats.messages.length.toLocaleString()} subtitle="All system messages" icon="▱" trend="+12.5%" />
-            <StatCard title="Auto Replies Sent" value={stats.autoRepliesCount.toLocaleString()} subtitle="Configured triggers" tone="sky" icon="⚡" trend="+8.2%" />
-            <StatCard title="Active Clients" value={activeClients.toLocaleString()} subtitle="Currently enabled" tone="emerald" icon="👥" trend="+4.1%" />
-            <StatCard title="Response Rate" value={`${responseRate}%`} subtitle="Outbound vs total" tone="rose" icon="↗" trend={responseRate ? "+2.3%" : "-0.8%"} />
+            <StatCard title="إجمالي الرسائل" value={stats.messages.length.toLocaleString()} subtitle="كل رسائل النظام" icon="▱" trend="+12.5%" />
+            <StatCard title="الردود التلقائية المرسلة" value={stats.autoRepliesCount.toLocaleString()} subtitle="الكلمات المفتاحية المُعدّة" tone="sky" icon="⚡" trend="+8.2%" />
+            <StatCard title="العملاء المفعّلون" value={activeClients.toLocaleString()} subtitle="مفعّلون حالياً" tone="emerald" icon="👥" trend="+4.1%" />
+            <StatCard title="معدل الاستجابة" value={`${responseRate}%`} subtitle="الصادر مقابل الإجمالي" tone="rose" icon="↗" trend={responseRate ? "+2.3%" : "-0.8%"} />
           </div>
 
           <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.7fr_1fr]">
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="mb-5 flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-950">Message Analytics</h2>
-                  <p className="text-xs text-slate-400">Messages received and replied this week</p>
+                  <h2 className="text-lg font-bold text-slate-950">تحليلات الرسائل</h2>
+                  <p className="text-xs text-slate-400">الرسائل الواردة والمردود عليها هذا الأسبوع</p>
                 </div>
-                <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">Last 7 Days</span>
+                <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">آخر 7 أيام</span>
               </div>
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
@@ -156,7 +156,7 @@ export default function AdminDashboard() {
 
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="mb-5 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-slate-950">Platform Distribution</h2>
+                <h2 className="text-lg font-bold text-slate-950">توزيع المنصات</h2>
                 <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">Live</span>
               </div>
               <div className="h-72">
@@ -175,12 +175,12 @@ export default function AdminDashboard() {
 
           <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-slate-950">Recent Conversations</h2><Link to="/admin/messages" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">View All</Link></div>
+              <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-slate-950">أحدث المحادثات</h2><Link to="/admin/messages" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">عرض الكل</Link></div>
               <div className="space-y-2">
                 {stats.messages.slice(0, 5).map((m, index) => (
                   <div key={m.id || index} className="flex items-center gap-3 rounded-2xl p-3 hover:bg-slate-50">
                     <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-50 text-xs font-bold text-indigo-600">{(m.sender || "U").slice(0, 2).toUpperCase()}</div>
-                    <div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-900">{m.sender || "Unknown Sender"}</p><p className="truncate text-xs text-slate-500">{m.message || "—"}</p></div>
+                    <div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-900">{m.sender || "مرسل غير معروف"}</p><p className="truncate text-xs text-slate-500">{m.message || "—"}</p></div>
                     <span className="text-xs text-slate-400">{m.channel || m.platform || "—"}</span>
                   </div>
                 ))}
@@ -189,11 +189,11 @@ export default function AdminDashboard() {
             </div>
 
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-slate-950">Active Integrations</h2><Link to="/admin/features" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">View All</Link></div>
+              <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-slate-950">التكاملات المفعّلة</h2><Link to="/admin/features" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">عرض الكل</Link></div>
               <div className="space-y-3">
                 {(activeIntegrations.length ? activeIntegrations : ["telegram", "whatsapp", "instagram", "facebook"]).map((item, index) => {
                   const slug = typeof item === "string" ? item : (item.features?.slug || item.features?.name || "platform").toLowerCase();
-                  return <div key={index} className="flex items-center gap-3 rounded-2xl border border-slate-200 p-4"><div className={`flex h-11 w-11 items-center justify-center rounded-2xl border text-lg ${platformColors[slug] || "bg-slate-50 text-slate-600 border-slate-100"}`}>{iconMap[slug] || "•"}</div><div className="flex-1"><p className="font-bold text-slate-900 capitalize">{slug}</p><p className="text-xs text-slate-500">Active & Running</p></div><span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-600">Connected</span></div>;
+                  return <div key={index} className="flex items-center gap-3 rounded-2xl border border-slate-200 p-4"><div className={`flex h-11 w-11 items-center justify-center rounded-2xl border text-lg ${platformColors[slug] || "bg-slate-50 text-slate-600 border-slate-100"}`}>{iconMap[slug] || "•"}</div><div className="flex-1"><p className="font-bold text-slate-900 capitalize">{slug}</p><p className="text-xs text-slate-500">مفعّل ويعمل</p></div><span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-600">متصل</span></div>;
                 })}
               </div>
             </div>

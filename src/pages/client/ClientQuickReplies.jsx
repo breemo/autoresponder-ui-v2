@@ -42,7 +42,7 @@ export default function ClientQuickReplies() {
 
   const handleSave = async () => {
     setError("");
-    if (!clientId) return setError("client_id مش موجود");
+    if (!clientId) return setError("لا يوجد حساب عميل مرتبط بهذا المستخدم");
     if (!title.trim()) return setError("اكتب النص أولاً");
     const finalPayload = payload.trim() || title.trim().replace(/\s+/g, "_").toUpperCase();
     const record = { client_id: clientId, title: title.trim(), payload: finalPayload, action_type: type, display_order: Number(displayOrder) || items.length + 1, is_active: true, hide_after_payloads: hideAfterPayloads };
@@ -75,7 +75,7 @@ export default function ClientQuickReplies() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.35em] text-indigo-600">QUICK REPLIES</p>
-          <h2 className="mt-1 text-2xl font-black text-slate-950">الأزرار السريعة</h2>
+          <h2 className="mt-1 text-2xl font-black text-slate-950">الردود السريعة</h2>
           <p className="mt-1 text-sm text-slate-500">أزرار تظهر للزبائن داخل المحادثة لتسهيل الاختيار.</p>
         </div>
         <button onClick={openCreate} className="h-11 rounded-2xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700">+ إضافة خيار</button>
@@ -94,10 +94,10 @@ export default function ClientQuickReplies() {
           <input className={`${inputClass} max-w-xl`} placeholder="ابحث بالنص، payload، أو النوع..." value={search} onChange={(e) => setSearch(e.target.value)} />
           <button onClick={fetchData} className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50">↻ تحديث</button>
         </div>
-        {loading ? <div className="p-10 text-center text-slate-500">جاري التحميل...</div> : filtered.length === 0 ? <div className="p-10 text-center text-slate-400">لا توجد خيارات سريعة بعد.</div> : (
+        {loading ? <div className="p-10 text-center text-slate-500">جارِ التحميل...</div> : filtered.length === 0 ? <div className="p-10 text-center text-slate-400">لا توجد خيارات سريعة بعد.</div> : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px] text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-4 text-right">النص</th><th className="px-5 py-4 text-right">Payload</th><th className="px-5 py-4 text-right">Type</th><th className="px-5 py-4 text-right">إخفاء بعد</th><th className="px-5 py-4 text-right">الترتيب</th><th className="px-5 py-4 text-right">الحالة</th><th className="px-5 py-4 text-right">إجراءات</th></tr></thead>
+              <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-4 text-right">النص</th><th className="px-5 py-4 text-right">Payload</th><th className="px-5 py-4 text-right">النوع</th><th className="px-5 py-4 text-right">إخفاء بعد</th><th className="px-5 py-4 text-right">الترتيب</th><th className="px-5 py-4 text-right">الحالة</th><th className="px-5 py-4 text-right">إجراءات</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {filtered.map((item) => <tr key={item.id} className="hover:bg-slate-50/70"><td className="px-5 py-4 font-bold text-slate-900">{item.title}</td><td className="px-5 py-4"><span className="rounded-full bg-indigo-50 px-3 py-1 font-mono text-xs font-bold text-indigo-700">{item.payload}</span></td><td className="px-5 py-4 text-slate-600">{item.action_type}</td><td className="max-w-[220px] px-5 py-4 font-mono text-xs text-slate-500">{(item.hide_after_payloads || []).join(", ") || "—"}</td><td className="px-5 py-4 text-slate-600">{item.display_order}</td><td className="px-5 py-4"><button onClick={() => handleToggle(item)}><StatusBadge active={item.is_active} /></button></td><td className="px-5 py-4"><div className="flex gap-2"><button onClick={() => handleEdit(item)} className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">تعديل</button><button onClick={() => handleDelete(item.id)} className="rounded-xl bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100">حذف</button></div></td></tr>)}
               </tbody>

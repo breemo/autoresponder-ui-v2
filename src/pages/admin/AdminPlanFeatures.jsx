@@ -73,7 +73,7 @@ export default function AdminPlanFeatures() {
   };
 
   return (
-    <div>
+    <div dir="rtl">
       <h1 className="text-2xl font-bold mb-4">ربط الميزات مع الباقات</h1>
       <p className="text-gray-500 mb-6">
         اختر باقة ثم فعّل الميزات التي تريدها لهذه الباقة.
@@ -101,7 +101,7 @@ export default function AdminPlanFeatures() {
       {/* عرض الميزات */}
       {selectedPlan && (
         <div className="bg-white shadow rounded p-4">
-          <h2 className="text-xl font-semibold mb-4">المميزات المتاحة</h2>
+          <h2 className="text-xl font-semibold mb-4">الميزات المتاحة</h2>
 
           {features.map((f) => {
             const isEnabled = planFeatures.includes(f.id);

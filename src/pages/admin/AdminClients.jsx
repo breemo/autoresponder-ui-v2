@@ -101,7 +101,7 @@ export default function AdminClients() {
 
   const getPlanName = (planId) => {
     const plan = getPlan(planId);
-    return plan ? `${plan.name} · $${plan.price}` : "No plan";
+    return plan ? `${plan.name} · $${plan.price}` : "بدون باقة";
   };
   
   const getSubscription = (client) => {
@@ -124,9 +124,9 @@ export default function AdminClients() {
 		(end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
 	  );
 
-	  if (diff < 0) return "Expired";
+	  if (diff < 0) return "منتهي";
 
-	  return `${diff} days`;
+	  return `${diff} يوم`;
 	};
 
   const filteredClients = useMemo(() => {
@@ -156,28 +156,28 @@ export default function AdminClients() {
 
     return [
       {
-        label: "Total Clients",
+        label: "إجمالي العملاء",
         value: clients.length,
         hint: "كل العملاء المسجلين",
         icon: UserGroupIcon,
         accent: "bg-indigo-50 text-indigo-600 ring-indigo-100",
       },
       {
-        label: "Active Clients",
+        label: "العملاء المفعّلون",
         value: active,
         hint: "عملاء مفعّلين حالياً",
         icon: CheckCircleIcon,
         accent: "bg-emerald-50 text-emerald-600 ring-emerald-100",
       },
       {
-        label: "Inactive",
+        label: "معطّلون",
         value: inactive,
         hint: "بحاجة لمراجعة أو تفعيل",
         icon: ArrowPathIcon,
         accent: "bg-amber-50 text-amber-600 ring-amber-100",
       },
       {
-        label: "Assigned Plans",
+        label: "الباقات المرتبطة",
         value: withPlan,
         hint: "عملاء مربوطين بباقات",
         icon: SparklesIcon,
@@ -196,7 +196,7 @@ export default function AdminClients() {
     setMsg("");
 
     if (!form.business_name || !form.email || !form.password) {
-      setMsg("⚠️ يرجى إدخال الاسم التجاري والإيميل وكلمة المرور");
+      setMsg("⚠️ يرجى إدخال الاسم التجاري والبريد الإلكتروني وكلمة المرور");
       return;
     }
 
@@ -218,7 +218,7 @@ let createdSubscription = null;
 
       if (existingUserError) throw existingUserError;
       if (existingUser) {
-        setMsg("⚠️ هذا الإيميل مستخدم مسبقًا في جدول المستخدمين");
+        setMsg("⚠️ هذا البريد الإلكتروني مستخدم مسبقًا في جدول المستخدمين");
         return;
       }
 
@@ -230,7 +230,7 @@ let createdSubscription = null;
 
       if (existingClientError) throw existingClientError;
       if (existingClient) {
-        setMsg("⚠️ هذا الإيميل مستخدم مسبقًا في جدول العملاء");
+        setMsg("⚠️ هذا البريد الإلكتروني مستخدم مسبقًا في جدول العملاء");
         return;
       }
 
@@ -340,7 +340,7 @@ if (createdSubscription?.id) {
     .eq("id", createdClient.id);
 }
       
-      setMsg(`❌ فشل في إضافة العميل كاملًا: ${error.message || "خطأ غير معروف"}`);
+      setMsg("❌ فشل في إضافة العميل. يرجى المحاولة مرة أخرى.");
     } finally {
       setSubmitting(false);
     }
@@ -401,8 +401,8 @@ if (createdSubscription?.id) {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.22em] text-indigo-600">Admin Portal</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Clients</h1>
+          <p className="text-xs font-bold uppercase tracking-[0.22em] text-indigo-600">بوابة الإدارة</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">العملاء</h1>
           <p className="mt-2 text-sm text-slate-500">إدارة العملاء، الباقات، حالة التفعيل، والمنصات المرتبطة.</p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
@@ -461,7 +461,7 @@ if (createdSubscription?.id) {
                 <MagnifyingGlassIcon className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="بحث باسم العميل أو الإيميل..."
+                  placeholder="بحث باسم العميل أو البريد الإلكتروني..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-200 focus:bg-white focus:ring-4 focus:ring-indigo-50"
@@ -532,17 +532,17 @@ if (createdSubscription?.id) {
             <table className="w-full min-w-[1180px] text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/70 text-xs uppercase tracking-[0.08em] text-slate-500">
-                  <th className="px-6 py-4 font-semibold">Client</th>
-                  <th className="px-6 py-4 font-semibold">Plan</th>
-				  <th className="px-6 py-4 font-semibold">Subscription</th>
-				  <th className="px-6 py-4 font-semibold">Expiry</th>
-				  <th className="px-6 py-4 font-semibold">Remaining</th>
-                  <th className="px-6 py-4 font-semibold">Platforms</th>
-                  <th className="px-6 py-4 font-semibold">Status</th>
-                  <th className="px-6 py-4 font-semibold">Created</th>
-                  <th className="px-6 py-4 font-semibold">Last Active</th>
-                  <th className="px-6 py-4 text-center font-semibold">Settings</th>
-                  <th className="px-6 py-4 text-right font-semibold">Actions</th>
+                  <th className="px-6 py-4 font-semibold">العميل</th>
+                  <th className="px-6 py-4 font-semibold">الباقة</th>
+				  <th className="px-6 py-4 font-semibold">الاشتراك</th>
+				  <th className="px-6 py-4 font-semibold">تاريخ الانتهاء</th>
+				  <th className="px-6 py-4 font-semibold">المتبقي</th>
+                  <th className="px-6 py-4 font-semibold">المنصات</th>
+                  <th className="px-6 py-4 font-semibold">الحالة</th>
+                  <th className="px-6 py-4 font-semibold">تاريخ الإنشاء</th>
+                  <th className="px-6 py-4 font-semibold">آخر نشاط</th>
+                  <th className="px-6 py-4 text-center font-semibold">الإعدادات</th>
+                  <th className="px-6 py-4 text-right font-semibold">إجراءات</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -623,14 +623,14 @@ if (createdSubscription?.id) {
                               client.is_active ? "bg-emerald-500" : "bg-rose-500"
                             }`}
                           />
-                          {client.is_active ? "Active" : "Inactive"}
+                          {client.is_active ? "مفعّل" : "معطّل"}
                         </button>
 												  
                       </td>
 
                       <td className="px-6 py-5 text-slate-500">{formatDate(client.created_at)}</td>
 
-                      <td className="px-6 py-5 text-slate-500">منذ {index + 1} يوم</td>
+                      <td className="px-6 py-5 text-slate-500">غير متوفر</td>
 
                       <td className="px-6 py-5 text-center">
                         <Link
@@ -696,7 +696,7 @@ if (createdSubscription?.id) {
                     <div>
                       <p className="font-semibold text-slate-950">Client onboarding</p>
                       <p className="mt-1 text-sm leading-6 text-slate-500">
-                        بعد الإضافة، تقدر تدخل على إعدادات العميل لتفعيل المنصات والميزات.
+                        بعد الإضافة، يمكنك الدخول إلى إعدادات العميل لتفعيل المنصات والميزات.
                       </p>
                     </div>
                   </div>
@@ -739,14 +739,14 @@ if (createdSubscription?.id) {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700">الخطة</label>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">الباقة</label>
                   <select
                     name="plan_id"
                     value={form.plan_id}
                     onChange={handleChange}
                     className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-200 focus:ring-4 focus:ring-indigo-50"
                   >
-                    <option value="">بدون خطة</option>
+                    <option value="">بدون باقة</option>
                     {plans.map((plan) => (
                       <option key={plan.id} value={plan.id}>
                         {plan.name} - ${plan.price}
@@ -763,8 +763,8 @@ if (createdSubscription?.id) {
 					onChange={handleChange}
 					className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-200 focus:ring-4 focus:ring-indigo-50">
 
-					<option value="trial">Trial</option>
-					<option value="paid">Paid</option>
+					<option value="trial">تجريبي</option>
+					<option value="paid">مدفوع</option>
 				  </select>              
 				</div>
 			  </div>

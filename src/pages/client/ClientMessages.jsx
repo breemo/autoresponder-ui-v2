@@ -491,7 +491,7 @@ export default function ClientMessages() {
             </div>
 
             <div className="space-y-2">
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث بالاسم، الرقم، الرسالة، conversation_id..." className="h-9 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث بالاسم، الرقم، الرسالة، أو رقم المحادثة..." className="h-9 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50" />
               <div className="grid grid-cols-2 gap-2">
                 <select value={channel} onChange={(e) => setChannel(e.target.value)} className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-indigo-300">
                   <option value="all">كل القنوات</option>
@@ -503,15 +503,15 @@ export default function ClientMessages() {
                 <select value={status} onChange={(e) => setStatus(e.target.value)} className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-indigo-300">
                   <option value="all">كل الحالات</option>
                   <option value="active">نشطة</option>
-                  <option value="open">Open</option>
+                  <option value="open">مفتوحة</option>
                   <option value="closed">مغلقة</option>
-                  <option value="lead_captured">Lead</option>
+                  <option value="lead_captured">العملاء المحتملون</option>
                   <option value="waiting_human">بانتظار موظف</option>
                 </select>
               </div>
               <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600">
                 <input type="checkbox" checked={leadsOnly} onChange={(e) => setLeadsOnly(e.target.checked)} />
-                فقط المحادثات التي فيها Lead
+                فقط المحادثات التي فيها عميل محتمل
               </label>
             </div>
           </div>
@@ -538,7 +538,7 @@ export default function ClientMessages() {
                         </div>
                         <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{conv.last_message || "لا توجد رسالة بعد"}</p>
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                          <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${platformClass}`}>{conv.channel || conv.platform || "unknown"}</span>
+                          <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${platformClass}`}>{conv.channel || conv.platform || "غير معروف"}</span>
                           <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${statusClass}`}>{conv.conversation_status || "active"}</span>
                           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">{conv.messages_count} رسائل</span>
                           {conv.unread_count > 0 && (
@@ -566,7 +566,7 @@ export default function ClientMessages() {
                     <div>
                       <h2 className="text-base font-bold text-slate-950">{selectedLead?.name || selectedConversation.lead_name || selectedConversation.sender || selectedConversation.sender_id || "بدون اسم"}</h2>
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">{selectedConversation.channel || selectedConversation.platform || "unknown"}</span>
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">{selectedConversation.channel || selectedConversation.platform || "غير معروف"}</span>
                         <span className={`rounded-full border px-3 py-1 text-xs font-bold ${statusStyles[selectedConversation.conversation_status] || "bg-slate-100 text-slate-600 border-slate-200"}`}>{selectedConversation.conversation_status || "active"}</span>
                         <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-600">{conversationMessages.length} رسائل</span>
                       </div>
@@ -575,10 +575,10 @@ export default function ClientMessages() {
 
                   <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                     {conversationStatus === "waiting_human" && (
-                      <span className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">بانتظار الرد البشري</span>
+                      <span className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">بانتظار موظف</span>
                     )}
                     {conversationStatus !== "waiting_human" && conversationStatus !== "closed" && (
-                      <button onClick={takeoverConversation} disabled={updatingStatus} className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">تحويل للرد البشري</button>
+                      <button onClick={takeoverConversation} disabled={updatingStatus} className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">تحويل لموظف</button>
                     )}
                     {conversationStatus !== "closed" && (
                       <button onClick={closeConversation} disabled={updatingStatus} className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">إغلاق</button>
@@ -590,7 +590,7 @@ export default function ClientMessages() {
                 </div>
 
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                  <span className="font-bold text-slate-500">Lead:</span>
+                  <span className="font-bold text-slate-500">العميل المحتمل:</span>
                   <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 font-semibold text-slate-700">{selectedLead?.name || "بدون اسم"}</span>
                   <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 font-semibold text-slate-700">{selectedLead?.phone || "بدون رقم"}</span>
                 </div>
