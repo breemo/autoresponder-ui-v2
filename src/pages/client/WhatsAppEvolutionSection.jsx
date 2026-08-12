@@ -296,7 +296,7 @@ async function createNumber(e) {
 
   } catch (err) {
     console.error(err);
-    setError(err.message || "فشل إنشاء الرقم.");
+    setError("فشل إنشاء الرقم.");
   } finally {
     setCreating(false);
   }
@@ -377,7 +377,7 @@ async function createNumber(e) {
       await loadData({ preserveFeedback: true });
     } catch (err) {
       console.error(err);
-      setError(err.message || "فشل ربط رقم واتساب.");
+      setError("فشل ربط رقم واتساب.");
     } finally {
       setConnectingId(null);
     }
@@ -427,7 +427,7 @@ async function createNumber(e) {
       setMessage("تمت مزامنة أرقام واتساب مع Evolution بنجاح.");
     } catch (err) {
       console.error(err);
-      setError(err.message || "فشل مزامنة أرقام واتساب.");
+      setError("فشل مزامنة أرقام واتساب.");
     } finally {
       setSyncing(false);
     }
@@ -487,7 +487,7 @@ async function deleteNumber(item) {
         
   } catch (err) {
     console.error(err);
-    setError(err.message || "فشل حذف رقم واتساب.");
+    setError("فشل حذف رقم واتساب.");
   }
 }
 

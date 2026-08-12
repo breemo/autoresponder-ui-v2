@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth } from "../../context/AuthContext.jsx";
 
 const inputClass = "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50";
 const cardClass = "rounded-3xl border border-slate-200 bg-white shadow-sm";
@@ -31,7 +31,7 @@ export default function ClientQuickReplies() {
     if (!clientId) return;
     setLoading(true); setError("");
     const { data, error } = await supabase.from("quick_reply_templates").select("*").eq("client_id", clientId).order("display_order", { ascending: true });
-    if (error) setError(error.message); else setItems(data || []);
+    if (error) { console.error(error); setError("فشل في تحميل البيانات"); } else setItems(data || []);
     setLoading(false);
   };
   useEffect(() => { fetchData(); }, [clientId]);
@@ -48,20 +48,20 @@ export default function ClientQuickReplies() {
     const record = { client_id: clientId, title: title.trim(), payload: finalPayload, action_type: type, display_order: Number(displayOrder) || items.length + 1, is_active: true, hide_after_payloads: hideAfterPayloads };
     const query = editingId ? supabase.from("quick_reply_templates").update(record).eq("id", editingId).eq("client_id", clientId) : supabase.from("quick_reply_templates").insert([record]);
     const { error } = await query;
-    if (error) return setError(error.message);
+    if (error) { console.error(error); return setError("فشل في حفظ الخيار السريع"); }
     resetForm(); setDrawerOpen(false); fetchData();
   };
 
   const handleToggle = async (item) => {
     const { error } = await supabase.from("quick_reply_templates").update({ is_active: !item.is_active }).eq("id", item.id).eq("client_id", clientId);
-    if (error) return setError(error.message);
+    if (error) { console.error(error); return setError("فشل في تحديث الحالة"); }
     fetchData();
   };
 
   const handleDelete = async (id) => {
     if (!confirm("هل أنت متأكد من حذف هذا الخيار؟")) return;
     const { error } = await supabase.from("quick_reply_templates").delete().eq("id", id).eq("client_id", clientId);
-    if (error) return setError(error.message);
+    if (error) { console.error(error); return setError("فشل في حذف الخيار"); }
     fetchData();
   };
 

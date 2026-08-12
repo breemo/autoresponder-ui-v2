@@ -64,7 +64,7 @@ export default function ClientAutoReplies() {
         if (error) throw error;
       }
       setDrawerOpen(false); resetForm(); loadData();
-    } catch (err) { console.error(err); setError(err.message || "فشل في حفظ الرد التلقائي"); }
+    } catch (err) { console.error(err); setError("فشل في حفظ الرد التلقائي"); }
     finally { setSaving(false); }
   }
 
