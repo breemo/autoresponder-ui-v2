@@ -16,6 +16,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
+import ChannelIcon from "../../lib/channelIcons.jsx";
 import WhatsAppEvolutionSection from "./WhatsAppEvolutionSection";
 
 function normalizeName(str) {

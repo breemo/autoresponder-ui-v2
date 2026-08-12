@@ -163,7 +163,7 @@ export default function ClientLeads() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" dir="rtl">
       <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">
@@ -288,8 +288,12 @@ export default function ClientLeads() {
                   {pagedLeads.map((lead) => {
                     const phone = normalizePhone(lead.phone);
                     const whatsappPhone = phone.startsWith("+") ? phone.slice(1) : phone;
-                    const whatsappLink = phone ? `https://wa.me/${whatsappPhone}` : null;
                     const channel = channelByConversation[lead.conversation_id];
+                    // wa.me only makes sense when the lead's actual channel is
+                    // WhatsApp — previously this showed a hardcoded "WhatsApp"
+                    // action for every lead with a phone number regardless of
+                    // their real channel.
+                    const whatsappLink = phone && channel === "whatsapp" ? `https://wa.me/${whatsappPhone}` : null;
 
                     return (
                       <tr key={lead.id} className="transition hover:bg-slate-50/70">
@@ -342,9 +346,10 @@ export default function ClientLeads() {
                                 href={whatsappLink}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700"
+                                title="فتح محادثة واتساب"
+                                className="inline-flex items-center justify-center rounded-xl transition hover:opacity-80"
                               >
-                                WhatsApp
+                                <ChannelIcon channel="whatsapp" size="h-9 w-9" />
                               </a>
                             )}
                           </div>
