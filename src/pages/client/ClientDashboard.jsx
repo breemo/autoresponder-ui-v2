@@ -2,16 +2,14 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
+import ChannelIcon from "../../lib/channelIcons.jsx";
 import {
   ChatBubbleLeftRightIcon,
-  BoltIcon,
-  CpuChipIcon,
+  UserGroupIcon,
   UserPlusIcon,
   ArrowPathIcon,
-  SparklesIcon,
   ClockIcon,
   CheckCircleIcon,
-  ExclamationCircleIcon,
   PlusIcon,
   Cog6ToothIcon,
   InboxIcon,
@@ -43,26 +41,14 @@ const SOURCE_COLORS = {
   human: "bg-amber-50 text-amber-700 border-amber-100",
 };
 
-const PLATFORM_STYLES = {
-  facebook: "bg-blue-50 text-blue-700 border-blue-100",
-  telegram: "bg-sky-50 text-sky-700 border-sky-100",
-  whatsapp: "bg-emerald-50 text-emerald-700 border-emerald-100",
-  instagram: "bg-pink-50 text-pink-700 border-pink-100",
+const SUBSCRIPTION_STATUS_LABELS = {
+  active: "نشط",
+  trial: "تجريبي",
+  cancelled: "ملغى",
+  expired: "منتهي",
+  suspended: "موقوف",
+  upgraded: "تمت الترقية",
 };
-
-function safeDate(value) {
-  if (!value) return "-";
-  try {
-    return new Date(value).toLocaleString("ar-EG", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return "-";
-  }
-}
 
 function relativeTime(value) {
   if (!value) return "-";
@@ -76,18 +62,59 @@ function relativeTime(value) {
   return `منذ ${days} يوم`;
 }
 
-function getInitials(name = "") {
-  const clean = String(name || "").trim();
-  if (!clean) return "--";
-  return clean
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((p) => p[0])
-    .join("")
-    .toUpperCase();
+function formatDate(value) {
+  if (!value) return "—";
+  try {
+    return new Date(value).toLocaleDateString("ar-EG", { year: "numeric", month: "short", day: "numeric" });
+  } catch {
+    return "—";
+  }
 }
 
-function StatCard({ title, value, subtitle, icon: Icon, tone = "violet", hint }) {
+// Calendar-day based, matching the corrected client_subscription_status
+// view (a subscription stays active through the entirety of its end_date
+// day) rather than an exact-timestamp comparison.
+function getDaysRemaining(endDate) {
+  if (!endDate) return null;
+  const end = new Date(endDate);
+  end.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function UsageBar({ label, used, limit }) {
+  if (limit === null || limit === undefined) {
+    return (
+      <div>
+        <div className="mb-1.5 flex items-center justify-between text-xs font-semibold text-slate-500">
+          <span>{label}</span>
+          <span>غير محدود</span>
+        </div>
+        <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+          <div className="h-full w-full rounded-full bg-slate-200" />
+        </div>
+      </div>
+    );
+  }
+
+  const percent = limit > 0 ? Math.min(100, Math.round(((used || 0) / limit) * 100)) : 0;
+  const barColor = percent >= 100 ? "bg-rose-500" : percent >= 80 ? "bg-amber-500" : "bg-indigo-600";
+
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center justify-between text-xs font-semibold text-slate-500">
+        <span>{label}</span>
+        <span>{used || 0} / {limit}</span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+        <div className={`h-full rounded-full ${barColor}`} style={{ width: `${percent}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ title, value, subtitle, icon: Icon, tone = "violet" }) {
   const toneClass = {
     violet: "bg-violet-50 text-violet-700 border-violet-100",
     emerald: "bg-emerald-50 text-emerald-700 border-emerald-100",
@@ -101,14 +128,7 @@ function StatCard({ title, value, subtitle, icon: Icon, tone = "violet", hint })
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-slate-500">{title}</p>
-          <div className="mt-2 flex items-end gap-2">
-            <p className="text-3xl font-black tracking-tight text-slate-950">{value}</p>
-            {hint && (
-              <span className="mb-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">
-                {hint}
-              </span>
-            )}
-          </div>
+          <p className="mt-2 text-3xl font-black tracking-tight text-slate-950">{value}</p>
           <p className="mt-2 text-xs font-medium text-slate-400">{subtitle}</p>
         </div>
         <div className={`rounded-2xl border p-3 ${toneClass}`}>
@@ -119,24 +139,37 @@ function StatCard({ title, value, subtitle, icon: Icon, tone = "violet", hint })
   );
 }
 
+function SectionCard({ title, subtitle, action, children }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-black text-slate-950">{title}</h2>
+          {subtitle && <p className="mt-0.5 text-xs font-medium text-slate-400">{subtitle}</p>}
+        </div>
+        {action}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export default function ClientDashboard() {
   const { user } = useAuth();
   // client_id is resolved once at login via client_users (see Login.jsx) —
   // every user of this client (Owner/Agent/IT) shares the same client_id,
-  // so they all resolve the same business data below. Previously this page
-  // re-derived it by matching clients.email === user.email, which only
-  // worked for the original owner account and silently broke for any other
-  // team member.
+  // so they all resolve the same business data below.
   const realClientId = user?.client_id || null;
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [messages, setMessages] = useState([]);
-  const [autoRepliesCount, setAutoRepliesCount] = useState(0);
-  const [quickRepliesCount, setQuickRepliesCount] = useState(0);
   const [leadsCount, setLeadsCount] = useState(0);
   const [conversationStates, setConversationStates] = useState([]);
   const [integrations, setIntegrations] = useState([]);
+  const [plan, setPlan] = useState(null);
+  const [subscriptionStatus, setSubscriptionStatus] = useState(null); // client_subscription_status row
+  const [subscription, setSubscription] = useState(null); // full subscriptions row
 
   useEffect(() => {
     if (!realClientId) {
@@ -153,22 +186,15 @@ export default function ClientDashboard() {
       setRefreshing(true);
       setError("");
 
-      const [messagesRes, repliesRes, quickRes, leadsRes, statesRes, integrationsRes] =
+      const [clientRes, messagesRes, leadsRes, statesRes, integrationsRes, subStatusRes] =
         await Promise.all([
+          supabase.from("clients").select("id, plan_id").eq("id", realClientId).maybeSingle(),
           supabase
             .from("messages")
             .select("id, message, channel, sender, direction, reply_source, conversation_id, created_at")
             .eq("client_id", realClientId)
             .order("created_at", { ascending: false })
             .limit(500),
-          supabase
-            .from("auto_replies")
-            .select("id, is_active")
-            .eq("client_id", realClientId),
-          supabase
-            .from("quick_reply_templates")
-            .select("id, is_active")
-            .eq("client_id", realClientId),
           supabase
             .from("leads")
             .select("id", { count: "exact", head: true })
@@ -183,24 +209,56 @@ export default function ClientDashboard() {
             .from("client_feature_integrations")
             .select("id, is_active, config, features(slug, name)")
             .eq("client_id", realClientId),
+          supabase
+            .from("client_subscription_status")
+            .select("*")
+            .eq("client_id", realClientId)
+            .maybeSingle(),
         ]);
 
+      if (clientRes.error) throw clientRes.error;
       if (messagesRes.error) throw messagesRes.error;
-      if (repliesRes.error) throw repliesRes.error;
-      if (quickRes.error) throw quickRes.error;
       if (leadsRes.error) throw leadsRes.error;
       if (statesRes.error) console.warn("conversation_state error", statesRes.error);
       if (integrationsRes.error) console.warn("integrations error", integrationsRes.error);
+      if (subStatusRes.error) console.warn("subscription status error", subStatusRes.error);
 
       setMessages(messagesRes.data || []);
-      setAutoRepliesCount((repliesRes.data || []).filter((r) => r.is_active).length);
-      setQuickRepliesCount((quickRes.data || []).filter((r) => r.is_active).length);
       setLeadsCount(leadsRes.count || 0);
       setConversationStates(statesRes.data || []);
       setIntegrations(integrationsRes.data || []);
+      setSubscriptionStatus(subStatusRes.data || null);
+
+      // Plan and full subscription details — real data only; left null
+      // (and rendered as "no plan"/"no subscription") rather than fabricated
+      // when the client genuinely has neither, which is a normal state
+      // (plans/subscriptions are optional at client creation).
+      const planId = clientRes.data?.plan_id;
+      if (planId) {
+        const { data: planRow } = await supabase
+          .from("plans")
+          .select("id, name, price, description, messages_limit, ai_replies_limit, auto_replies_limit, integrations_limit")
+          .eq("id", planId)
+          .maybeSingle();
+        setPlan(planRow || null);
+      } else {
+        setPlan(null);
+      }
+
+      const subscriptionId = subStatusRes.data?.subscription_id;
+      if (subscriptionId) {
+        const { data: subRow } = await supabase
+          .from("subscriptions")
+          .select("id, subscription_type, status, start_date, end_date, messages_used, ai_replies_used, auto_replies_used")
+          .eq("id", subscriptionId)
+          .maybeSingle();
+        setSubscription(subRow || null);
+      } else {
+        setSubscription(null);
+      }
     } catch (err) {
       console.error(err);
-      setError(err.message || "حدث خطأ أثناء تحميل بيانات الداشبورد");
+      setError("حدث خطأ أثناء تحميل بيانات الداشبورد");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -226,14 +284,9 @@ export default function ClientDashboard() {
         lastMessage: "",
         lastAt: msg.created_at,
         count: 0,
-        inbound: 0,
-        outbound: 0,
-        status: "active",
       };
 
       existing.count += 1;
-      existing.inbound += msg.direction === "inbound" ? 1 : 0;
-      existing.outbound += msg.direction === "outbound" ? 1 : 0;
 
       if (new Date(msg.created_at) >= new Date(existing.lastAt || 0)) {
         existing.lastAt = msg.created_at;
@@ -245,28 +298,26 @@ export default function ClientDashboard() {
       conversationMap.set(key, existing);
     });
 
-    const statesByConversation = new Map(
-      conversationStates.map((s) => [s.conversation_id, s])
-    );
+    const statesByConversation = new Map(conversationStates.map((s) => [s.conversation_id, s]));
 
     const conversations = Array.from(conversationMap.values())
       .map((conversation) => {
         const state = statesByConversation.get(conversation.id);
         return {
           ...conversation,
-          status: state?.conversation_status || conversation.status,
-          step: state?.current_step || null,
+          status: state?.conversation_status || "active",
           updatedAt: state?.updated_at || conversation.lastAt,
         };
       })
       .sort((a, b) => new Date(b.updatedAt || b.lastAt) - new Date(a.updatedAt || a.lastAt));
 
-    // Derived directly from conversation_state (the real conversation model)
-    // rather than from the last-500-messages-derived `conversations` list
-    // above, so it isn't skewed by conversations with no recent messages.
+    // Derived directly from conversation_state (the real conversation
+    // model) rather than the last-500-messages-derived list above, so it
+    // isn't skewed by conversations with no recent messages.
     const openConversations = conversationStates.filter(
       (s) => !["closed", "done"].includes(s.conversation_status)
     ).length;
+    const waitingHuman = conversationStates.filter((s) => s.conversation_status === "waiting_human").length;
 
     const days = {};
     for (let i = 6; i >= 0; i--) {
@@ -285,45 +336,35 @@ export default function ClientDashboard() {
 
     const sourceTotal = Math.max(outbound.length, 1);
     const sourceStats = [
-      { key: "ai", label: "AI replies", value: aiReplies, percentage: Math.round((aiReplies / sourceTotal) * 100) },
-      { key: "auto", label: "Auto replies", value: autoReplies, percentage: Math.round((autoReplies / sourceTotal) * 100) },
-      { key: "quick_reply", label: "Quick replies", value: quickReplies, percentage: Math.round((quickReplies / sourceTotal) * 100) },
-      { key: "human", label: "Human replies", value: humanReplies, percentage: Math.round((humanReplies / sourceTotal) * 100) },
-      { key: "system", label: "System replies", value: systemReplies, percentage: Math.round((systemReplies / sourceTotal) * 100) },
+      { key: "ai", value: aiReplies, percentage: Math.round((aiReplies / sourceTotal) * 100) },
+      { key: "auto", value: autoReplies, percentage: Math.round((autoReplies / sourceTotal) * 100) },
+      { key: "human", value: humanReplies, percentage: Math.round((humanReplies / sourceTotal) * 100) },
+      { key: "quick_reply", value: quickReplies, percentage: Math.round((quickReplies / sourceTotal) * 100) },
+      { key: "system", value: systemReplies, percentage: Math.round((systemReplies / sourceTotal) * 100) },
     ];
 
-    const connectedIntegrations = integrations.filter((i) => i.is_active).length;
-
     return {
-      inbound,
-      outbound,
       totalMessages: messages.length,
       conversations,
       openConversations,
+      waitingHuman,
       aiReplies,
-      autoReplies,
-      systemReplies,
-      quickReplies,
       sourceStats,
       chartData: Object.values(days),
-      connectedIntegrations,
+      connectedIntegrations: integrations.filter((i) => i.is_active).length,
     };
   }, [messages, conversationStates, integrations]);
 
   const displayName = user?.business_name || user?.name || user?.email || "عميلنا";
-  const topConversations = dashboard.conversations.slice(0, 6);
-  const activeIntegrations = integrations.slice(0, 5);
+  const recentConversations = dashboard.conversations.slice(0, 5);
+  const daysRemaining = subscription?.end_date ? getDaysRemaining(subscription.end_date) : null;
 
   return (
     <div className="space-y-5" dir="rtl">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-black tracking-tight text-slate-950">
-            مرحباً {displayName} 👋
-          </h1>
-          <p className="mt-1 text-sm font-medium text-slate-500">
-            مركز تحكم سريع لمراقبة المحادثات، أداء الردود، والربط مع المنصات.
-          </p>
+          <h1 className="text-3xl font-black tracking-tight text-slate-950">مرحباً {displayName} 👋</h1>
+          <p className="mt-1 text-sm font-medium text-slate-500">نظرة تشغيلية سريعة على المحادثات، الأتمتة، والاشتراك.</p>
         </div>
         <button
           type="button"
@@ -337,204 +378,203 @@ export default function ClientDashboard() {
       </div>
 
       {error && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-          {error}
-        </div>
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>
       )}
 
+      {/* 1. Conversations */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          title="المحادثات المفتوحة"
-          value={loading ? "..." : dashboard.openConversations}
-          subtitle="تحتاج متابعة أو رد"
-          icon={ChatBubbleLeftRightIcon}
-          tone="violet"
-        />
-        <StatCard
-          title="Leads Captured"
-          value={loading ? "..." : leadsCount}
-          subtitle="أرقام وبيانات تم التقاطها"
-          icon={UserPlusIcon}
-          tone="emerald"
-        />
-        <StatCard
-          title="AI Replies"
-          value={loading ? "..." : dashboard.aiReplies}
-          subtitle="ردود خرجت من الذكاء الاصطناعي"
-          icon={CpuChipIcon}
-          tone="blue"
-        />
-        <StatCard
-          title="Active Channels"
-          value={loading ? "..." : dashboard.connectedIntegrations}
-          subtitle="منصات ربط مفعلة"
-          icon={BoltIcon}
-          tone="amber"
-        />
+        <StatCard title="المحادثات المفتوحة" value={loading ? "..." : dashboard.openConversations} subtitle="تحتاج متابعة أو رد" icon={ChatBubbleLeftRightIcon} tone="violet" />
+        <StatCard title="بانتظار موظف" value={loading ? "..." : dashboard.waitingHuman} subtitle="تم تحويلها للرد البشري" icon={ClockIcon} tone="amber" />
+        <StatCard title="Leads Captured" value={loading ? "..." : leadsCount} subtitle="أرقام وبيانات تم التقاطها" icon={UserPlusIcon} tone="emerald" />
+        <StatCard title="القنوات المفعّلة" value={loading ? "..." : dashboard.connectedIntegrations} subtitle="منصات ربط نشطة" icon={UserGroupIcon} tone="blue" />
       </div>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm xl:col-span-2">
-          <div className="mb-5 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-black text-slate-950">Live Conversations</h2>
-              <p className="text-xs font-medium text-slate-400">آخر المحادثات النشطة بدل جدول آخر الرسائل</p>
-            </div>
-            <Link
-              to="/client/messages"
-              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
-            >
-              فتح Inbox
-            </Link>
-          </div>
-
-          {topConversations.length === 0 ? (
-            <div className="flex min-h-[280px] items-center justify-center rounded-2xl border border-dashed border-slate-200 text-sm font-semibold text-slate-400">
-              لا توجد محادثات بعد.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {topConversations.map((conversation) => (
-                <div
-                  key={conversation.id}
-                  className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-slate-50/50 p-4 transition hover:border-violet-200 hover:bg-white"
-                >
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-sm font-black text-white">
-                    {getInitials(conversation.sender)}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate text-sm font-black text-slate-950">
-                        {conversation.sender || "مستخدم"}
-                      </p>
-                      <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${PLATFORM_STYLES[conversation.channel] || "bg-slate-50 text-slate-600 border-slate-100"}`}>
-                        {conversation.channel || "unknown"}
-                      </span>
-                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
-                        {conversation.status || "active"}
-                      </span>
+        <div className="xl:col-span-2">
+          <SectionCard
+            title="أحدث المحادثات"
+            subtitle="آخر النشاط عبر كل القنوات"
+            action={
+              <Link to="/client/messages" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50">
+                فتح Inbox
+              </Link>
+            }
+          >
+            {recentConversations.length === 0 ? (
+              <div className="flex min-h-[220px] items-center justify-center rounded-2xl border border-dashed border-slate-200 text-sm font-semibold text-slate-400">
+                لا توجد محادثات بعد.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {recentConversations.map((conversation) => (
+                  <div key={conversation.id} className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-slate-50/50 p-4 transition hover:border-violet-200 hover:bg-white">
+                    <ChannelIcon channel={conversation.channel} size="h-11 w-11" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-sm font-black text-slate-950">{conversation.sender || "مستخدم"}</p>
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">{conversation.status || "active"}</span>
+                      </div>
+                      <p className="mt-1 truncate text-sm font-medium text-slate-500">{conversation.lastMessage || "لا توجد رسالة"}</p>
                     </div>
-                    <p className="mt-1 truncate text-sm font-medium text-slate-500">
-                      {conversation.lastMessage || "لا توجد رسالة"}
-                    </p>
+                    <div className="text-left">
+                      <p className="text-xs font-bold text-slate-400">{relativeTime(conversation.updatedAt)}</p>
+                      <p className="mt-1 text-xs font-semibold text-slate-500">{conversation.count} رسالة</p>
+                    </div>
                   </div>
-                  <div className="text-left">
-                    <p className="text-xs font-bold text-slate-400">{relativeTime(conversation.updatedAt)}</p>
-                    <p className="mt-1 text-xs font-semibold text-slate-500">
-                      {conversation.count} رسالة
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </SectionCard>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-5">
-            <h2 className="text-lg font-black text-slate-950">AI Performance</h2>
-            <p className="text-xs font-medium text-slate-400">توزيع الردود الصادرة حسب المصدر</p>
-          </div>
+        {/* 2. Messages / Automation */}
+        <SectionCard title="الأتمتة والردود" subtitle="توزيع الردود الصادرة حسب المصدر">
           <div className="space-y-4">
             {dashboard.sourceStats.map((source) => (
               <div key={source.key}>
                 <div className="mb-2 flex items-center justify-between">
-                  <span className={`rounded-full border px-2.5 py-1 text-xs font-black ${SOURCE_COLORS[source.key]}`}>
-                    {SOURCE_LABELS[source.key]}
-                  </span>
+                  <span className={`rounded-full border px-2.5 py-1 text-xs font-black ${SOURCE_COLORS[source.key]}`}>{SOURCE_LABELS[source.key]}</span>
                   <span className="text-sm font-black text-slate-950">{source.value}</span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    className="h-full rounded-full bg-violet-600"
-                    style={{ width: `${source.percentage}%` }}
-                  />
+                  <div className="h-full rounded-full bg-violet-600" style={{ width: `${source.percentage}%` }} />
                 </div>
-                <p className="mt-1 text-left text-[11px] font-bold text-slate-400">{source.percentage}%</p>
               </div>
             ))}
           </div>
-        </div>
+        </SectionCard>
+      </div>
+
+      {/* 5/6/7. Plan, Subscription, Usage */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <SectionCard title="الباقة الحالية" subtitle="Current Plan">
+          {plan ? (
+            <div>
+              <p className="text-2xl font-black text-slate-950">{plan.name}</p>
+              {plan.description && <p className="mt-2 text-sm text-slate-500">{plan.description}</p>}
+              {plan.price != null && (
+                <p className="mt-3 inline-flex rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">{plan.price}</p>
+              )}
+            </div>
+          ) : (
+            <div className="flex min-h-[100px] items-center justify-center rounded-2xl border border-dashed border-slate-200 text-sm font-semibold text-slate-400">
+              لا توجد باقة مرتبطة بحسابك.
+            </div>
+          )}
+        </SectionCard>
+
+        <SectionCard title="تفاصيل الاشتراك" subtitle="Subscription Details">
+          {subscription ? (
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">النوع</span>
+                <span className="font-bold text-slate-900">{subscription.subscription_type === "trial" ? "تجريبي" : "مدفوع"}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">الحالة</span>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${subscriptionStatus?.is_active ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
+                  {SUBSCRIPTION_STATUS_LABELS[subscription.status] || subscription.status}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">تاريخ البدء</span>
+                <span className="font-semibold text-slate-700">{formatDate(subscription.start_date)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">تاريخ الانتهاء</span>
+                <span className="font-semibold text-slate-700">{formatDate(subscription.end_date)}</span>
+              </div>
+              <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+                <span className="text-slate-500">الأيام المتبقية</span>
+                <span className={`font-black ${daysRemaining !== null && daysRemaining < 0 ? "text-rose-600" : "text-indigo-600"}`}>
+                  {daysRemaining === null ? "—" : daysRemaining < 0 ? "منتهي" : `${daysRemaining} يوم`}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex min-h-[100px] items-center justify-center rounded-2xl border border-dashed border-slate-200 text-sm font-semibold text-slate-400">
+              لا يوجد اشتراك مسجل حالياً.
+            </div>
+          )}
+        </SectionCard>
+
+        <SectionCard title="الاستخدام" subtitle="Usage">
+          {subscription && plan ? (
+            <div className="space-y-4">
+              <UsageBar label="الرسائل" used={subscription.messages_used} limit={plan.messages_limit} />
+              <UsageBar label="ردود AI" used={subscription.ai_replies_used} limit={plan.ai_replies_limit} />
+              <UsageBar label="ردود تلقائية" used={subscription.auto_replies_used} limit={plan.auto_replies_limit} />
+            </div>
+          ) : (
+            <div className="flex min-h-[100px] items-center justify-center rounded-2xl border border-dashed border-slate-200 text-sm font-semibold text-slate-400">
+              بيانات الاستخدام غير متوفرة بدون باقة واشتراك فعّال.
+            </div>
+          )}
+        </SectionCard>
       </div>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm xl:col-span-2">
-          <div className="mb-5 flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-black text-slate-950">Message Activity</h2>
-              <p className="text-xs font-medium text-slate-400">الوارد والصادر خلال آخر 7 أيام</p>
+        <div className="xl:col-span-2">
+          <SectionCard title="نشاط الرسائل" subtitle="الوارد والصادر خلال آخر 7 أيام">
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={dashboard.chartData} margin={{ top: 10, right: 8, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="inboundGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.18} />
+                      <stop offset="95%" stopColor="#4f46e5" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="outboundGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.18} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="day" tickLine={false} axisLine={false} />
+                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
+                  <Tooltip />
+                  <Area type="monotone" dataKey="inbound" stroke="#4f46e5" strokeWidth={3} fill="url(#inboundGradient)" name="وارد" />
+                  <Area type="monotone" dataKey="outbound" stroke="#10b981" strokeWidth={3} fill="url(#outboundGradient)" name="صادر" />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
-            <span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-bold text-slate-500">
-              Last 7 days
-            </span>
-          </div>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={dashboard.chartData} margin={{ top: 10, right: 8, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="inboundGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.18} />
-                    <stop offset="95%" stopColor="#4f46e5" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="outboundGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.18} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="day" tickLine={false} axisLine={false} />
-                <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
-                <Tooltip />
-                <Area type="monotone" dataKey="inbound" stroke="#4f46e5" strokeWidth={3} fill="url(#inboundGradient)" name="وارد" />
-                <Area type="monotone" dataKey="outbound" stroke="#10b981" strokeWidth={3} fill="url(#outboundGradient)" name="صادر" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+          </SectionCard>
         </div>
 
         <div className="space-y-5">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-black text-slate-950">Active Integrations</h2>
-                <p className="text-xs font-medium text-slate-400">حالة القنوات المرتبطة</p>
-              </div>
-              <Link to="/client/integrations" className="text-xs font-black text-violet-700">
-                إدارة
-              </Link>
-            </div>
+          {/* 4. Integrations */}
+          <SectionCard
+            title="التكاملات"
+            subtitle="حالة القنوات المرتبطة"
+            action={<Link to="/client/integrations" className="text-xs font-black text-violet-700">إدارة</Link>}
+          >
             <div className="space-y-3">
-              {activeIntegrations.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-center text-sm font-semibold text-slate-400">
-                  لا توجد قنوات مفعلة بعد.
-                </div>
+              {integrations.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-center text-sm font-semibold text-slate-400">لا توجد قنوات مفعلة بعد.</div>
               ) : (
-                activeIntegrations.map((item) => {
+                integrations.slice(0, 5).map((item) => {
                   const slug = item.features?.slug || item.config?.platform || "integration";
                   return (
                     <div key={item.id} className="flex items-center justify-between rounded-2xl border border-slate-200 p-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-700">
-                          <SparklesIcon className="h-5 w-5" />
-                        </div>
+                        <ChannelIcon channel={slug} size="h-10 w-10" />
                         <div>
                           <p className="text-sm font-black text-slate-900">{item.features?.name || slug}</p>
-                          <p className="text-xs font-semibold text-slate-400">{item.is_active ? "Active & running" : "Disabled"}</p>
+                          <p className="text-xs font-semibold text-slate-400">{item.is_active ? "مفعّلة" : "موقوفة"}</p>
                         </div>
                       </div>
                       <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${item.is_active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                        {item.is_active ? "Connected" : "Off"}
+                        {item.is_active ? "Active" : "Paused"}
                       </span>
                     </div>
                   );
                 })
               )}
             </div>
-          </div>
+          </SectionCard>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-black text-slate-950">Quick Actions</h2>
-            <div className="mt-4 grid grid-cols-2 gap-3">
+          <SectionCard title="إجراءات سريعة" subtitle={null}>
+            <div className="grid grid-cols-2 gap-3">
               {hasUserPermission(user, PERMISSIONS.INBOX) && (
                 <Link to="/client/messages" className="rounded-2xl border border-slate-200 p-4 transition hover:border-violet-200 hover:bg-violet-50/40">
                   <InboxIcon className="mb-3 h-5 w-5 text-violet-700" />
@@ -560,7 +600,7 @@ export default function ClientDashboard() {
                 </Link>
               )}
             </div>
-          </div>
+          </SectionCard>
         </div>
       </div>
     </div>

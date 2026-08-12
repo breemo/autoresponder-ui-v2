@@ -1,8 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { PaperClipIcon } from "@heroicons/react/24/outline";
+import { PhotoIcon, DocumentIcon, MicrophoneIcon } from "@heroicons/react/24/outline";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
 import ChannelIcon from "../../lib/channelIcons.jsx";
+
+// Prepared, disabled controls for future media sending. Each media type is
+// its own clearly-labelled placeholder (rather than one generic "attach"
+// button), so the composer's structure is ready to wire up per media type
+// later without pretending any of them work today. No payload/backend
+// change accompanies this — text sending (sendHumanReply) is unchanged.
+const MEDIA_CONTROLS = [
+  { key: "image", label: "صورة", icon: PhotoIcon },
+  { key: "document", label: "ملف", icon: DocumentIcon },
+  { key: "voice", label: "رسالة صوتية", icon: MicrophoneIcon },
+];
 
 function formatDate(value) {
   if (!value) return "—";
@@ -214,7 +225,7 @@ export default function ClientMessages() {
       setSelectedConversationId((current) => current && merged.some((c) => c.conversation_id === current) ? current : merged[0]?.conversation_id || null);
     } catch (err) {
       console.error(err);
-      setError(err.message || "فشل في جلب المحادثات");
+      setError("فشل في جلب المحادثات");
     } finally {
       setLoadingConversations(false);
     }
@@ -246,7 +257,7 @@ export default function ClientMessages() {
       return rows;
     } catch (err) {
       console.error(err);
-      if (!silent) setError(err.message || "فشل في جلب رسائل المحادثة");
+      if (!silent) setError("فشل في جلب رسائل المحادثة");
       return null;
     } finally {
       if (!silent) setLoadingMessages(false);
@@ -300,7 +311,7 @@ export default function ClientMessages() {
       setConversations((prev) => prev.map((conv) => conv.conversation_id === selectedConversationId ? { ...conv, ...payload } : conv));
     } catch (err) {
       console.error(err);
-      setError(err.message || "فشل في تحديث حالة المحادثة");
+      setError("فشل في تحديث حالة المحادثة");
     } finally {
       setUpdatingStatus(false);
     }
@@ -618,18 +629,23 @@ export default function ClientMessages() {
                 )}
 
                 <div className="flex items-end gap-2">
-                  {/* Prepared for future media/attachment sending — not wired to any
-                      send path yet. Kept visibly disabled so the composer's
+                  {/* Prepared for future media sending — not wired to any send
+                      path yet. Kept visibly disabled so the composer's
                       architecture is ready without faking a capability the
                       channel/n8n side doesn't support today. */}
-                  <button
-                    type="button"
-                    disabled
-                    title="إرفاق صورة/صوت/ملف — قريباً"
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
-                  >
-                    <PaperClipIcon className="h-5 w-5" />
-                  </button>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {MEDIA_CONTROLS.map(({ key, label, icon: Icon }) => (
+                      <button
+                        key={key}
+                        type="button"
+                        disabled
+                        title={`${label} — قريباً`}
+                        className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
+                      >
+                        <Icon className="h-5 w-5" />
+                      </button>
+                    ))}
+                  </div>
 
                   <textarea
                     value={draft}

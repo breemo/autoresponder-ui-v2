@@ -20,35 +20,45 @@ function clearStoredSession() {
   clearSessionExpiry();
 }
 
-export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
+// Reads/validates the stored session synchronously. Used as useState's lazy
+// initializer (runs once, during the very first render) rather than inside
+// a useEffect. This matters: AdminRoute/ClientRoute decide whether to
+// render <Navigate to="/"> during render itself, before any effect has a
+// chance to run. If `user` starts as null and only gets populated by an
+// effect after mount, a hard refresh of any protected route (e.g.
+// /admin/client/:id) sees `user === null` on that first render and
+// immediately redirects to login/blanks out — even though a valid session
+// exists in localStorage. Resolving it synchronously up front eliminates
+// that race entirely.
+function loadStoredUser() {
+  const stored = localStorage.getItem("user");
+  if (!stored) return null;
 
-  // تحميل المستخدم من التخزين المحلي، مع التحقق من انتهاء الجلسة
-  useEffect(() => {
-    const stored = localStorage.getItem("user");
-    if (!stored) return;
+  try {
+    const parsedUser = JSON.parse(stored);
 
-    try {
-      const parsedUser = JSON.parse(stored);
-
-      let expiresAt = readSessionExpiry();
-      if (expiresAt === null) {
-        // Session predates the expiration feature — grandfather it into a
-        // fresh window instead of forcing an immediate logout on deploy.
-        writeSessionExpiry();
-        expiresAt = readSessionExpiry();
-      }
-
-      if (isSessionExpired(expiresAt)) {
-        clearStoredSession();
-        return;
-      }
-
-      setUser(parsedUser);
-    } catch (e) {
-      clearStoredSession();
+    let expiresAt = readSessionExpiry();
+    if (expiresAt === null) {
+      // Session predates the expiration feature — grandfather it into a
+      // fresh window instead of forcing an immediate logout on deploy.
+      writeSessionExpiry();
+      expiresAt = readSessionExpiry();
     }
-  }, []);
+
+    if (isSessionExpired(expiresAt)) {
+      clearStoredSession();
+      return null;
+    }
+
+    return parsedUser;
+  } catch (e) {
+    clearStoredSession();
+    return null;
+  }
+}
+
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(loadStoredUser);
 
   // Re-check periodically so a session that expires while the tab stays
   // open still logs the user out (not just on refresh/reopen).

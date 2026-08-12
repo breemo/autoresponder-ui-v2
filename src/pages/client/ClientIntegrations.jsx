@@ -322,7 +322,7 @@ export default function ClientIntegrations() {
       setSelectedIntegrationId((prev) => prev || normalized[0]?.id || null);
     } catch (err) {
       console.error("Error loading client integrations:", err);
-      setError(err.message || "حدث خطأ أثناء تحميل إعدادات التكامل.");
+      setError("حدث خطأ أثناء تحميل إعدادات التكامل.");
     } finally {
       setLoading(false);
     }
@@ -546,7 +546,6 @@ export default function ClientIntegrations() {
                 filteredIntegrations.map((intg) => {
                   const feature = getFeatureById(intg.feature_id);
                   const meta = getFeatureMeta(feature);
-                  const Icon = meta.icon;
                   const isSelected = selectedIntegration?.id === intg.id;
 
                   return (
@@ -560,9 +559,7 @@ export default function ClientIntegrations() {
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br ${meta.accent} text-white shadow-sm`}>
-                          <Icon className="h-5 w-5" />
-                        </div>
+                        <ChannelIcon channel={feature?.slug} size="h-11 w-11" />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-2">
                             <h3 className="truncate text-sm font-semibold text-slate-950">{feature?.name || meta.label}</h3>
@@ -591,15 +588,12 @@ export default function ClientIntegrations() {
               <div className="flex h-full flex-col">
                 {(() => {
                   const meta = getFeatureMeta(selectedFeature);
-                  const Icon = meta.icon;
 
                   return (
                     <>
                       <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:items-center lg:justify-between">
                         <div className="flex items-center gap-3">
-                          <div className={`grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br ${meta.accent} text-white shadow-sm`}>
-                            <Icon className="h-6 w-6" />
-                          </div>
+                          <ChannelIcon channel={selectedFeature?.slug} size="h-12 w-12" iconSize="h-6 w-6" />
                           <div>
                             <div className="flex flex-wrap items-center gap-2">
                               <h2 className="text-lg font-bold text-slate-950">{selectedFeature.name || meta.label}</h2>
@@ -649,6 +643,39 @@ export default function ClientIntegrations() {
                                   const normLabel = normalizeName(field.key);
                                   const found = Object.entries(cfg).find(([k]) => normalizeName(k) === normLabel);
                                   value = found ? found[1] : "";
+                                }
+
+                                // reply_mode is stored as a free-form string in config (no
+                                // schema change), but guided here as a dropdown so it can't
+                                // be mistyped. `welcome_only` is prepared for a future
+                                // reply-behavior n8n does not implement yet — selecting it
+                                // only saves the config value; it does not change is_active
+                                // and does not simulate any runtime behavior here.
+                                const isReplyModeField = normalizeName(field.key) === "replymode";
+
+                                if (isReplyModeField) {
+                                  const knownOptions = ["ai", "welcome_only"];
+                                  const options = !value || knownOptions.includes(value) ? knownOptions : [...knownOptions, value];
+
+                                  return (
+                                    <label key={field.key} className="block">
+                                      <span className="mb-1.5 block text-xs font-semibold text-slate-600">{field.label || field.key}</span>
+                                      <select
+                                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50"
+                                        value={value || "ai"}
+                                        onChange={(e) => handleFieldChange(selectedIntegration.id, field.key, e.target.value)}
+                                      >
+                                        {options.map((opt) => (
+                                          <option key={opt} value={opt}>
+                                            {opt === "ai" ? "AI — رد تلقائي كامل" : opt === "welcome_only" ? "رسالة ترحيب فقط (Welcome Only)" : opt}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                                        Welcome Only: تُرسل رسالة الترحيب مرة واحدة لكل محادثة جديدة فقط، بدون ردود تلقائية إضافية بعدها — يتابع الموظف المحادثة يدوياً.
+                                      </p>
+                                    </label>
+                                  );
                                 }
 
                                 return (
@@ -764,13 +791,10 @@ export default function ClientIntegrations() {
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {availableFeatures.map((feature) => {
               const meta = getFeatureMeta(feature);
-              const Icon = meta.icon;
               return (
                 <div key={feature.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                   <div className="flex items-center gap-3">
-                    <div className={`grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br ${meta.accent} text-white shadow-sm`}>
-                      <Icon className="h-5 w-5" />
-                    </div>
+                    <ChannelIcon channel={feature?.slug} size="h-11 w-11" />
                     <div className="min-w-0">
                       <h3 className="truncate text-sm font-semibold text-slate-950">{feature.name || meta.label}</h3>
                       <p className="mt-0.5 truncate text-xs text-slate-500">{feature.slug}</p>

@@ -199,7 +199,7 @@ export default function WhatsAppEvolutionSection({ clientId, integration, maxCon
       setServers(serverRows || []);
     } catch (err) {
       console.error(err);
-      setError(err.message || "فشل تحميل أرقام واتساب.");
+      setError("فشل تحميل أرقام واتساب.");
     } finally {
       if (!silent) {
         setLoading(false);
@@ -296,7 +296,7 @@ async function createNumber(e) {
 
   } catch (err) {
     console.error(err);
-    setError(err.message);
+    setError(err.message || "فشل إنشاء الرقم.");
   } finally {
     setCreating(false);
   }

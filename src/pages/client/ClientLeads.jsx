@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
 import ChannelIcon from "../../lib/channelIcons.jsx";
+import Pagination from "../../components/Pagination.jsx";
 import {
   ArrowPathIcon,
   ClipboardDocumentIcon,
@@ -11,11 +12,9 @@ import {
   UserPlusIcon,
   CalendarDaysIcon,
   ChatBubbleLeftRightIcon,
-  ChevronRightIcon,
-  ChevronLeftIcon,
 } from "@heroicons/react/24/outline";
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 
 function formatDate(value) {
   if (!value) return "—";
@@ -357,30 +356,11 @@ export default function ClientLeads() {
               </table>
             </div>
 
-            <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-5 py-4">
+            <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-100 px-5 py-4 sm:flex-row">
               <p className="text-xs font-semibold text-slate-500">
-                صفحة {safePage} من {totalPages}
+                صفحة {safePage} من {totalPages} — {filteredLeads.length} lead إجمالاً
               </p>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={safePage <= 1}
-                  className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <ChevronRightIcon className="h-4 w-4" />
-                  السابق
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={safePage >= totalPages}
-                  className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  التالي
-                  <ChevronLeftIcon className="h-4 w-4" />
-                </button>
-              </div>
+              <Pagination page={safePage} totalPages={totalPages} onPageChange={setPage} />
             </div>
           </>
         )}

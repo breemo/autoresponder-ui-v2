@@ -33,10 +33,6 @@ export default async function handler(req, res) {
   const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
   const actor_user_id = req.body?.actor_user_id;
 
-  // Future: an authenticated user-identity field (e.g. sent_by_user_id) can
-  // be recorded alongside the outbound message once client multi-user
-  // attribution is needed, without changing the shape of this handler.
-
   if (!conversation_id || !message) {
     return res.status(400).json({
       success: false,
@@ -81,12 +77,16 @@ export default async function handler(req, res) {
   }
 
   try {
+    // sent_by_user_id is additive and safe to send even though n8n does not
+    // read it yet — see the "Human takeover readiness" note in the
+    // implementation report for exactly what n8n would need to do to start
+    // persisting it onto the outbound message row.
     const response = await fetch(webhookUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ conversation_id, message }),
+      body: JSON.stringify({ conversation_id, message, sent_by_user_id: actor.user.id }),
     });
 
     const text = await response.text();
