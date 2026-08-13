@@ -420,6 +420,24 @@ export default function ClientIntegrations() {
     );
   }
 
+  // Drops any legacy reply-mode key (e.g. an admin-defined "Reply Mode"
+  // field name that used to be written verbatim instead of the canonical
+  // "reply_mode") once a real reply_mode value exists, so a saved config
+  // never persists two competing keys for the same setting — n8n only ever
+  // reads config.reply_mode, so a stale second key made the dropdown look
+  // like it worked while runtime behavior silently kept using the old value.
+  function cleanReplyModeConfig(config) {
+    const source = config || {};
+    if (!Object.prototype.hasOwnProperty.call(source, "reply_mode")) return source;
+
+    const cleaned = {};
+    for (const [key, value] of Object.entries(source)) {
+      if (key !== "reply_mode" && normalizeName(key) === "replymode") continue;
+      cleaned[key] = value;
+    }
+    return cleaned;
+  }
+
   async function handleSaveIntegration(integration) {
     if (!integration) return;
 
@@ -428,13 +446,21 @@ export default function ClientIntegrations() {
       setError("");
       setSuccess("");
 
+      const cleanedConfig = cleanReplyModeConfig(integration.config);
+
       // is_active is persisted separately by toggleActive (an immediate,
       // subscription-gated action) — this only saves configuration, which
       // stays available as maintenance even when the subscription lapses.
       await callIntegrationAction("save_config", {
         feature_id: integration.feature_id,
-        config: integration.config || {},
+        config: cleanedConfig,
       });
+
+      setIntegrations((prev) =>
+        prev.map((item) =>
+          item.id === integration.id ? { ...item, config: cleanedConfig } : item
+        )
+      );
 
       setSuccess("تم حفظ إعدادات التكامل بنجاح.");
     } catch (err) {
@@ -639,12 +665,6 @@ export default function ClientIntegrations() {
                             <div className="mt-4 grid gap-3 md:grid-cols-2">
                               {visibleSelectedFields.map((field) => {
                                 const cfg = selectedIntegration.config || {};
-                                let value = cfg[field.key];
-                                if (value === undefined) {
-                                  const normLabel = normalizeName(field.key);
-                                  const found = Object.entries(cfg).find(([k]) => normalizeName(k) === normLabel);
-                                  value = found ? found[1] : "";
-                                }
 
                                 // reply_mode is stored as a free-form string in config (no
                                 // schema change), but guided here as a dropdown so it can't
@@ -653,6 +673,24 @@ export default function ClientIntegrations() {
                                 // only saves the config value; it does not change is_active
                                 // and does not simulate any runtime behavior here.
                                 const isReplyModeField = normalizeName(field.key) === "replymode";
+
+                                // The reply-mode field always reads/writes the canonical
+                                // config.reply_mode key — never the admin-defined field
+                                // label (e.g. "Reply Mode"), which is what n8n does NOT
+                                // read and previously left the dropdown unable to affect
+                                // runtime behavior. See handleSaveIntegration for the
+                                // cleanup of any legacy "Reply Mode" key still on disk.
+                                let value;
+                                if (isReplyModeField) {
+                                  value = cfg.reply_mode;
+                                } else {
+                                  value = cfg[field.key];
+                                  if (value === undefined) {
+                                    const normLabel = normalizeName(field.key);
+                                    const found = Object.entries(cfg).find(([k]) => normalizeName(k) === normLabel);
+                                    value = found ? found[1] : "";
+                                  }
+                                }
 
                                 if (isReplyModeField) {
                                   const knownOptions = ["ai", "welcome_only"];
@@ -664,7 +702,7 @@ export default function ClientIntegrations() {
                                       <select
                                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50"
                                         value={value || "ai"}
-                                        onChange={(e) => handleFieldChange(selectedIntegration.id, field.key, e.target.value)}
+                                        onChange={(e) => handleFieldChange(selectedIntegration.id, "reply_mode", e.target.value)}
                                       >
                                         {options.map((opt) => (
                                           <option key={opt} value={opt}>

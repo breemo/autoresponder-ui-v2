@@ -138,9 +138,12 @@ export default function WhatsAppEvolutionSection({ clientId, integration, maxCon
     ? `وصلت للحد الأقصى المسموح (${maxConnections}) لأرقام واتساب ضمن خطتك`
     : null;
 
+  // Canonical key only — n8n reads config.reply_mode exclusively; a legacy
+  // config["Reply Mode"] fallback used to exist here but that key should
+  // never be read or written anywhere in the app (see ClientIntegrations.jsx
+  // handleSaveIntegration, which now also strips it on save).
   const integrationReplyMode =
     integration?.config?.reply_mode ||
-    integration?.config?.["Reply Mode"] ||
     integration?.config?.mode ||
     "ai";
 
