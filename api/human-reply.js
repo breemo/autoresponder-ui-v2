@@ -58,6 +58,32 @@ export default async function handler(req, res) {
     return res.status(403).json({ success: false, message: "Forbidden" });
   }
 
+  // Human Takeover ownership: a conversation already in the human queue
+  // (waiting_human) can only be replied to by its assigned employee — and
+  // if nobody has claimed it yet (assigned_user_id null), nobody may reply
+  // until someone does. A conversation not in that state has no owner
+  // concept and stays unrestricted (unchanged pre-existing behavior — a
+  // human can already reply on a normal active/AI-driven conversation).
+  const { data: state, error: stateError } = await supabase
+    .from("conversation_state")
+    .select("conversation_status, assigned_user_id")
+    .eq("client_id", actor.membership.client_id)
+    .eq("conversation_id", conversation_id)
+    .maybeSingle();
+
+  if (stateError) {
+    return res.status(500).json({ success: false, message: "فشل التحقق من حالة المحادثة" });
+  }
+
+  if (state?.conversation_status === "waiting_human" && state.assigned_user_id !== actor.user.id) {
+    return res.status(403).json({
+      success: false,
+      message: state.assigned_user_id
+        ? "هذه المحادثة مستلمة بواسطة موظف آخر"
+        : "يجب استلام المحادثة أولاً",
+    });
+  }
+
   // No subscription/entitlement check here — see the architecture note
   // above. n8n decides whether this client is allowed to send.
 

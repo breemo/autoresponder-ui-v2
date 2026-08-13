@@ -126,6 +126,16 @@ export default function ClientMessages() {
   const lastLoadedConversationRef = useRef(null);
   const selectedConversationIdRef = useRef(null);
 
+  // Realtime support (no polling): mirrors the currently-known conversation
+  // ids so the INSERT handler can tell "existing conversation, patch it" vs
+  // "brand new conversation, do a single event-driven refetch" apart
+  // without touching React state from inside a setState updater. Also
+  // tracks message ids already processed via Realtime so a duplicate
+  // delivery (e.g. a reconnect) is never applied twice to the list's
+  // messages_count/unread_count.
+  const conversationIdsRef = useRef(new Set());
+  const seenRealtimeMessageIdsRef = useRef(new Set());
+
   async function fetchConversations() {
     if (!clientId) return;
 
@@ -291,33 +301,42 @@ export default function ClientMessages() {
     }
   }
 
-  // Shared status-update helper. `preserveStep: true` leaves current_step
-  // untouched in the DB (used by human takeover, which must not reset the
-  // AI flow's step). Otherwise `currentStep` is written explicitly.
-  // `clearAssignment: true` also clears assigned_user_id/assigned_at (used
-  // by reopen/return-to-AI only — close intentionally leaves an existing
-  // claim in place as a historical record of who handled the conversation).
-  async function applyStatusChange(newStatus, { currentStep = null, preserveStep = false, clearAssignment = false } = {}) {
+  // Shared status-update helper. Delegates to the server-authorized
+  // /api/conversation-status endpoint rather than writing conversation_state
+  // directly from the browser — this used to be a direct Supabase write
+  // with no actor/permission/ownership check at all, which meant a
+  // non-assigned teammate could bypass the UI's disabled Close button
+  // entirely by calling Supabase from devtools. The server now re-derives
+  // client_id/permission and, for `close`, verifies the actor is the
+  // conversation's assigned employee whenever it's already waiting_human
+  // (see api/conversation-status.js). `currentStep`/`preserveStep`/
+  // `clearAssignment` only shape the *local* optimistic patch to match what
+  // the server is known to have done for each action — they don't control
+  // server behavior.
+  async function applyStatusChange(action, newStatus, { currentStep = null, preserveStep = false, clearAssignment = false } = {}) {
     if (!selectedConversationId || !clientId) return;
 
     try {
       setUpdatingStatus(true);
       setError("");
 
-      const payload = { conversation_status: newStatus, updated_at: new Date().toISOString() };
+      const response = await fetch("/api/conversation-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, conversation_id: selectedConversationId, actor_user_id: user?.id }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.success === false) {
+        throw new Error(data?.message || "فشل في تحديث حالة المحادثة");
+      }
+
+      const payload = { conversation_status: newStatus, updated_at: data.updated_at || new Date().toISOString() };
       if (!preserveStep) payload.current_step = currentStep;
       if (clearAssignment) {
         payload.assigned_user_id = null;
         payload.assigned_at = null;
       }
-
-      const { error } = await supabase
-        .from("conversation_state")
-        .update(payload)
-        .eq("client_id", clientId)
-        .eq("conversation_id", selectedConversationId);
-
-      if (error) throw error;
 
       setConversations((prev) =>
         prev.map((conv) =>
@@ -328,7 +347,7 @@ export default function ClientMessages() {
       );
     } catch (err) {
       console.error(err);
-      setError("فشل في تحديث حالة المحادثة");
+      setError(err.message || "فشل في تحديث حالة المحادثة");
     } finally {
       setUpdatingStatus(false);
     }
@@ -336,23 +355,29 @@ export default function ClientMessages() {
 
   // Explicit close: conversation_status = closed, current_step = done.
   // Assignment (if any) is deliberately preserved — see applyStatusChange.
+  // Server-enforced: blocked unless the actor is the assigned employee, if
+  // the conversation is already waiting_human (see api/conversation-status.js).
   function closeConversation() {
-    return applyStatusChange("closed", { currentStep: "done" });
+    return applyStatusChange("close", "closed", { currentStep: "done" });
   }
 
   // Explicit reopen/reset to normal AI flow: conversation_status = active,
   // current_step = null, and any existing claim is cleared — a conversation
-  // handed back to AI has no human owner until taken over again.
+  // handed back to AI has no human owner until taken over again. Only ever
+  // called from a closed conversation (see the button below), which has no
+  // owner-concept, so this stays open to any Inbox-eligible teammate,
+  // matching pre-existing behavior.
   function reopenConversation() {
-    return applyStatusChange("active", { currentStep: null, clearAssignment: true });
+    return applyStatusChange("reopen", "active", { currentStep: null, clearAssignment: true });
   }
 
   // Explicit human takeover: conversation_status = waiting_human only.
   // current_step must be preserved exactly, not reset. This only opens the
   // shared queue — it does not assign anyone; see claimConversation for the
-  // explicit per-employee claim step.
+  // explicit per-employee claim step. Always called from a non-waiting_human
+  // state, so there's no owner yet to check against.
   function takeoverConversation() {
-    return applyStatusChange("waiting_human", { preserveStep: true });
+    return applyStatusChange("takeover", "waiting_human", { preserveStep: true });
   }
 
   // Explicit claim ("استلام المحادثة"): delegates the actual assignment to
@@ -439,6 +464,10 @@ export default function ClientMessages() {
   async function sendHumanReply() {
     const trimmed = draft.trim();
     if (!trimmed || !selectedConversationId || sendingRef.current) return;
+    // Mirrors the composer's own disabled state (see canControlConversation)
+    // — belt-and-suspenders against any path that could still call this
+    // directly. The server (api/human-reply.js) is the authoritative check.
+    if (!canControlConversation) return;
 
     sendingRef.current = true;
     setSending(true);
@@ -480,6 +509,95 @@ export default function ClientMessages() {
 
   useEffect(() => {
     if (clientId) fetchConversations();
+  }, [clientId]);
+
+  // Keeps a ref mirror of "which conversation ids are currently known" so
+  // the Realtime handler can decide existing-vs-new synchronously, without
+  // performing a side effect (a refetch) from inside a setState updater.
+  useEffect(() => {
+    conversationIdsRef.current = new Set(conversations.map((c) => c.conversation_id));
+  }, [conversations]);
+
+  // New inbound/outbound message arriving via Realtime (see the
+  // subscription effect below). Handles the three required updates:
+  // append to the open thread if it's the selected conversation, patch the
+  // matching conversation's preview/counts in the list, or — for a
+  // conversation not seen before — a single event-driven refetch (never
+  // polling). message.id is the dedup key throughout: the open-thread
+  // append checks it against the current thread before appending (also
+  // covers a locally-sent reply that arrives here after
+  // refreshMessagesAfterSend's own poll already pulled it in), and
+  // seenRealtimeMessageIdsRef additionally guards the list's incremental
+  // counters against a duplicate Realtime delivery of the same row.
+  function handleRealtimeMessage(msg) {
+    if (!msg || !msg.conversation_id) return;
+
+    if (msg.id != null) {
+      if (seenRealtimeMessageIdsRef.current.has(msg.id)) return;
+      seenRealtimeMessageIdsRef.current.add(msg.id);
+    }
+
+    const messageText = getMessageText(msg);
+
+    if (selectedConversationIdRef.current === msg.conversation_id) {
+      setConversationMessages((prev) => {
+        if (prev.some((m) => m.id === msg.id)) return prev;
+        return [...prev, { ...msg, message_text: messageText }];
+      });
+    }
+
+    if (!conversationIdsRef.current.has(msg.conversation_id)) {
+      // Brand-new conversation this session hasn't listed yet — pick it up
+      // with a single refetch triggered by this real event, not a timer.
+      fetchConversations();
+      return;
+    }
+
+    setConversations((prev) => {
+      const idx = prev.findIndex((c) => c.conversation_id === msg.conversation_id);
+      if (idx === -1) return prev;
+
+      const existing = prev[idx];
+      const next = [...prev];
+      next[idx] = {
+        ...existing,
+        last_message: messageText || existing.last_message,
+        last_message_at: msg.created_at || existing.last_message_at,
+        updated_at: msg.created_at || existing.updated_at,
+        last_direction: msg.direction || existing.last_direction,
+        // Same counting rule fetchConversations already uses — only
+        // increment unread_count for a message explicitly marked unread.
+        messages_count: (existing.messages_count || 0) + 1,
+        unread_count: msg.is_read === false ? (existing.unread_count || 0) + 1 : existing.unread_count,
+      };
+      next.sort((a, b) => new Date(b.last_message_at || b.updated_at || 0) - new Date(a.last_message_at || a.updated_at || 0));
+      return next;
+    });
+  }
+
+  // Realtime subscription: INSERT events on public.messages, scoped to this
+  // client only (tenant isolation — the same boundary every other query in
+  // this file already applies via .eq("client_id", clientId)). No polling
+  // interval anywhere in this file; this channel is the only mechanism that
+  // reveals new messages without a manual refresh. Torn down on unmount and
+  // whenever clientId changes, so a client switch never leaves a stale
+  // subscription listening for another tenant's messages.
+  useEffect(() => {
+    if (!clientId) return;
+
+    const channel = supabase
+      .channel(`messages-client-${clientId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages", filter: `client_id=eq.${clientId}` },
+        (payload) => handleRealtimeMessage(payload.new)
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId]);
 
   const filteredConversations = useMemo(() => {
@@ -546,6 +664,18 @@ export default function ClientMessages() {
 
   const selectedConversation = filteredConversations.find((c) => c.conversation_id === selectedConversationId) || null;
   const conversationStatus = selectedConversation?.conversation_status || "active";
+
+  // Human Takeover ownership (display/UX layer only — the authoritative
+  // check is server-side in api/human-reply.js and api/conversation-status.js).
+  // A conversation not in the human queue has no owner concept and is
+  // always controllable, matching pre-existing behavior. Once
+  // waiting_human, only the assigned employee may reply/close — and if
+  // nobody has claimed it yet (assigned_user_id null), that correctly
+  // evaluates to "not me" for everyone, blocking the composer/Close button
+  // until someone claims it.
+  const isWaitingHuman = conversationStatus === "waiting_human";
+  const isOwnedByMe = !!selectedConversation?.assigned_user_id && selectedConversation.assigned_user_id === user?.id;
+  const canControlConversation = !isWaitingHuman || isOwnedByMe;
 
   const stats = useMemo(() => ({
     total: conversations.length,
@@ -682,7 +812,7 @@ export default function ClientMessages() {
                     {conversationStatus !== "waiting_human" && conversationStatus !== "closed" && (
                       <button onClick={takeoverConversation} disabled={updatingStatus} className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">تحويل لموظف</button>
                     )}
-                    {conversationStatus !== "closed" && (
+                    {conversationStatus !== "closed" && canControlConversation && (
                       <button onClick={closeConversation} disabled={updatingStatus} className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">إغلاق</button>
                     )}
                     {conversationStatus === "closed" && (
@@ -730,6 +860,14 @@ export default function ClientMessages() {
                   </div>
                 )}
 
+                {!canControlConversation && (
+                  <div className="mb-2 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+                    {selectedConversation.assigned_user_id
+                      ? `هذه المحادثة مستلمة بواسطة ${selectedConversation.assigned_user?.name || "موظف"}`
+                      : "يجب استلام المحادثة أولاً"}
+                  </div>
+                )}
+
                 <div className="flex items-end gap-2">
                   {/* Prepared for future media sending — not wired to any send
                       path yet. Kept visibly disabled so the composer's
@@ -753,8 +891,8 @@ export default function ClientMessages() {
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={handleComposerKeyDown}
-                    disabled={sending}
-                    placeholder="اكتب ردك هنا... (Enter للإرسال، Shift+Enter لسطر جديد)"
+                    disabled={sending || !canControlConversation}
+                    placeholder={canControlConversation ? "اكتب ردك هنا... (Enter للإرسال، Shift+Enter لسطر جديد)" : "لا يمكنك الرد على هذه المحادثة"}
                     rows={2}
                     className="min-h-[44px] max-h-40 flex-1 resize-none rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50 disabled:bg-slate-50 disabled:text-slate-400"
                   />
@@ -762,7 +900,7 @@ export default function ClientMessages() {
                   <button
                     type="button"
                     onClick={sendHumanReply}
-                    disabled={sending || !draft.trim()}
+                    disabled={sending || !draft.trim() || !canControlConversation}
                     className="h-11 shrink-0 rounded-2xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50"
                   >
                     {sending ? "جارِ الإرسال..." : "إرسال"}
