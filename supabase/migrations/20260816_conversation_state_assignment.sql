@@ -1,0 +1,54 @@
+-- Human Takeover claim queue: adds conversation-level assignment so any
+-- Inbox-eligible client employee can see an unclaimed `waiting_human`
+-- conversation and explicitly claim it ("استلام المحادثة"), instead of the
+-- app auto-assigning a single employee.
+--
+-- Type confirmed live (2026-08-13): public.users.id is uuid. The
+-- previously prepared messages.sent_by_user_id column (see
+-- 20260815_messages_sent_by_user_id.sql) was corrected from bigint to
+-- uuid and its FK to public.users(id) was added directly against the live
+-- project. assigned_user_id below uses that confirmed type from the start,
+-- with a real FK — no guessing, no deferred FK.
+--
+-- assigned_user_id vs messages.sent_by_user_id — different concepts, both
+-- needed: assigned_user_id is the conversation's current human owner (one
+-- value per conversation, changes over its lifecycle). sent_by_user_id
+-- (separate, still-unexecuted migration) is a per-message audit fact — who
+-- actually typed one specific outbound reply. A teammate can send a single
+-- reply on behalf of the assigned owner without changing who owns the
+-- conversation; neither field substitutes for the other.
+--
+-- assigned_at is a plain timestamp for "claimed at" display and any future
+-- queue-ordering/SLA use — no dependency on anything else.
+--
+-- Nullable / additive only:
+--   - null assigned_user_id = unclaimed, visible to every eligible teammate.
+--   - Set only by the atomic claim in api/claim-conversation.js (a single
+--     conditional UPDATE ... WHERE assigned_user_id IS NULL — see that file
+--     for the race-condition handling).
+--   - Cleared only when a conversation is reopened / returned to AI
+--     (ClientMessages.jsx reopenConversation()) — closing a conversation
+--     intentionally leaves the assignment in place (historical record of
+--     who handled it).
+--
+-- n8n impact: this is purely additive and orthogonal to conversation_status
+-- / current_step, the only two fields n8n's `upsert_conversation_state`
+-- node is known to manage (see engineering/knowledge/N8N_WORKFLOWS.md). n8n
+-- has no field mapped to either new column, and PostgREST's standard
+-- merge-duplicates upsert only writes columns present in a request body —
+-- columns absent from n8n's payload are left untouched on conflict. This
+-- is architecturally expected to be safe but has not been empirically
+-- verified against the live workflow (that file/workflow is not accessible
+-- from this repo). Recommended before relying on this in production: set
+-- assigned_user_id on one test conversation, trigger a single real inbound
+-- message through n8n for that same conversation, confirm the column
+-- survives.
+--
+-- Run this manually against the Supabase project (SQL editor or your
+-- migration tooling) — it is not executed automatically by this repo, and
+-- was NOT run as part of this change (implementation pass only, per
+-- explicit instruction not to run it against live Supabase).
+
+alter table public.conversation_state
+  add column if not exists assigned_user_id uuid null references public.users(id),
+  add column if not exists assigned_at timestamptz null;

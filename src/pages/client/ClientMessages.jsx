@@ -103,6 +103,7 @@ export default function ClientMessages() {
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [claimingId, setClaimingId] = useState(null);
   const [error, setError] = useState("");
 
   const [search, setSearch] = useState("");
@@ -135,7 +136,7 @@ export default function ClientMessages() {
       const [{ data: stateRows, error: stateError }, { data: messageRows, error: messageError }, { data: leadRows, error: leadError }] = await Promise.all([
         supabase
           .from("conversation_state")
-          .select("*")
+          .select("*, assigned_user:assigned_user_id(id, name)")
           .eq("client_id", clientId)
           .order("updated_at", { ascending: false }),
         supabase
@@ -180,6 +181,9 @@ export default function ClientMessages() {
             channel: msg.channel || state?.platform || "",
             conversation_status: state?.conversation_status || "active",
             current_step: state?.current_step || null,
+            assigned_user_id: state?.assigned_user_id || null,
+            assigned_at: state?.assigned_at || null,
+            assigned_user: state?.assigned_user || null,
             updated_at: state?.updated_at || msg.created_at,
             last_message: getMessageText(msg) || "",
             last_message_at: msg.created_at,
@@ -290,7 +294,10 @@ export default function ClientMessages() {
   // Shared status-update helper. `preserveStep: true` leaves current_step
   // untouched in the DB (used by human takeover, which must not reset the
   // AI flow's step). Otherwise `currentStep` is written explicitly.
-  async function applyStatusChange(newStatus, { currentStep = null, preserveStep = false } = {}) {
+  // `clearAssignment: true` also clears assigned_user_id/assigned_at (used
+  // by reopen/return-to-AI only — close intentionally leaves an existing
+  // claim in place as a historical record of who handled the conversation).
+  async function applyStatusChange(newStatus, { currentStep = null, preserveStep = false, clearAssignment = false } = {}) {
     if (!selectedConversationId || !clientId) return;
 
     try {
@@ -299,6 +306,10 @@ export default function ClientMessages() {
 
       const payload = { conversation_status: newStatus, updated_at: new Date().toISOString() };
       if (!preserveStep) payload.current_step = currentStep;
+      if (clearAssignment) {
+        payload.assigned_user_id = null;
+        payload.assigned_at = null;
+      }
 
       const { error } = await supabase
         .from("conversation_state")
@@ -308,7 +319,13 @@ export default function ClientMessages() {
 
       if (error) throw error;
 
-      setConversations((prev) => prev.map((conv) => conv.conversation_id === selectedConversationId ? { ...conv, ...payload } : conv));
+      setConversations((prev) =>
+        prev.map((conv) =>
+          conv.conversation_id === selectedConversationId
+            ? { ...conv, ...payload, assigned_user: clearAssignment ? null : conv.assigned_user }
+            : conv
+        )
+      );
     } catch (err) {
       console.error(err);
       setError("فشل في تحديث حالة المحادثة");
@@ -318,20 +335,86 @@ export default function ClientMessages() {
   }
 
   // Explicit close: conversation_status = closed, current_step = done.
+  // Assignment (if any) is deliberately preserved — see applyStatusChange.
   function closeConversation() {
     return applyStatusChange("closed", { currentStep: "done" });
   }
 
   // Explicit reopen/reset to normal AI flow: conversation_status = active,
-  // current_step = null.
+  // current_step = null, and any existing claim is cleared — a conversation
+  // handed back to AI has no human owner until taken over again.
   function reopenConversation() {
-    return applyStatusChange("active", { currentStep: null });
+    return applyStatusChange("active", { currentStep: null, clearAssignment: true });
   }
 
   // Explicit human takeover: conversation_status = waiting_human only.
-  // current_step must be preserved exactly, not reset.
+  // current_step must be preserved exactly, not reset. This only opens the
+  // shared queue — it does not assign anyone; see claimConversation for the
+  // explicit per-employee claim step.
   function takeoverConversation() {
     return applyStatusChange("waiting_human", { preserveStep: true });
+  }
+
+  // Explicit claim ("استلام المحادثة"): delegates the actual assignment to
+  // /api/claim-conversation, which performs a single conditional UPDATE
+  // (... WHERE assigned_user_id IS NULL) so only one concurrent caller can
+  // ever win — see that file for the full race-condition explanation. This
+  // handler never assumes it won; it always reconciles local state with
+  // whatever the API reports, whether that's success or "already claimed".
+  async function claimConversation(conversationId) {
+    if (!conversationId || claimingId) return;
+
+    setClaimingId(conversationId);
+    setError("");
+
+    try {
+      const response = await fetch("/api/claim-conversation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: conversationId, actor_user_id: user?.id }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      const assignment = data?.assignment || null;
+
+      if (data?.claimed) {
+        setConversations((prev) =>
+          prev.map((conv) =>
+            conv.conversation_id === conversationId
+              ? {
+                  ...conv,
+                  assigned_user_id: assignment?.assigned_user_id || null,
+                  assigned_at: assignment?.assigned_at || null,
+                  assigned_user: assignment?.assigned_user || null,
+                }
+              : conv
+          )
+        );
+        return;
+      }
+
+      // Lost the race, or the conversation left waiting_human in the
+      // meantime — reconcile with the API's view instead of just failing,
+      // so the button/badge reflects the real current owner immediately.
+      setConversations((prev) =>
+        prev.map((conv) =>
+          conv.conversation_id === conversationId
+            ? {
+                ...conv,
+                conversation_status: assignment?.conversation_status || conv.conversation_status,
+                assigned_user_id: assignment?.assigned_user_id ?? conv.assigned_user_id,
+                assigned_user: assignment?.assigned_user || conv.assigned_user,
+              }
+            : conv
+        )
+      );
+      setError(data?.message || "تعذر استلام المحادثة");
+    } catch (err) {
+      console.error(err);
+      setError("فشل استلام المحادثة، حاول مرة أخرى");
+    } finally {
+      setClaimingId(null);
+    }
   }
 
   // After a successful send, n8n still needs to deliver through the channel
@@ -544,6 +627,11 @@ export default function ClientMessages() {
                           {conv.unread_count > 0 && (
                             <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[11px] font-bold text-white">{conv.unread_count} غير مقروءة</span>
                           )}
+                          {conv.assigned_user_id && (
+                            <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
+                              مستلمة: {conv.assigned_user?.name || "موظف"}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -574,8 +662,22 @@ export default function ClientMessages() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                    {conversationStatus === "waiting_human" && (
-                      <span className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">بانتظار موظف</span>
+                    {conversationStatus === "waiting_human" && !selectedConversation.assigned_user_id && (
+                      <>
+                        <span className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">بانتظار موظف</span>
+                        <button
+                          onClick={() => claimConversation(selectedConversation.conversation_id)}
+                          disabled={claimingId === selectedConversation.conversation_id}
+                          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50"
+                        >
+                          {claimingId === selectedConversation.conversation_id ? "جارٍ الاستلام..." : "استلام المحادثة"}
+                        </button>
+                      </>
+                    )}
+                    {conversationStatus === "waiting_human" && selectedConversation.assigned_user_id && (
+                      <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">
+                        مستلمة بواسطة {selectedConversation.assigned_user?.name || "موظف"}
+                      </span>
                     )}
                     {conversationStatus !== "waiting_human" && conversationStatus !== "closed" && (
                       <button onClick={takeoverConversation} disabled={updatingStatus} className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">تحويل لموظف</button>
