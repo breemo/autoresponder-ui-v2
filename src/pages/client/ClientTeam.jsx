@@ -336,7 +336,7 @@ export default function ClientTeam() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="border-b border-slate-100 bg-slate-50/60 text-right text-xs font-bold uppercase tracking-wide text-slate-500">
+              <thead className="border-b border-slate-100 bg-slate-50/60 text-start text-xs font-bold uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3">{t("common.name")}</th>
                   <th className="px-4 py-3">{t("common.email")}</th>

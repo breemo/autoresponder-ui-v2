@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useLanguage } from "../context/LanguageContext.jsx";
 import {
   ArrowRightOnRectangleIcon,
   BoltIcon,
@@ -90,6 +91,13 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
+  // Personal UI language toggle (client portal only — see the header
+  // button below). Reuses LanguageContext's existing setUserLanguage,
+  // the same centralized function My Account uses, so this is the one
+  // and only place personal-language persistence logic lives. It writes
+  // client_users.language exclusively — never clients.default_language.
+  const { language, setUserLanguage } = useLanguage();
+  const [switchingLanguage, setSwitchingLanguage] = useState(false);
   const isAdmin = panel === "admin";
   // Admin nav is unfiltered (unchanged). Client nav items with a
   // `permission` are hidden for members who don't have it — this is
@@ -111,6 +119,13 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
     clearSessionExpiry();
     setUser(null);
     navigate("/");
+  }
+
+  async function toggleLanguage() {
+    if (switchingLanguage) return;
+    setSwitchingLanguage(true);
+    await setUserLanguage(language === "en" ? "ar" : "en");
+    setSwitchingLanguage(false);
   }
 
   return (
@@ -184,13 +199,36 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
               <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
             </div>
 
-            <div className="hidden items-center gap-3 md:flex">
-              <div className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-500 shadow-sm">
-                {t("auth.greeting", { name: "" })}
-                <span className="font-semibold text-slate-800">{displayName}</span>
-              </div>
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-50 text-sm font-bold text-indigo-600 ring-1 ring-indigo-100">
-                {(displayName || "A").slice(0, 1).toUpperCase()}
+            <div className="flex items-center gap-3">
+              {/* Personal UI language toggle — client portal only. One
+                  click swaps ar<->en via LanguageContext's setUserLanguage,
+                  the same centralized persistence function My Account uses
+                  (writes client_users.language, never clients.default_language).
+                  Admin has no switcher here — Login.jsx never fetches
+                  ui_language_* for admin accounts, so admin always renders
+                  the 'ar' fallback regardless. */}
+              {!isAdmin && (
+                <button
+                  type="button"
+                  onClick={toggleLanguage}
+                  disabled={switchingLanguage}
+                  title={t("common.switchLanguage")}
+                  aria-label={t("common.switchLanguage")}
+                  className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <span aria-hidden="true">🌐</span>
+                  <span>{language === "en" ? "عربي" : "EN"}</span>
+                </button>
+              )}
+
+              <div className="hidden items-center gap-3 md:flex">
+                <div className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-500 shadow-sm">
+                  {t("auth.greeting", { name: "" })}
+                  <span className="font-semibold text-slate-800">{displayName}</span>
+                </div>
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-50 text-sm font-bold text-indigo-600 ring-1 ring-indigo-100">
+                  {(displayName || "A").slice(0, 1).toUpperCase()}
+                </div>
               </div>
             </div>
           </div>

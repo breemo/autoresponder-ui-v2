@@ -45,7 +45,8 @@
     "timeNow": "Just now",
     "timeMinutesAgo": "{{count}}m ago",
     "timeHoursAgo": "{{count}}h ago",
-    "timeDaysAgo": "{{count}}d ago"
+    "timeDaysAgo": "{{count}}d ago",
+    "switchLanguage": "Switch language"
   },
   "replyMode": {
     "ai": "AI",
@@ -175,11 +176,11 @@
     "validationTooShort": "Password must be at least 8 characters",
     "successChanged": "Password changed successfully",
     "errorGeneric": "Failed to change password",
-    "languageTitle": "Interface Language",
-    "languageHint": "Applied immediately and saved for your account only. If you don't choose a language, the client's default is used.",
+    "languageTitle": "My Interface Language",
+    "languageHint": "Your personal interface language. Your selection overrides the account default language.",
     "languageArabic": "العربية",
     "languageEnglish": "English",
-    "languageUseClientDefault": "Use client default",
+    "languageUseClientDefault": "Use account default language",
     "languageSaved": "Interface language saved",
     "languageSaveFailedLocal": "Applied to this device only; will be saved to your account later"
   },
@@ -207,8 +208,8 @@
     "defaultReplyPlaceholder": "Thanks for reaching out...",
     "closingMessage": "Closing Message",
     "closingMessagePlaceholder": "It was a pleasure helping you...",
-    "defaultLanguageTitle": "Default Language",
-    "defaultLanguageSubtitle": "The default interface language for teammates who haven't chosen a personal language.",
+    "defaultLanguageTitle": "Default Account Language",
+    "defaultLanguageSubtitle": "The default interface language for this account. It is used for users who have not selected a personal language.",
     "defaultLanguageArabic": "العربية",
     "defaultLanguageEnglish": "English",
     "defaultLanguageSaved": "Account default language saved"

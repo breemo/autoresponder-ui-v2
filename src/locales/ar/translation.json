@@ -45,7 +45,8 @@
     "timeNow": "الآن",
     "timeMinutesAgo": "منذ {{count}} د",
     "timeHoursAgo": "منذ {{count}} س",
-    "timeDaysAgo": "منذ {{count}} يوم"
+    "timeDaysAgo": "منذ {{count}} يوم",
+    "switchLanguage": "تبديل اللغة"
   },
   "replyMode": {
     "ai": "الذكاء الاصطناعي",
@@ -175,11 +176,11 @@
     "validationTooShort": "يجب أن تتكون كلمة المرور من 8 أحرف على الأقل",
     "successChanged": "تم تغيير كلمة المرور بنجاح",
     "errorGeneric": "فشل تغيير كلمة المرور",
-    "languageTitle": "لغة الواجهة",
-    "languageHint": "تُطبَّق فوراً وتُحفظ لحسابك فقط. إن لم تختر لغة، يُستخدم إعداد العميل الافتراضي.",
+    "languageTitle": "لغة واجهتي",
+    "languageHint": "لغة الواجهة الخاصة بك. اختيارك الشخصي يتجاوز لغة الحساب الافتراضية.",
     "languageArabic": "العربية",
     "languageEnglish": "English",
-    "languageUseClientDefault": "استخدام إعداد العميل الافتراضي",
+    "languageUseClientDefault": "استخدام لغة الحساب الافتراضية",
     "languageSaved": "تم حفظ لغة الواجهة",
     "languageSaveFailedLocal": "تم تطبيق اللغة على هذا الجهاز فقط؛ سيتم الحفظ في الحساب لاحقاً"
   },
@@ -207,8 +208,8 @@
     "defaultReplyPlaceholder": "شكراً لتواصلك معنا...",
     "closingMessage": "رسالة الإغلاق",
     "closingMessagePlaceholder": "سعدنا بخدمتك...",
-    "defaultLanguageTitle": "اللغة الافتراضية",
-    "defaultLanguageSubtitle": "لغة الواجهة الافتراضية لجميع أعضاء الفريق الذين لم يختاروا لغة شخصية.",
+    "defaultLanguageTitle": "لغة الحساب الافتراضية",
+    "defaultLanguageSubtitle": "اللغة الافتراضية لواجهة الحساب. تُستخدم للموظفين الذين لم يحددوا لغة شخصية.",
     "defaultLanguageArabic": "العربية",
     "defaultLanguageEnglish": "English",
     "defaultLanguageSaved": "تم حفظ اللغة الافتراضية للحساب"
