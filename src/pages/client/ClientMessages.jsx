@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { PhotoIcon, DocumentIcon, MicrophoneIcon } from "@heroicons/react/24/outline";
+import { ArrowLeftIcon, PhotoIcon, DocumentIcon, MicrophoneIcon } from "@heroicons/react/24/outline";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
 import ChannelIcon from "../../lib/channelIcons.jsx";
@@ -721,8 +721,16 @@ export default function ClientMessages() {
 
       {error && <div className="shrink-0 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>}
 
+      {/* Below xl the grid is a single stacked column, so both the list and
+          the open conversation would otherwise render on top of each
+          other at full (squeezed) height. selectedConversationId (already
+          existing state, no new logic) toggles which of the two panes is
+          visible below xl — a classic responsive master/detail pattern.
+          At xl+, xl:flex forces both panes visible again regardless of
+          selection, exactly matching the existing side-by-side desktop
+          layout. */}
       <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:grid-cols-[380px_minmax(0,1fr)]">
-        <aside className="flex h-full min-h-0 flex-col border-l border-slate-100 bg-slate-50/50">
+        <aside className={`${selectedConversationId ? "hidden xl:flex" : "flex"} h-full min-h-0 flex-col border-e border-slate-100 bg-slate-50/50`}>
           <div className="shrink-0 border-b border-slate-100 p-3">
             <div className="mb-2 flex items-center justify-between gap-3">
               <div>
@@ -770,7 +778,7 @@ export default function ClientMessages() {
                 const statusClass = statusStyles[conv.conversation_status] || "bg-slate-100 text-slate-600 border-slate-200";
 
                 return (
-                  <button key={conv.conversation_id} onClick={() => setSelectedConversationId(conv.conversation_id)} className={`mb-1.5 w-full rounded-xl border p-2 text-right transition ${isActive ? "border-indigo-200 bg-white shadow-sm ring-4 ring-indigo-50" : "border-transparent hover:border-slate-200 hover:bg-white"}`}>
+                  <button key={conv.conversation_id} onClick={() => setSelectedConversationId(conv.conversation_id)} className={`mb-1.5 w-full rounded-xl border p-2 text-start transition ${isActive ? "border-indigo-200 bg-white shadow-sm ring-4 ring-indigo-50" : "border-transparent hover:border-slate-200 hover:bg-white"}`}>
                     <div className="flex items-start gap-3">
       <ChannelIcon channel={conv.channel || conv.platform} />
                       <div className="min-w-0 flex-1">
@@ -801,7 +809,7 @@ export default function ClientMessages() {
           </div>
         </aside>
 
-        <section className="flex min-h-0 flex-col bg-white">
+        <section className={`${selectedConversationId ? "flex" : "hidden xl:flex"} min-h-0 flex-col bg-white`}>
           {!selectedConversation ? (
             <div className="flex flex-1 items-center justify-center text-sm text-slate-400">{t("messagesPage.selectConversationPrompt")}</div>
           ) : (
@@ -809,6 +817,17 @@ export default function ClientMessages() {
               <div className="shrink-0 border-b border-slate-100 p-3">
                 <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
                   <div className="flex items-start gap-3">
+                    {/* Below xl the list is its own pane (see aside above)
+                        — this returns to it. Hidden at xl+ where both
+                        panes are already visible side by side. */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedConversationId(null)}
+                      className="shrink-0 rounded-lg border border-slate-200 bg-white p-2 text-slate-500 transition hover:bg-slate-50 xl:hidden"
+                      aria-label={t("common.back")}
+                    >
+                      <ArrowLeftIcon className="h-4 w-4 rtl:rotate-180" />
+                    </button>
                     <ChannelIcon channel={selectedConversation.channel || selectedConversation.platform} size="h-10 w-10" />
                     <div>
                       <h2 className="text-base font-bold text-slate-950">{selectedLead?.name || selectedConversation.lead_name || selectedConversation.sender || selectedConversation.sender_id || t("common.noName")}</h2>

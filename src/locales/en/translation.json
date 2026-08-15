@@ -46,7 +46,9 @@
     "timeMinutesAgo": "{{count}}m ago",
     "timeHoursAgo": "{{count}}h ago",
     "timeDaysAgo": "{{count}}d ago",
-    "switchLanguage": "Switch language"
+    "switchLanguage": "Switch language",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu"
   },
   "replyMode": {
     "ai": "AI",

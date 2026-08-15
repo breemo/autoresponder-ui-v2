@@ -495,14 +495,14 @@ export default function ClientIntegrations() {
   const displayName = client?.business_name || user?.name || t("integrationsPage.defaultClientName");
 
   return (
-    <div className="space-y-4" dir="rtl">
+    <div className="space-y-4">
       <div className="flex flex-col gap-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
             <Squares2X2Icon className="h-4 w-4" />
             Integrations Center
           </div>
-          <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-950">
+          <h1 className="mt-3 text-2xl font-black tracking-tight text-slate-950">
             {t("integrationsPage.title")}
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-500">
@@ -580,7 +580,7 @@ export default function ClientIntegrations() {
                     <button
                       key={intg.id}
                       onClick={() => setSelectedIntegrationId(intg.id)}
-                      className={`w-full rounded-2xl border p-3 text-left transition ${
+                      className={`w-full rounded-2xl border p-3 text-start transition ${
                         isSelected
                           ? "border-indigo-200 bg-indigo-50/70 shadow-sm"
                           : "border-slate-100 bg-white hover:border-slate-200 hover:bg-slate-50"
@@ -649,7 +649,7 @@ export default function ClientIntegrations() {
                           <button
                             onClick={() => handleSaveIntegration(selectedIntegration)}
                             disabled={savingId === selectedIntegration.id}
-                            className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-60"
+                            className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-60"
                           >
                             <Cog6ToothIcon className="h-4 w-4" />
                             {savingId === selectedIntegration.id ? t("common.saving") : t("common.save")}
@@ -776,7 +776,7 @@ export default function ClientIntegrations() {
                                 <button
                                   type="button"
                                   onClick={() => setShowAdvancedSetup((prev) => !prev)}
-                                  className="flex w-full items-center justify-between gap-3 text-right"
+                                  className="flex w-full items-center justify-between gap-3 text-start"
                                 >
                                   <div>
                                     <p className="text-sm font-bold text-slate-950">{t("integrationsPage.setupLinksTitle")}</p>

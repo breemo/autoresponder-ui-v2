@@ -46,7 +46,9 @@
     "timeMinutesAgo": "منذ {{count}} د",
     "timeHoursAgo": "منذ {{count}} س",
     "timeDaysAgo": "منذ {{count}} يوم",
-    "switchLanguage": "تبديل اللغة"
+    "switchLanguage": "تبديل اللغة",
+    "openMenu": "فتح القائمة",
+    "closeMenu": "إغلاق القائمة"
   },
   "replyMode": {
     "ai": "الذكاء الاصطناعي",

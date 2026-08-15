@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useLanguage } from "../context/LanguageContext.jsx";
 import {
   ArrowRightOnRectangleIcon,
+  Bars3Icon,
   BoltIcon,
   ChatBubbleLeftRightIcon,
   ChatBubbleOvalLeftEllipsisIcon,
@@ -16,6 +17,7 @@ import {
   UserCircleIcon,
   UserGroupIcon,
   UsersIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { useAuth } from "../context/AuthContext.jsx";
 import { PERMISSIONS, hasUserPermission } from "../lib/permissions.js";
@@ -98,6 +100,10 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
   // client_users.language exclusively — never clients.default_language.
   const { language, setUserLanguage } = useLanguage();
   const [switchingLanguage, setSwitchingLanguage] = useState(false);
+  // Mobile/tablet drawer nav (below the lg breakpoint the sidebar is
+  // off-canvas by default — see the <aside> below). Desktop is unaffected;
+  // this state simply never gets read there.
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const isAdmin = panel === "admin";
   // Admin nav is unfiltered (unchanged). Client nav items with a
   // `permission` are hidden for members who don't have it — this is
@@ -113,6 +119,12 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
   const displayName = user?.business_name || user?.name || (isAdmin ? "Admin" : "Client");
   const [title, subtitle] = getPageMeta(t, location.pathname, panel);
   const fullHeight = FULL_HEIGHT_ROUTES.includes(location.pathname);
+
+  // Navigating anywhere should close a currently-open mobile drawer rather
+  // than leaving it open over the newly-loaded page.
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [location.pathname]);
 
   function logout() {
     localStorage.removeItem("user");
@@ -130,15 +142,49 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
 
   return (
     <div className={`bg-[#F5F7FB] text-slate-900 ${fullHeight ? "h-screen overflow-hidden" : "min-h-screen"}`}>
-      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-72 flex-col border-r border-slate-800/80 bg-[#0F172A] text-slate-100 lg:flex">
+      {/* Mobile/tablet drawer backdrop. lg:hidden is a belt-and-suspenders
+          guard — the trigger button that sets mobileNavOpen is itself
+          lg:hidden, so this should never render at lg+ in practice. */}
+      {mobileNavOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-slate-950/50 lg:hidden"
+          onClick={() => setMobileNavOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* start-0 / border-e (logical) instead of left-0 / border-r
+          (physical): in LTR that resolves to left/right exactly as
+          before; in RTL it resolves to right/left, so the sidebar sits on
+          the right with its divider on its left — no JS direction checks
+          needed, this follows the document's dir automatically.
+          Below lg the sidebar is a fixed drawer, translated fully
+          off-canvas (off the start edge) until mobileNavOpen; at lg+ it's
+          always in place (lg:translate-x-0), matching the original
+          always-visible desktop sidebar exactly. */}
+      <aside
+        className={`fixed start-0 top-0 z-50 flex h-screen w-72 flex-col border-e border-slate-800/80 bg-[#0F172A] text-slate-100 transition-transform duration-200 ease-in-out lg:translate-x-0 ${
+          mobileNavOpen ? "translate-x-0" : "-translate-x-full rtl:translate-x-full"
+        }`}
+      >
         <div className="flex h-20 items-center gap-3 border-b border-slate-800 px-5">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-600 shadow-lg shadow-indigo-950/30">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-indigo-600 shadow-lg shadow-indigo-950/30">
             <ChatBubbleLeftRightIcon className="h-6 w-6 text-white" />
           </div>
-          <div>
-            <h1 className="text-lg font-semibold tracking-tight">{t("brand.name")}</h1>
-            <p className="text-xs text-slate-400">{isAdmin ? t("brand.adminConsole") : t("brand.clientWorkspace")}</p>
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-lg font-semibold tracking-tight">{t("brand.name")}</h1>
+            <p className="truncate text-xs text-slate-400">{isAdmin ? t("brand.adminConsole") : t("brand.clientWorkspace")}</p>
           </div>
+          {/* Close affordance for the mobile drawer only — the desktop
+              sidebar has nothing to "close", it's simply always visible. */}
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen(false)}
+            className="shrink-0 rounded-xl p-1.5 text-slate-400 transition hover:bg-slate-800 hover:text-white lg:hidden"
+            aria-label={t("common.closeMenu")}
+          >
+            <XMarkIcon className="h-5 w-5" />
+          </button>
         </div>
 
         <div className="border-b border-slate-800 px-5 py-4">
@@ -188,18 +234,30 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
         </div>
       </aside>
 
-      <div className={`lg:pl-72 ${fullHeight ? "flex h-full flex-col" : ""}`}>
+      <div className={`lg:ps-72 ${fullHeight ? "flex h-full flex-col" : ""}`}>
         <header className="sticky top-0 z-30 shrink-0 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl">
           <div className="flex min-h-20 items-center justify-between gap-4 px-5 py-4 md:px-8">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-indigo-600">
-                {isAdmin ? t("portal.admin") : t("portal.client")}
-              </p>
-              <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{title}</h2>
-              <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
+            <div className="flex min-w-0 items-center gap-3">
+              {/* Mobile/tablet nav trigger — hidden at lg+ where the
+                  sidebar is already always visible. */}
+              <button
+                type="button"
+                onClick={() => setMobileNavOpen(true)}
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 lg:hidden"
+                aria-label={t("common.openMenu")}
+              >
+                <Bars3Icon className="h-5 w-5" />
+              </button>
+              <div className="min-w-0">
+                <p className="text-xs font-medium uppercase tracking-[0.18em] text-indigo-600">
+                  {isAdmin ? t("portal.admin") : t("portal.client")}
+                </p>
+                <h2 className="mt-1 truncate text-2xl font-semibold tracking-tight text-slate-950">{title}</h2>
+                <p className="mt-1 truncate text-sm text-slate-500">{subtitle}</p>
+              </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex shrink-0 items-center gap-3">
               {/* Personal UI language toggle — client portal only. One
                   click swaps ar<->en via LanguageContext's setUserLanguage,
                   the same centralized persistence function My Account uses

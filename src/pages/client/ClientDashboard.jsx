@@ -427,7 +427,7 @@ export default function ClientDashboard() {
                       </div>
                       <p className="mt-1 truncate text-sm font-medium text-slate-500">{conversation.lastMessage || t("dashboard.noMessage")}</p>
                     </div>
-                    <div className="text-left">
+                    <div className="text-end">
                       <p className="text-xs font-bold text-slate-400">{relativeTime(conversation.updatedAt, t)}</p>
                       <p className="mt-1 text-xs font-semibold text-slate-500">{t("dashboard.messageCount", { count: conversation.count })}</p>
                     </div>

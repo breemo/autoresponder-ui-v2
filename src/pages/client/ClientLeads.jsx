@@ -172,7 +172,7 @@ export default function ClientLeads() {
             <UserPlusIcon className="h-4 w-4" />
             {t("navigation.leads")}
           </div>
-          <h1 className="text-2xl font-bold text-slate-950">{t("navigation.leads")}</h1>
+          <h1 className="text-2xl font-black text-slate-950">{t("navigation.leads")}</h1>
           <p className="mt-1 text-sm text-slate-500">
             {t("leads.subtitle")}
           </p>
@@ -254,9 +254,9 @@ export default function ClientLeads() {
           </div>
 
           <div className="relative w-full lg:w-96">
-            <MagnifyingGlassIcon className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+            <MagnifyingGlassIcon className="pointer-events-none absolute start-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
             <input
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pr-11 pl-4 text-sm outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-50"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 ps-11 pe-4 text-sm outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-50"
               placeholder={t("leads.searchPlaceholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
