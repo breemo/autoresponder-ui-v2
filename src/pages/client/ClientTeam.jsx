@@ -336,15 +336,15 @@ export default function ClientTeam() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="border-b border-slate-100 bg-slate-50/60 text-start text-xs font-bold uppercase tracking-wide text-slate-500">
+              <thead className="border-b border-slate-100 bg-slate-50/60 text-xs font-bold uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="px-4 py-3">{t("common.name")}</th>
-                  <th className="px-4 py-3">{t("common.email")}</th>
-                  <th className="px-4 py-3">{t("team.colRole")}</th>
-                  <th className="px-4 py-3">{t("common.status")}</th>
-                  <th className="px-4 py-3">{t("team.colAddedAt")}</th>
-                  <th className="px-4 py-3">{t("account.lastLogin")}</th>
-                  <th className="px-4 py-3">{t("team.colActions")}</th>
+                  <th className="px-4 py-3 text-start">{t("common.name")}</th>
+                  <th className="px-4 py-3 text-start">{t("common.email")}</th>
+                  <th className="px-4 py-3 text-start">{t("team.colRole")}</th>
+                  <th className="px-4 py-3 text-start">{t("common.status")}</th>
+                  <th className="px-4 py-3 text-start">{t("team.colAddedAt")}</th>
+                  <th className="px-4 py-3 text-start">{t("account.lastLogin")}</th>
+                  <th className="px-4 py-3 text-start">{t("team.colActions")}</th>
                 </tr>
               </thead>
 

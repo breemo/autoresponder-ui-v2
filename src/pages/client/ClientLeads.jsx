@@ -275,15 +275,15 @@ export default function ClientLeads() {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-start text-sm">
+              <table className="w-full min-w-[900px] text-sm">
                 <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
-                    <th className="px-5 py-4 font-bold">{t("leads.colClient")}</th>
-                    <th className="px-5 py-4 font-bold">{t("leads.colChannel")}</th>
-                    <th className="px-5 py-4 font-bold">{t("leads.colPhone")}</th>
-                    <th className="px-5 py-4 font-bold">{t("leads.colConversation")}</th>
-                    <th className="px-5 py-4 font-bold">{t("leads.colCapturedAt")}</th>
-                    <th className="px-5 py-4 font-bold">{t("leads.colActions")}</th>
+                    <th className="px-5 py-4 text-start font-bold">{t("leads.colClient")}</th>
+                    <th className="px-5 py-4 text-start font-bold">{t("leads.colChannel")}</th>
+                    <th className="px-5 py-4 text-start font-bold">{t("leads.colPhone")}</th>
+                    <th className="px-5 py-4 text-start font-bold">{t("leads.colConversation")}</th>
+                    <th className="px-5 py-4 text-start font-bold">{t("leads.colCapturedAt")}</th>
+                    <th className="px-5 py-4 text-start font-bold">{t("leads.colActions")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
