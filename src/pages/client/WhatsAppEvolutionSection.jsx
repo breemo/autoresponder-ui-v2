@@ -7,8 +7,10 @@ import {
   TrashIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
+import { useTranslation } from "react-i18next";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { getReplyModeLabel } from "../../lib/replyMode.js";
 
 const inputClass =
   "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-emerald-300 focus:ring-4 focus:ring-emerald-50";
@@ -29,12 +31,12 @@ function getInstanceStatus(item) {
   );
 }
 
-function statusMeta(status) {
+function statusMeta(status, t) {
   const normalized = normalizeStatus(status);
 
   if (normalized === "connected") {
     return {
-      label: "متصل",
+      label: t("whatsappEvo.statusConnected"),
       dot: "bg-emerald-500",
       badge: "bg-emerald-50 text-emerald-700 border-emerald-100",
     };
@@ -42,7 +44,7 @@ function statusMeta(status) {
 
   if (normalized === "pending") {
     return {
-      label: "بانتظار QR",
+      label: t("whatsappEvo.statusPendingQr"),
       dot: "bg-amber-500",
       badge: "bg-amber-50 text-amber-700 border-amber-100",
     };
@@ -50,14 +52,14 @@ function statusMeta(status) {
 
   if (normalized === "error") {
     return {
-      label: "خطأ",
+      label: t("whatsappEvo.statusError"),
       dot: "bg-rose-500",
       badge: "bg-rose-50 text-rose-700 border-rose-100",
     };
   }
 
   return {
-    label: "غير متصل",
+    label: t("whatsappEvo.statusDisconnected"),
     dot: "bg-slate-400",
     badge: "bg-slate-50 text-slate-600 border-slate-100",
   };
@@ -74,6 +76,7 @@ function formatDate(value) {
 
 export default function WhatsAppEvolutionSection({ clientId, integration, maxConnections = null, subscriptionActive = true }) {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const [instances, setInstances] = useState([]);
   const [servers, setServers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -133,19 +136,21 @@ export default function WhatsAppEvolutionSection({ clientId, integration, maxCon
   // a clear reason instead of letting the request fail server-side first.
   const limitReached = maxConnections != null && instances.length >= maxConnections;
   const addDisabledReason = !subscriptionActive
-    ? "اشتراكك غير نشط — لا يمكن إضافة أرقام جديدة حتى تجديد الاشتراك"
+    ? t("whatsappEvo.subscriptionInactiveAdd")
     : limitReached
-    ? `وصلت للحد الأقصى المسموح (${maxConnections}) لأرقام واتساب ضمن خطتك`
+    ? t("whatsappEvo.limitReached", { max: maxConnections })
     : null;
 
   // Canonical key only — n8n reads config.reply_mode exclusively; a legacy
   // config["Reply Mode"] fallback used to exist here but that key should
   // never be read or written anywhere in the app (see ClientIntegrations.jsx
-  // handleSaveIntegration, which now also strips it on save).
-  const integrationReplyMode =
-    integration?.config?.reply_mode ||
-    integration?.config?.mode ||
-    "ai";
+  // handleSaveIntegration, which now also strips it on save). Shown as its
+  // Arabic label (same src/lib/replyMode.js used by the dropdown itself),
+  // not the raw stored value.
+  const integrationReplyMode = getReplyModeLabel(
+    integration?.config?.reply_mode || integration?.config?.mode,
+    t
+  );
 
   async function loadData(options = {}) {
     const {
@@ -192,7 +197,9 @@ export default function WhatsAppEvolutionSection({ clientId, integration, maxCon
 
         if (newlyConnected) {
           setMessage(
-            `تم ربط ${newlyConnected.display_name || newlyConnected.instance_name || "رقم واتساب"} بنجاح.`
+            t("whatsappEvo.connectedSuccess", {
+              name: newlyConnected.display_name || newlyConnected.instance_name || t("whatsappEvo.defaultNumberName"),
+            })
           );
         }
 
@@ -202,7 +209,7 @@ export default function WhatsAppEvolutionSection({ clientId, integration, maxCon
       setServers(serverRows || []);
     } catch (err) {
       console.error(err);
-      setError("فشل تحميل أرقام واتساب.");
+      setError(t("whatsappEvo.loadError"));
     } finally {
       if (!silent) {
         setLoading(false);
@@ -255,7 +262,7 @@ async function createNumber(e) {
     const displayName = form.instance_name.trim();
 
     if (!displayName) {
-      setError("يرجى إدخال اسم الرقم.");
+      setError(t("whatsappEvo.errorEnterName"));
       return;
     }
 
@@ -266,7 +273,7 @@ async function createNumber(e) {
     );
 
     if (duplicate) {
-      setError("اسم الرقم مستخدم مسبقاً.");
+      setError(t("whatsappEvo.errorDuplicateName"));
       return;
     }
 
@@ -293,13 +300,13 @@ async function createNumber(e) {
 
     setDrawerOpen(false);
 
-    setMessage("تم إنشاء الرقم بنجاح.");
+    setMessage(t("whatsappEvo.successCreated"));
 
     await loadData();
 
   } catch (err) {
     console.error(err);
-    setError("فشل إنشاء الرقم.");
+    setError(t("whatsappEvo.errorCreateFailed"));
   } finally {
     setCreating(false);
   }
@@ -336,7 +343,7 @@ async function createNumber(e) {
           result?.message ||
             result?.error ||
             result?.data?.message ||
-            "فشل بدء ربط رقم واتساب."
+            t("whatsappEvo.errorConnectFailed")
         );
       }
 
@@ -372,15 +379,15 @@ async function createNumber(e) {
 
       setMessage(
         getInstanceStatus(responseRow) === "connected"
-          ? "رقم واتساب متصل بالفعل."
-          : "تم بدء عملية الربط. امسح رمز QR لإكمال الاتصال."
+          ? t("whatsappEvo.alreadyConnected")
+          : t("whatsappEvo.scanToConnect")
       );
 
       await new Promise((resolve) => window.setTimeout(resolve, 250));
       await loadData({ preserveFeedback: true });
     } catch (err) {
       console.error(err);
-      setError("فشل ربط رقم واتساب.");
+      setError(t("whatsappEvo.errorConnectGeneric"));
     } finally {
       setConnectingId(null);
     }
@@ -415,7 +422,7 @@ async function createNumber(e) {
         throw new Error(
           result?.message ||
             result?.error ||
-            "فشل مزامنة أرقام واتساب."
+            t("whatsappEvo.errorSyncFailed")
         );
       }
 
@@ -427,17 +434,17 @@ async function createNumber(e) {
         silent: true,
       });
 
-      setMessage("تمت مزامنة أرقام واتساب مع Evolution بنجاح.");
+      setMessage(t("whatsappEvo.syncSuccess"));
     } catch (err) {
       console.error(err);
-      setError("فشل مزامنة أرقام واتساب.");
+      setError(t("whatsappEvo.errorSyncFailed"));
     } finally {
       setSyncing(false);
     }
   }
 
 async function deleteNumber(item) {
-  if (!window.confirm(`هل تريد حذف ${item.display_name}؟`)) return;
+  if (!window.confirm(t("whatsappEvo.confirmDelete", { name: item.display_name }))) return;
 
   try {
     setError("");
@@ -469,7 +476,7 @@ async function deleteNumber(item) {
       throw new Error(
         result?.message ||
         result?.error ||
-        "فشل حذف رقم واتساب."
+        t("whatsappEvo.errorDeleteFailed")
       );
     }
 
@@ -478,7 +485,7 @@ async function deleteNumber(item) {
       current.filter((row) => row.id !== item.id)
     );
 
-    setMessage("تم حذف الرقم من Evolution والبورتال بنجاح.");
+    setMessage(t("whatsappEvo.deleteSuccess"));
 
     // Verify quietly after the backend delete settles.
     window.setTimeout(() => {
@@ -487,16 +494,16 @@ async function deleteNumber(item) {
         silent: true,
       });
     }, 1500);
-        
+
   } catch (err) {
     console.error(err);
-    setError("فشل حذف رقم واتساب.");
+    setError(t("whatsappEvo.errorDeleteFailed"));
   }
 }
 
   function getServerName(serverId) {
     const server = servers.find((item) => item.id === serverId);
-    return server?.name || "يُحدد تلقائياً";
+    return server?.name || t("whatsappEvo.autoAssignedServer");
   }
 
   return (
@@ -507,9 +514,9 @@ async function deleteNumber(item) {
             <QrCodeIcon className="h-4 w-4" />
             WhatsApp Evolution
           </div>
-          <h3 className="mt-3 text-lg font-bold text-slate-950">أرقام WhatsApp</h3>
+          <h3 className="mt-3 text-lg font-bold text-slate-950">{t("whatsappEvo.title")}</h3>
           <p className="mt-1 text-sm text-slate-500">
-            أضف أكثر من رقم واتساب حسب حدود خطتك، وسيتم اختيار السيرفر تلقائياً.
+            {t("whatsappEvo.subtitle")}
           </p>
         </div>
 
@@ -521,7 +528,7 @@ async function deleteNumber(item) {
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <ArrowPathIcon className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "جارٍ المزامنة..." : "تحديث"}
+            {syncing ? t("whatsappEvo.syncing") : t("common.refresh")}
           </button>
 
           <button
@@ -532,7 +539,7 @@ async function deleteNumber(item) {
             className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <PlusIcon className="h-4 w-4" />
-            إضافة رقم
+            {t("whatsappEvo.addNumber")}
           </button>
         </div>
       </div>
@@ -557,36 +564,36 @@ async function deleteNumber(item) {
 
       <div className="mt-4 grid gap-3 md:grid-cols-3">
         <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-          <p className="text-xs text-slate-500">إجمالي الأرقام</p>
+          <p className="text-xs text-slate-500">{t("whatsappEvo.totalNumbers")}</p>
           <p className="mt-1 text-2xl font-bold text-slate-950">{summary.total}</p>
         </div>
         <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-          <p className="text-xs text-slate-500">متصلة</p>
+          <p className="text-xs text-slate-500">{t("whatsappEvo.connectedCount")}</p>
           <p className="mt-1 text-2xl font-bold text-emerald-600">{summary.connected}</p>
         </div>
         <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-          <p className="text-xs text-slate-500">بانتظار QR</p>
+          <p className="text-xs text-slate-500">{t("whatsappEvo.pendingQrCount")}</p>
           <p className="mt-1 text-2xl font-bold text-amber-600">{summary.pending}</p>
         </div>
       </div>
 
       {loading ? (
         <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
-          جارِ تحميل أرقام واتساب...
+          {t("whatsappEvo.loadingNumbers")}
         </div>
       ) : instances.length === 0 ? (
         <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center">
           <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-white text-slate-500 shadow-sm">
             <QrCodeIcon className="h-6 w-6" />
           </div>
-          <h4 className="mt-3 text-base font-bold text-slate-950">لا يوجد أرقام واتساب بعد</h4>
-          <p className="mt-1 text-sm text-slate-500">اضغط إضافة رقم لإضافة أول رقم.</p>
+          <h4 className="mt-3 text-base font-bold text-slate-950">{t("whatsappEvo.noNumbersTitle")}</h4>
+          <p className="mt-1 text-sm text-slate-500">{t("whatsappEvo.noNumbersSubtitle")}</p>
         </div>
       ) : (
         <div className="mt-4 grid gap-3">
           {instances.map((item) => {
             const normalizedStatus = getInstanceStatus(item);
-            const meta = statusMeta(normalizedStatus);
+            const meta = statusMeta(normalizedStatus, t);
 
             return (
               <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -594,14 +601,14 @@ async function deleteNumber(item) {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <h4 className="truncate text-base font-bold text-slate-950">
-                        {item.display_name || item.instance_name || "رقم WhatsApp"}
+                        {item.display_name || item.instance_name || t("whatsappEvo.defaultNumberName")}
                       </h4>
                       <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${meta.badge}`}>
                         {meta.label}
                       </span>
                     </div>
                     <p className="mt-1 text-sm text-slate-500" dir="ltr">
-                      {item.phone || "سيظهر رقم الهاتف بعد مسح رمز QR"}
+                      {item.phone || t("whatsappEvo.phonePendingQr")}
                     </p>
                     <p className="mt-1 truncate text-xs text-slate-400" dir="ltr" title={item.instance_name || ""}>
                       {item.instance_name || "-"}
@@ -614,10 +621,10 @@ async function deleteNumber(item) {
                         type="button"
                         onClick={() => connectNumber(item)}
                         disabled={connectingId === item.id || !subscriptionActive}
-                        title={!subscriptionActive ? "اشتراكك غير نشط — لا يمكن ربط الأرقام حتى تجديد الاشتراك" : undefined}
+                        title={!subscriptionActive ? t("whatsappEvo.subscriptionInactiveConnect") : undefined}
                         className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {connectingId === item.id ? "جارٍ الربط..." : "ربط"}
+                        {connectingId === item.id ? t("whatsappEvo.connecting") : t("whatsappEvo.connect")}
                       </button>
                     )}
                     <button
@@ -626,7 +633,7 @@ async function deleteNumber(item) {
                       className="inline-flex items-center gap-1 rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-100"
                     >
                       <TrashIcon className="h-4 w-4" />
-                      حذف
+                      {t("common.delete")}
                     </button>
                   </div>
                 </div>
@@ -634,35 +641,35 @@ async function deleteNumber(item) {
                 <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_380px]">
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                      <p className="text-xs text-slate-500">رقم الهاتف</p>
+                      <p className="text-xs text-slate-500">{t("settings.phone")}</p>
                       <p className="mt-1 truncate text-sm font-bold text-slate-900" dir="ltr" title={item.phone || ""}>
-                        {item.phone || "غير متصل بعد"}
+                        {item.phone || t("whatsappEvo.phoneNotConnected")}
                       </p>
                     </div>
 
                     <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                      <p className="text-xs text-slate-500">السيرفر</p>
+                      <p className="text-xs text-slate-500">{t("whatsappEvo.serverLabel")}</p>
                       <p className="mt-1 truncate text-sm font-bold text-slate-900">
                         {getServerName(item.server_id)}
                       </p>
                     </div>
 
                     <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                      <p className="text-xs text-slate-500">الحالة</p>
+                      <p className="text-xs text-slate-500">{t("common.status")}</p>
                       <p className="mt-1 text-sm font-bold text-slate-900">
                         {item.status || item.connection_status || "-"}
                       </p>
                     </div>
 
                     <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                      <p className="text-xs text-slate-500">اسم Instance</p>
+                      <p className="text-xs text-slate-500">{t("whatsappEvo.instanceNameLabel")}</p>
                       <p className="mt-1 truncate text-xs font-semibold text-slate-700" dir="ltr" title={item.instance_name || ""}>
                         {item.instance_name || "-"}
                       </p>
                     </div>
 
                     <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                      <p className="text-xs text-slate-500">معرّف Instance</p>
+                      <p className="text-xs text-slate-500">{t("whatsappEvo.instanceIdLabel")}</p>
                       <p className="mt-1 truncate text-xs font-semibold text-slate-700" dir="ltr" title={item.instance_id || ""}>
                         {item.instance_id || "-"}
                       </p>
@@ -676,7 +683,7 @@ async function deleteNumber(item) {
                     </div>
 
                     <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                      <p className="text-xs text-slate-500">تاريخ الإنشاء</p>
+                      <p className="text-xs text-slate-500">{t("whatsappEvo.createdAtLabel")}</p>
                       <p className="mt-1 text-xs font-semibold text-slate-700">
                         {formatDate(item.created_at)}
                       </p>
@@ -698,22 +705,22 @@ async function deleteNumber(item) {
                                 />
                               ) : (
                                 <span className="text-xs font-semibold text-slate-400">
-                                  سيظهر رمز QR هنا
+                                  {t("whatsappEvo.qrWillAppear")}
                                 </span>
                               )}
                             </div>
-                            <p className="mt-2 text-xs text-slate-500">بانتظار مسح رمز QR</p>
+                            <p className="mt-2 text-xs text-slate-500">{t("whatsappEvo.waitingQrScan")}</p>
                           </>
                         ) : normalizedStatus === "connected" ? (
                       <div className="grid min-h-[360px] place-items-center rounded-xl bg-emerald-50 text-emerald-700">
                         <div>
                           <CheckCircleIcon className="mx-auto h-8 w-8" />
-                          <p className="mt-2 text-xs font-bold">متصل</p>
+                          <p className="mt-2 text-xs font-bold">{t("whatsappEvo.statusConnected")}</p>
                         </div>
                       </div>
                     ) : (
                       <div className="flex min-h-[360px] items-center justify-center rounded-xl bg-white text-xs font-semibold text-slate-400">
-                        لا يوجد QR بعد
+                        {t("whatsappEvo.noQrYet")}
                       </div>
                     )}
                   </div>
@@ -734,8 +741,8 @@ async function deleteNumber(item) {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.25em] text-emerald-600">WhatsApp</p>
-                <h3 className="mt-1 text-2xl font-bold text-slate-950">إضافة رقم</h3>
-                <p className="mt-1 text-sm text-slate-500">أدخل اسم الرقم، وسيتم اختيار السيرفر وإنشاء الـ Instance تلقائياً.</p>
+                <h3 className="mt-1 text-2xl font-bold text-slate-950">{t("whatsappEvo.addNumber")}</h3>
+                <p className="mt-1 text-sm text-slate-500">{t("whatsappEvo.addDrawerSubtitle")}</p>
               </div>
               <button
                 type="button"
@@ -748,18 +755,18 @@ async function deleteNumber(item) {
 
             <div className="mt-6 space-y-4">
               <label className="block">
-                <span className="mb-1.5 block text-xs font-bold text-slate-600">اسم الرقم</span>
+                <span className="mb-1.5 block text-xs font-bold text-slate-600">{t("whatsappEvo.numberNameLabel")}</span>
                 <input
                   className={inputClass}
                   value={form.instance_name}
                   onChange={(event) => setForm((prev) => ({ ...prev, instance_name: event.target.value }))}
-                  placeholder="استقبال / مبيعات / دعم"
+                  placeholder={t("whatsappEvo.numberNamePlaceholder")}
                 />
               </label>
 
               <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-xs leading-6 text-emerald-800">
-                السيرفر، API Key، Webhook، Channel Key، والـ QR سيتم إدارتها تلقائياً من AutoResponder.
-                وضع الرد الحالي للتكامل هو: <strong>{integrationReplyMode}</strong>.
+                {t("whatsappEvo.autoManagedNote")}{" "}
+                {t("whatsappEvo.currentReplyModeNote", { mode: integrationReplyMode })}
               </div>
 
               <button
@@ -767,7 +774,7 @@ async function deleteNumber(item) {
                 disabled={creating}
                 className="h-12 w-full rounded-2xl bg-emerald-600 text-sm font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60"
               >
-                {creating ? "جارٍ الإنشاء..." : "إنشاء الرقم"}
+                {creating ? t("whatsappEvo.creating") : t("whatsappEvo.createNumberButton")}
               </button>
             </div>
           </form>

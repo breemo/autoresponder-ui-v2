@@ -14,16 +14,18 @@ import {
   Squares2X2Icon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
+import { useTranslation } from "react-i18next";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
 import ChannelIcon from "../../lib/channelIcons.jsx";
 import WhatsAppEvolutionSection from "./WhatsAppEvolutionSection";
+import { isReplyModeKey, getReplyModeSelectOptions, getReplyModeLabel, DEFAULT_REPLY_MODE } from "../../lib/replyMode.js";
 
 function normalizeName(str) {
   return (str || "").toString().toLowerCase().replace(/\s+/g, "");
 }
 
-function getFeatureMeta(feature) {
+function getFeatureMeta(feature, t) {
   const slug = (feature?.slug || feature?.name || "").toLowerCase();
 
   if (slug.includes("telegram")) {
@@ -32,7 +34,7 @@ function getFeatureMeta(feature) {
       icon: PaperAirplaneIcon,
       accent: "from-sky-500 to-cyan-400",
       soft: "bg-sky-50 text-sky-700 border-sky-100",
-      description: "استقبال الرسائل والرد التلقائي عبر Telegram Bot.",
+      description: t("integrationsPage.metaTelegramDesc"),
     };
   }
 
@@ -42,7 +44,7 @@ function getFeatureMeta(feature) {
       icon: BoltIcon,
       accent: "from-blue-600 to-indigo-500",
       soft: "bg-blue-50 text-blue-700 border-blue-100",
-      description: "ربط صفحة فيسبوك والرد على رسائل Messenger.",
+      description: t("integrationsPage.metaFacebookDesc"),
     };
   }
 
@@ -52,7 +54,7 @@ function getFeatureMeta(feature) {
       icon: Squares2X2Icon,
       accent: "from-fuchsia-500 to-rose-400",
       soft: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100",
-      description: "تجهيز ربط رسائل Instagram Business لاحقاً.",
+      description: t("integrationsPage.metaInstagramDesc"),
     };
   }
 
@@ -62,16 +64,16 @@ function getFeatureMeta(feature) {
       icon: ShieldCheckIcon,
       accent: "from-emerald-500 to-teal-400",
       soft: "bg-emerald-50 text-emerald-700 border-emerald-100",
-      description: "ربط WhatsApp Cloud API للرسائل والردود.",
+      description: t("integrationsPage.metaWhatsappDesc"),
     };
   }
 
   return {
-    label: feature?.name || "تكامل",
+    label: feature?.name || t("integrationsPage.metaDefaultLabel"),
     icon: LinkIcon,
     accent: "from-slate-600 to-slate-400",
     soft: "bg-slate-50 text-slate-700 border-slate-100",
-    description: feature?.description || "قناة ربط مخصصة ضمن خطة العميل.",
+    description: feature?.description || t("integrationsPage.metaDefaultDesc"),
   };
 }
 
@@ -103,7 +105,7 @@ function getConfigValue(config = {}, possibleKeys = []) {
   return "";
 }
 
-function buildGeneratedLinks(feature, integration) {
+function buildGeneratedLinks(feature, integration, t) {
   const slug = `${feature?.slug || feature?.name || ""}`.toLowerCase();
   const config = integration?.config || {};
   const channelKey = getConfigValue(config, ["channelKey", "channel_key", "Channel Key", "channel key"]);
@@ -126,7 +128,7 @@ function buildGeneratedLinks(feature, integration) {
   const links = [
     {
       label: "Webhook URL",
-      hint: "استخدم هذا الرابط كـ callback/webhook لهذه القناة.",
+      hint: t("integrationsPage.webhookHint"),
       value: webhookUrl,
       openable: true,
     },
@@ -134,8 +136,8 @@ function buildGeneratedLinks(feature, integration) {
 
   if (platform === "telegram" && botToken) {
     links.push({
-      label: "رابط تفعيل تيليجرام",
-      hint: "افتح الرابط مرة واحدة لتفعيل setWebhook للبوت.",
+      label: t("integrationsPage.telegramActivationLink"),
+      hint: t("integrationsPage.telegramActivationHint"),
       value: `https://api.telegram.org/bot${botToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}`,
       openable: true,
     });
@@ -145,6 +147,7 @@ function buildGeneratedLinks(feature, integration) {
 }
 
 function SetupLinkCard({ label, hint, value, openable = true }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
   async function copyValue() {
@@ -171,7 +174,7 @@ function SetupLinkCard({ label, hint, value, openable = true }) {
             className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
           >
             <ClipboardDocumentIcon className="h-4 w-4" />
-            {copied ? "تم النسخ" : "نسخ"}
+            {copied ? t("common.copied") : t("common.copy")}
           </button>
           {openable && (
             <a
@@ -179,7 +182,7 @@ function SetupLinkCard({ label, hint, value, openable = true }) {
               target="_blank"
               rel="noopener noreferrer"
               className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-              title="فتح الرابط"
+              title={t("common.open")}
             >
               <ArrowTopRightOnSquareIcon className="h-4 w-4" />
             </a>
@@ -212,6 +215,7 @@ function StatCard({ label, value, hint, icon: Icon }) {
 
 export default function ClientIntegrations() {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
   const [error, setError] = useState("");
@@ -323,7 +327,7 @@ export default function ClientIntegrations() {
       setSelectedIntegrationId((prev) => prev || normalized[0]?.id || null);
     } catch (err) {
       console.error("Error loading client integrations:", err);
-      setError("حدث خطأ أثناء تحميل إعدادات التكامل.");
+      setError(t("integrationsPage.loadErrorGeneric"));
     } finally {
       setLoading(false);
     }
@@ -364,10 +368,7 @@ export default function ClientIntegrations() {
     const slug = `${selectedFeature?.slug || ""}`.toLowerCase();
 
     if (slug === "whatsapp_evolution") {
-      return selectedFields.filter((field) => {
-        const key = normalizeName(field?.key || field?.label || "");
-        return key === "replymode" || key === "reply_mode";
-      });
+      return selectedFields.filter((field) => isReplyModeKey(field?.key || field?.label));
     }
 
     return selectedFields;
@@ -382,7 +383,7 @@ export default function ClientIntegrations() {
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok || data?.success === false) {
-      throw new Error(data?.message || "فشل تنفيذ العملية");
+      throw new Error(data?.message || t("integrationsPage.actionFailedGeneric"));
     }
     return data;
   }
@@ -400,7 +401,7 @@ export default function ClientIntegrations() {
         )
       );
     } catch (err) {
-      setError(err.message || "فشل تغيير حالة التكامل.");
+      setError(err.message || t("integrationsPage.statusToggleFailed"));
     }
   }
 
@@ -432,7 +433,7 @@ export default function ClientIntegrations() {
 
     const cleaned = {};
     for (const [key, value] of Object.entries(source)) {
-      if (key !== "reply_mode" && normalizeName(key) === "replymode") continue;
+      if (key !== "reply_mode" && isReplyModeKey(key)) continue;
       cleaned[key] = value;
     }
     return cleaned;
@@ -462,10 +463,10 @@ export default function ClientIntegrations() {
         )
       );
 
-      setSuccess("تم حفظ إعدادات التكامل بنجاح.");
+      setSuccess(t("integrationsPage.saveConfigSuccess"));
     } catch (err) {
       console.error(err);
-      setError(err.message || "فشل في حفظ إعدادات التكامل.");
+      setError(err.message || t("integrationsPage.saveConfigFailed"));
     } finally {
       setSavingId(null);
     }
@@ -482,16 +483,16 @@ export default function ClientIntegrations() {
       const normalized = { ...data, config: data.config || {} };
       setIntegrations((prev) => [...prev, normalized]);
       setSelectedIntegrationId(normalized.id);
-      setSuccess("تم تفعيل التكامل بنجاح.");
+      setSuccess(t("integrationsPage.addIntegrationSuccess"));
     } catch (err) {
       console.error(err);
-      setError(err.message || "فشل في تفعيل التكامل.");
+      setError(err.message || t("integrationsPage.addIntegrationFailed"));
     } finally {
       setSavingId(null);
     }
   }
 
-  const displayName = client?.business_name || user?.name || "العميل";
+  const displayName = client?.business_name || user?.name || t("integrationsPage.defaultClientName");
 
   return (
     <div className="space-y-4" dir="rtl">
@@ -502,10 +503,10 @@ export default function ClientIntegrations() {
             Integrations Center
           </div>
           <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-950">
-            قنوات الربط والتكامل
+            {t("integrationsPage.title")}
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            إدارة قنوات الرد الآلي الخاصة بـ {displayName} من مكان واحد، مع إعدادات واضحة لكل منصة.
+            {t("integrationsPage.subtitle", { name: displayName })}
           </p>
         </div>
 
@@ -515,7 +516,7 @@ export default function ClientIntegrations() {
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
           >
             <ArrowPathIcon className="h-4 w-4" />
-            Refresh
+            {t("common.refresh")}
           </button>
         </div>
       </div>
@@ -533,14 +534,14 @@ export default function ClientIntegrations() {
       )}
 
       <div className="grid gap-3 md:grid-cols-3">
-        <StatCard label="القنوات المتاحة" value={planFeatures.length} hint="حسب الخطة الحالية" icon={Squares2X2Icon} />
-        <StatCard label="متصلة" value={integrations.length} hint="قنوات تم تفعيلها" icon={LinkIcon} />
-        <StatCard label="مفعّلة حالياً" value={enabledIntegrations.length} hint="جاهزة لاستقبال الرسائل" icon={CheckCircleIcon} />
+        <StatCard label={t("integrationsPage.statAvailable")} value={planFeatures.length} hint={t("integrationsPage.statAvailableHint")} icon={Squares2X2Icon} />
+        <StatCard label={t("integrationsPage.statConnected")} value={integrations.length} hint={t("integrationsPage.statConnectedHint")} icon={LinkIcon} />
+        <StatCard label={t("integrationsPage.statActiveNow")} value={enabledIntegrations.length} hint={t("integrationsPage.statActiveNowHint")} icon={CheckCircleIcon} />
       </div>
 
       {loading ? (
         <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
-          جارِ تحميل بيانات التكامل...
+          {t("integrationsPage.loadingIntegrations")}
         </div>
       ) : (
         <div className="grid min-h-[620px] gap-4 xl:grid-cols-[minmax(320px,380px)_1fr]">
@@ -548,8 +549,8 @@ export default function ClientIntegrations() {
             <div className="border-b border-slate-100 p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-base font-semibold text-slate-950">القنوات المفعّلة</h2>
-                  <p className="mt-1 text-xs text-slate-500">اختر قناة لعرض الإعدادات.</p>
+                  <h2 className="text-base font-semibold text-slate-950">{t("integrationsPage.channelListTitle")}</h2>
+                  <p className="mt-1 text-xs text-slate-500">{t("integrationsPage.channelListSubtitle")}</p>
                 </div>
                 <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
                   {filteredIntegrations.length}
@@ -559,7 +560,7 @@ export default function ClientIntegrations() {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="بحث عن قناة..."
+                placeholder={t("integrationsPage.searchPlaceholder")}
                 className="mt-3 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-50"
               />
             </div>
@@ -567,12 +568,12 @@ export default function ClientIntegrations() {
             <div className="max-h-[520px] space-y-2 overflow-y-auto p-3">
               {filteredIntegrations.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-200 p-5 text-center text-sm text-slate-500">
-                  لا توجد قنوات مفعّلة بعد.
+                  {t("integrationsPage.noChannelsActive")}
                 </div>
               ) : (
                 filteredIntegrations.map((intg) => {
                   const feature = getFeatureById(intg.feature_id);
-                  const meta = getFeatureMeta(feature);
+                  const meta = getFeatureMeta(feature, t);
                   const isSelected = selectedIntegration?.id === intg.id;
 
                   return (
@@ -597,7 +598,7 @@ export default function ClientIntegrations() {
                                   : "bg-slate-100 text-slate-500"
                               }`}
                             >
-                              {intg.is_active ? "مفعّل" : "متوقف مؤقتًا"}
+                              {intg.is_active ? t("common.active") : t("common.paused")}
                             </span>
                           </div>
                           <p className="mt-1 truncate text-xs text-slate-500">{feature?.slug || meta.label}</p>
@@ -614,7 +615,7 @@ export default function ClientIntegrations() {
             {selectedIntegration && selectedFeature ? (
               <div className="flex h-full flex-col">
                 {(() => {
-                  const meta = getFeatureMeta(selectedFeature);
+                  const meta = getFeatureMeta(selectedFeature, t);
 
                   return (
                     <>
@@ -625,7 +626,7 @@ export default function ClientIntegrations() {
                             <div className="flex flex-wrap items-center gap-2">
                               <h2 className="text-lg font-bold text-slate-950">{selectedFeature.name || meta.label}</h2>
                               <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${meta.soft}`}>
-                                {selectedIntegration.is_active ? "متصل" : "متوقف مؤقتًا"}
+                                {selectedIntegration.is_active ? t("common.connected") : t("common.paused")}
                               </span>
                             </div>
                             <p className="mt-1 text-sm text-slate-500">{selectedFeature.description || meta.description}</p>
@@ -636,14 +637,14 @@ export default function ClientIntegrations() {
                           <button
                             onClick={() => toggleActive(selectedIntegration.feature_id, selectedIntegration.is_active)}
                             disabled={!selectedIntegration.is_active && !subscriptionActive}
-                            title={!selectedIntegration.is_active && !subscriptionActive ? "اشتراكك غير نشط — لا يمكن تفعيل تكامل جديد" : undefined}
+                            title={!selectedIntegration.is_active && !subscriptionActive ? t("integrationsPage.subscriptionInactiveActivateTooltip") : undefined}
                             className={`rounded-xl px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
                               selectedIntegration.is_active
                                 ? "bg-slate-100 text-slate-700 hover:bg-slate-200"
                                 : "bg-emerald-600 text-white hover:bg-emerald-700"
                             }`}
                           >
-                            {selectedIntegration.is_active ? "إيقاف مؤقت" : "تفعيل"}
+                            {selectedIntegration.is_active ? t("integrationsPage.pause") : t("common.activate")}
                           </button>
                           <button
                             onClick={() => handleSaveIntegration(selectedIntegration)}
@@ -651,15 +652,15 @@ export default function ClientIntegrations() {
                             className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-60"
                           >
                             <Cog6ToothIcon className="h-4 w-4" />
-                            {savingId === selectedIntegration.id ? "جارٍ الحفظ..." : "حفظ"}
+                            {savingId === selectedIntegration.id ? t("common.saving") : t("common.save")}
                           </button>
                         </div>
                       </div>
 
                       <div className="grid flex-1 gap-4 p-4 lg:grid-cols-[1fr_280px]">
                         <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-                          <h3 className="text-sm font-semibold text-slate-950">الإعدادات</h3>
-                          <p className="mt-1 text-xs text-slate-500">أدخل بيانات الربط الخاصة بهذه القناة.</p>
+                          <h3 className="text-sm font-semibold text-slate-950">{t("navigation.settings")}</h3>
+                          <p className="mt-1 text-xs text-slate-500">{t("integrationsPage.settingsSubtitle")}</p>
 
                           {visibleSelectedFields.length > 0 ? (
                             <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -668,11 +669,15 @@ export default function ClientIntegrations() {
 
                                 // reply_mode is stored as a free-form string in config (no
                                 // schema change), but guided here as a dropdown so it can't
-                                // be mistyped. `welcome_only` is prepared for a future
-                                // reply-behavior n8n does not implement yet — selecting it
-                                // only saves the config value; it does not change is_active
-                                // and does not simulate any runtime behavior here.
-                                const isReplyModeField = normalizeName(field.key) === "replymode";
+                                // be mistyped. Same dropdown, same options, same order on
+                                // every channel (Facebook, Telegram, Instagram, WhatsApp
+                                // Evolution) — see src/lib/replyMode.js, the single shared
+                                // source for this instead of duplicating it per channel.
+                                // `welcome_only` is prepared for a future reply-behavior
+                                // n8n does not implement yet — selecting it only saves the
+                                // config value; it does not change is_active and does not
+                                // simulate any runtime behavior here.
+                                const isReplyModeField = isReplyModeKey(field.key);
 
                                 // The reply-mode field always reads/writes the canonical
                                 // config.reply_mode key — never the admin-defined field
@@ -693,25 +698,24 @@ export default function ClientIntegrations() {
                                 }
 
                                 if (isReplyModeField) {
-                                  const knownOptions = ["ai", "welcome_only"];
-                                  const options = !value || knownOptions.includes(value) ? knownOptions : [...knownOptions, value];
+                                  const options = getReplyModeSelectOptions(value, t);
 
                                   return (
                                     <label key={field.key} className="block">
                                       <span className="mb-1.5 block text-xs font-semibold text-slate-600">{field.label || field.key}</span>
                                       <select
                                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50"
-                                        value={value || "ai"}
+                                        value={value || DEFAULT_REPLY_MODE}
                                         onChange={(e) => handleFieldChange(selectedIntegration.id, "reply_mode", e.target.value)}
                                       >
                                         {options.map((opt) => (
-                                          <option key={opt} value={opt}>
-                                            {opt === "ai" ? "الذكاء الاصطناعي — رد تلقائي كامل" : opt === "welcome_only" ? "رسالة ترحيب فقط" : opt}
+                                          <option key={opt.value} value={opt.value}>
+                                            {opt.label}
                                           </option>
                                         ))}
                                       </select>
                                       <p className="mt-1 text-[11px] leading-5 text-slate-500">
-                                        رسالة ترحيب فقط: تُرسل رسالة الترحيب مرة واحدة لكل محادثة جديدة فقط، بدون ردود تلقائية إضافية بعدها — يتابع الموظف المحادثة يدوياً.
+                                        {t("replyMode.welcomeOnlyHint")}
                                       </p>
                                     </label>
                                   );
@@ -725,7 +729,7 @@ export default function ClientIntegrations() {
                                       className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50"
                                       value={value}
                                       onChange={(e) => handleFieldChange(selectedIntegration.id, field.key, e.target.value)}
-                                      placeholder={field.placeholder || "أدخل القيمة"}
+                                      placeholder={field.placeholder || t("integrationsPage.fieldPlaceholder")}
                                     />
                                   </label>
                                 );
@@ -733,7 +737,7 @@ export default function ClientIntegrations() {
                             </div>
                           ) : (
                             <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center text-sm text-slate-500">
-                              لا توجد حقول مخصصة لهذا التكامل.
+                              {t("integrationsPage.noCustomFields")}
                             </div>
                           )}
 
@@ -749,24 +753,24 @@ export default function ClientIntegrations() {
 
                         <aside className="space-y-3">
                           <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">الحالة</p>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{t("common.status")}</p>
                             <div className="mt-3 flex items-center gap-2">
                               <span className={`h-2.5 w-2.5 rounded-full ${selectedIntegration.is_active ? "bg-emerald-500" : "bg-slate-300"}`} />
                               <span className="text-sm font-semibold text-slate-900">
-                                {selectedIntegration.is_active ? "جاهزة لاستقبال الرسائل" : "التكامل متوقف مؤقتًا"}
+                                {selectedIntegration.is_active ? t("integrationsPage.readyToReceive") : t("integrationsPage.integrationPaused")}
                               </span>
                             </div>
                           </div>
 
                           <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">وضع الرد</p>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{t("integrationsPage.replyModeLabel")}</p>
                             <p className="mt-2 rounded-xl bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700">
-                              {selectedIntegration.config?.reply_mode || selectedIntegration.config?.mode || "الذكاء الاصطناعي"}
+                              {getReplyModeLabel(selectedIntegration.config?.reply_mode || selectedIntegration.config?.mode, t)}
                             </p>
                           </div>
 
                           {(() => {
-                            const generatedLinks = buildGeneratedLinks(selectedFeature, selectedIntegration);
+                            const generatedLinks = buildGeneratedLinks(selectedFeature, selectedIntegration, t);
                             return (
                               <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 shadow-sm">
                                 <button
@@ -775,8 +779,8 @@ export default function ClientIntegrations() {
                                   className="flex w-full items-center justify-between gap-3 text-right"
                                 >
                                   <div>
-                                    <p className="text-sm font-bold text-slate-950">روابط الإعداد التلقائية</p>
-                                    <p className="mt-1 text-xs text-slate-500">روابط Webhook والإعداد حسب بيانات القناة.</p>
+                                    <p className="text-sm font-bold text-slate-950">{t("integrationsPage.setupLinksTitle")}</p>
+                                    <p className="mt-1 text-xs text-slate-500">{t("integrationsPage.setupLinksSubtitle")}</p>
                                   </div>
                                   <ChevronDownIcon className={`h-4 w-4 shrink-0 text-slate-500 transition ${showAdvancedSetup ? "rotate-180" : ""}`} />
                                 </button>
@@ -787,9 +791,9 @@ export default function ClientIntegrations() {
                                       generatedLinks.map((link) => <SetupLinkCard key={link.label} {...link} />)
                                     ) : (
                                       <div className="rounded-2xl border border-dashed border-indigo-200 bg-white/70 p-4 text-xs leading-6 text-slate-500">
-                                        أدخل <span className="font-semibold text-slate-700">Channel Key</span>
-                                        {`${selectedFeature?.slug || ""}`.toLowerCase().includes("telegram") ? " و Bot Token" : ""}
-                                        ثم احفظ الإعدادات لعرض الروابط تلقائياً.
+                                        {t("integrationsPage.setupLinksEmptyPrefix")} <span className="font-semibold text-slate-700">Channel Key</span>
+                                        {`${selectedFeature?.slug || ""}`.toLowerCase().includes("telegram") ? ` ${t("integrationsPage.setupLinksEmptyAndBotToken")}` : ""}
+                                        {" "}{t("integrationsPage.setupLinksEmptySuffix")}
                                       </div>
                                     )}
                                   </div>
@@ -809,8 +813,8 @@ export default function ClientIntegrations() {
                   <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-slate-100 text-slate-500">
                     <LinkIcon className="h-7 w-7" />
                   </div>
-                  <h3 className="mt-4 text-lg font-semibold text-slate-950">لا توجد قناة محددة</h3>
-                  <p className="mt-1 max-w-sm text-sm text-slate-500">فعّل قناة من القائمة المتاحة بالأسفل حتى تظهر إعداداتها هنا.</p>
+                  <h3 className="mt-4 text-lg font-semibold text-slate-950">{t("integrationsPage.noChannelSelectedTitle")}</h3>
+                  <p className="mt-1 max-w-sm text-sm text-slate-500">{t("integrationsPage.noChannelSelectedSubtitle")}</p>
                 </div>
               </div>
             )}
@@ -822,14 +826,14 @@ export default function ClientIntegrations() {
         <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-base font-semibold text-slate-950">قنوات متاحة للتفعيل</h2>
-              <p className="mt-1 text-xs text-slate-500">هذه القنوات ضمن خطتك ولم يتم ربطها بعد.</p>
+              <h2 className="text-base font-semibold text-slate-950">{t("integrationsPage.availableChannelsTitle")}</h2>
+              <p className="mt-1 text-xs text-slate-500">{t("integrationsPage.availableChannelsSubtitle")}</p>
             </div>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {availableFeatures.map((feature) => {
-              const meta = getFeatureMeta(feature);
+              const meta = getFeatureMeta(feature, t);
               return (
                 <div key={feature.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                   <div className="flex items-center gap-3">
@@ -843,11 +847,11 @@ export default function ClientIntegrations() {
                   <button
                     onClick={() => handleAddIntegration(feature)}
                     disabled={savingId === feature.id || !subscriptionActive}
-                    title={!subscriptionActive ? "اشتراكك غير نشط — لا يمكن إضافة تكامل جديد" : undefined}
+                    title={!subscriptionActive ? t("integrationsPage.subscriptionInactiveAddTooltip") : undefined}
                     className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <PlusIcon className="h-4 w-4" />
-                    {savingId === feature.id ? "جارٍ التفعيل..." : !subscriptionActive ? "الاشتراك غير نشط" : "تفعيل"}
+                    {savingId === feature.id ? t("integrationsPage.activating") : !subscriptionActive ? t("integrationsPage.subscriptionInactiveShort") : t("common.activate")}
                   </button>
                 </div>
               );

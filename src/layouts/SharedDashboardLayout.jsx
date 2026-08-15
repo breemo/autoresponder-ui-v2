@@ -1,5 +1,6 @@
 import React from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   ArrowRightOnRectangleIcon,
   BoltIcon,
@@ -19,55 +20,63 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { PERMISSIONS, hasUserPermission } from "../lib/permissions.js";
 import { clearSessionExpiry } from "../lib/session.js";
 import SubscriptionBanner from "../components/SubscriptionBanner.jsx";
+import RouteErrorBoundary from "../components/RouteErrorBoundary.jsx";
 
+// label/description are translation keys, not literal text — resolved via
+// t() at render time (see the nav loop below) so the sidebar follows the
+// active UI language. Routes/icons/permissions are structural and don't
+// change with language.
 const adminItems = [
-  { to: "/admin", label: "نظرة عامة", description: "نظرة عامة", icon: HomeIcon, end: true },
-  { to: "/admin/clients", label: "العملاء", description: "إدارة العملاء", icon: UsersIcon },
-  { to: "/admin/messages", label: "الرسائل", description: "كل الرسائل", icon: ChatBubbleLeftRightIcon },
-  { to: "/admin/auto-replies", label: "الردود التلقائية", description: "الردود", icon: BoltIcon },
-  { to: "/admin/plans", label: "الباقات", description: "الباقات", icon: CreditCardIcon },
-  { to: "/admin/features", label: "الميزات", description: "الميزات", icon: PuzzlePieceIcon },
-  { to: "/admin/settings", label: "الإعدادات", description: "الإعدادات", icon: Cog6ToothIcon },
+  { to: "/admin", labelKey: "navigation.overview", descKey: "navigation.descriptions.overviewAdmin", icon: HomeIcon, end: true },
+  { to: "/admin/clients", labelKey: "navigation.clients", descKey: "navigation.descriptions.clients", icon: UsersIcon },
+  { to: "/admin/messages", labelKey: "navigation.messages", descKey: "navigation.descriptions.messages", icon: ChatBubbleLeftRightIcon },
+  { to: "/admin/auto-replies", labelKey: "navigation.autoReplies", descKey: "navigation.descriptions.autoReplies", icon: BoltIcon },
+  { to: "/admin/plans", labelKey: "navigation.plans", descKey: "navigation.descriptions.plans", icon: CreditCardIcon },
+  { to: "/admin/features", labelKey: "navigation.features", descKey: "navigation.descriptions.features", icon: PuzzlePieceIcon },
+  { to: "/admin/settings", labelKey: "navigation.settings", descKey: "navigation.descriptions.settings", icon: Cog6ToothIcon },
 ];
 
 const clientItems = [
-  { to: "/client", label: "نظرة عامة", description: "الرئيسية", icon: HomeIcon, end: true, permission: PERMISSIONS.DASHBOARD },
-  { to: "/client/messages", label: "المحادثات", description: "إدارة الرسائل", icon: ChatBubbleLeftRightIcon, permission: PERMISSIONS.INBOX },
-  { to: "/client/leads", label: "العملاء المحتملون", description: "العملاء المحتملون", icon: ChartBarIcon, permission: PERMISSIONS.LEADS },
-  { to: "/client/auto-replies", label: "الردود التلقائية", description: "الردود", icon: BoltIcon, permission: PERMISSIONS.AUTO_REPLIES },
-  { to: "/client/quick-replies", label: "الردود السريعة", description: "الردود السريعة", icon: ChatBubbleOvalLeftEllipsisIcon, permission: PERMISSIONS.AUTO_REPLIES },
-  { to: "/client/integrations", label: "التكاملات", description: "ربط المنصات", icon: Squares2X2Icon, permission: PERMISSIONS.INTEGRATIONS },
-  { to: "/client/feature-settings", label: "إعدادات الميزات", description: "إعدادات الميزات", icon: PuzzlePieceIcon, permission: PERMISSIONS.AI_SETTINGS },
-  { to: "/client/team", label: "فريق العمل", description: "فريق العمل", icon: UserGroupIcon, permission: PERMISSIONS.TEAM_MANAGEMENT },
-  { to: "/client/settings", label: "الإعدادات", description: "الإعدادات", icon: Cog6ToothIcon, permission: PERMISSIONS.SETTINGS },
-  { to: "/client/account", label: "حسابي", description: "حسابي", icon: UserCircleIcon },
+  { to: "/client", labelKey: "navigation.overview", descKey: "navigation.descriptions.overviewClient", icon: HomeIcon, end: true, permission: PERMISSIONS.DASHBOARD },
+  { to: "/client/messages", labelKey: "navigation.conversations", descKey: "navigation.descriptions.conversations", icon: ChatBubbleLeftRightIcon, permission: PERMISSIONS.INBOX },
+  { to: "/client/leads", labelKey: "navigation.leads", descKey: "navigation.descriptions.leads", icon: ChartBarIcon, permission: PERMISSIONS.LEADS },
+  { to: "/client/auto-replies", labelKey: "navigation.autoReplies", descKey: "navigation.descriptions.autoReplies", icon: BoltIcon, permission: PERMISSIONS.AUTO_REPLIES },
+  { to: "/client/quick-replies", labelKey: "navigation.quickReplies", descKey: "navigation.descriptions.quickReplies", icon: ChatBubbleOvalLeftEllipsisIcon, permission: PERMISSIONS.AUTO_REPLIES },
+  { to: "/client/integrations", labelKey: "navigation.integrations", descKey: "navigation.descriptions.integrations", icon: Squares2X2Icon, permission: PERMISSIONS.INTEGRATIONS },
+  { to: "/client/feature-settings", labelKey: "navigation.featureSettings", descKey: "navigation.descriptions.featureSettings", icon: PuzzlePieceIcon, permission: PERMISSIONS.AI_SETTINGS },
+  { to: "/client/team", labelKey: "navigation.team", descKey: "navigation.descriptions.team", icon: UserGroupIcon, permission: PERMISSIONS.TEAM_MANAGEMENT },
+  { to: "/client/settings", labelKey: "navigation.settings", descKey: "navigation.descriptions.settings", icon: Cog6ToothIcon, permission: PERMISSIONS.SETTINGS },
+  { to: "/client/account", labelKey: "navigation.myAccount", descKey: "navigation.descriptions.myAccount", icon: UserCircleIcon },
 ];
 
-const pageTitles = {
-  "/admin": ["نظرة عامة", "راقب أداء النظام والعملاء من مكان واحد"],
-  "/admin/clients": ["العملاء", "إدارة العملاء، الباقات، وحالة التفعيل"],
-  "/admin/messages": ["الرسائل", "متابعة الرسائل الواردة والصادرة عبر كل المنصات"],
-  "/admin/auto-replies": ["الردود التلقائية", "إدارة الردود التلقائية وقواعد التشغيل"],
-  "/admin/plans": ["الباقات", "إدارة الباقات وربط الميزات"],
-  "/admin/features": ["الميزات", "إعداد ميزات وقنوات النظام"],
-  "/admin/settings": ["الإعدادات", "إعدادات النظام العامة"],
-  "/client": ["نظرة عامة", "ملخص نشاط الردود والمحادثات"],
-  "/client/messages": ["المحادثات", "إدارة المحادثات والرسائل من مكان واحد"],
-  "/client/leads": ["العملاء المحتملون", "أرقام وتفاصيل العملاء المحتملين"],
-  "/client/auto-replies": ["الردود التلقائية", "إعداد الردود التلقائية الخاصة بك"],
-  "/client/quick-replies": ["الردود السريعة", "إدارة الأزرار والخيارات السريعة"],
-  "/client/integrations": ["التكاملات", "ربط Telegram و Facebook وباقي القنوات"],
-  "/client/feature-settings": ["إعدادات الميزات", "إعدادات كل ميزة مفعّلة"],
-  "/client/team": ["فريق العمل", "إدارة فريق العمل والصلاحيات"],
-  "/client/settings": ["الإعدادات", "رسائل الترحيب والإعدادات العامة"],
-  "/client/account": ["حسابي", "بياناتك الشخصية وكلمة المرور"],
+const PAGE_TITLE_KEYS = {
+  "/admin": "pageTitles.admin.overview",
+  "/admin/clients": "pageTitles.admin.clients",
+  "/admin/messages": "pageTitles.admin.messages",
+  "/admin/auto-replies": "pageTitles.admin.autoReplies",
+  "/admin/plans": "pageTitles.admin.plans",
+  "/admin/features": "pageTitles.admin.features",
+  "/admin/settings": "pageTitles.admin.settings",
+  "/client": "pageTitles.client.overview",
+  "/client/messages": "pageTitles.client.messages",
+  "/client/leads": "pageTitles.client.leads",
+  "/client/auto-replies": "pageTitles.client.autoReplies",
+  "/client/quick-replies": "pageTitles.client.quickReplies",
+  "/client/integrations": "pageTitles.client.integrations",
+  "/client/feature-settings": "pageTitles.client.featureSettings",
+  "/client/team": "pageTitles.client.team",
+  "/client/settings": "pageTitles.client.settings",
+  "/client/account": "pageTitles.client.account",
 };
 
-function getPageMeta(pathname, panel) {
-  if (pageTitles[pathname]) return pageTitles[pathname];
-  if (pathname.startsWith("/admin/client/")) return ["إعدادات العميل", "إدارة إعدادات عميل محدد"];
-  if (pathname.startsWith("/admin/plan-features/")) return ["ميزات الباقة", "تحديد ميزات الباقة"];
-  return panel === "admin" ? ["بوابة الإدارة", "إدارة النظام"] : ["بوابة المشترك", "لوحة تحكم العميل"];
+// Returns [title, subtitle] resolved from the translation resources for
+// the current pathname/panel — same lookup shape as before, just sourced
+// from t() instead of a hardcoded object.
+function getPageMeta(t, pathname, panel) {
+  if (PAGE_TITLE_KEYS[pathname]) return t(PAGE_TITLE_KEYS[pathname], { returnObjects: true });
+  if (pathname.startsWith("/admin/client/")) return t("pageTitles.fallback.adminClientDetail", { returnObjects: true });
+  if (pathname.startsWith("/admin/plan-features/")) return t("pageTitles.fallback.planFeatures", { returnObjects: true });
+  return t(panel === "admin" ? "pageTitles.fallback.adminPanel" : "pageTitles.fallback.clientPanel", { returnObjects: true });
 }
 
 // Pages listed here get a viewport-bound height (instead of the default
@@ -80,6 +89,7 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
   const { user, setUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useTranslation();
   const isAdmin = panel === "admin";
   // Admin nav is unfiltered (unchanged). Client nav items with a
   // `permission` are hidden for members who don't have it — this is
@@ -93,7 +103,7 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
     ? clientItems.filter((item) => item.to === "/client/account")
     : clientItems.filter((item) => !item.permission || hasUserPermission(user, item.permission));
   const displayName = user?.business_name || user?.name || (isAdmin ? "Admin" : "Client");
-  const [title, subtitle] = getPageMeta(location.pathname, panel);
+  const [title, subtitle] = getPageMeta(t, location.pathname, panel);
   const fullHeight = FULL_HEIGHT_ROUTES.includes(location.pathname);
 
   function logout() {
@@ -111,16 +121,16 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
             <ChatBubbleLeftRightIcon className="h-6 w-6 text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold tracking-tight">AutoResponder</h1>
-            <p className="text-xs text-slate-400">{isAdmin ? "Admin Console" : "Client Workspace"}</p>
+            <h1 className="text-lg font-semibold tracking-tight">{t("brand.name")}</h1>
+            <p className="text-xs text-slate-400">{isAdmin ? t("brand.adminConsole") : t("brand.clientWorkspace")}</p>
           </div>
         </div>
 
         <div className="border-b border-slate-800 px-5 py-4">
           <div className="rounded-2xl bg-slate-900/70 p-4 ring-1 ring-white/5">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Workspace</p>
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{t("brand.workspace")}</p>
             <p className="mt-2 truncate text-sm font-semibold text-white">{displayName}</p>
-            <p className="mt-1 truncate text-xs text-slate-400">{user?.email || "autoresponder.ai"}</p>
+            <p className="mt-1 truncate text-xs text-slate-400">{user?.email || t("brand.fallbackDomain")}</p>
           </div>
         </div>
 
@@ -144,8 +154,8 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
                   <Icon className="h-5 w-5" />
                 </span>
                 <span className="min-w-0">
-                  <span className="block font-medium leading-5">{item.label}</span>
-                  <span className="block truncate text-xs text-slate-500 group-hover:text-slate-300">{item.description}</span>
+                  <span className="block font-medium leading-5">{t(item.labelKey)}</span>
+                  <span className="block truncate text-xs text-slate-500 group-hover:text-slate-300">{t(item.descKey)}</span>
                 </span>
               </NavLink>
             );
@@ -158,7 +168,7 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
             className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-700 px-4 py-3 text-sm font-medium text-slate-300 transition hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-200"
           >
             <ArrowRightOnRectangleIcon className="h-5 w-5" />
-            تسجيل الخروج
+            {t("auth.logout")}
           </button>
         </div>
       </aside>
@@ -168,7 +178,7 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
           <div className="flex min-h-20 items-center justify-between gap-4 px-5 py-4 md:px-8">
             <div>
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-indigo-600">
-                {isAdmin ? "بوابة الإدارة" : "بوابة المشترك"}
+                {isAdmin ? t("portal.admin") : t("portal.client")}
               </p>
               <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{title}</h2>
               <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
@@ -176,7 +186,8 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
 
             <div className="hidden items-center gap-3 md:flex">
               <div className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-500 shadow-sm">
-                مرحباً، <span className="font-semibold text-slate-800">{displayName}</span>
+                {t("auth.greeting", { name: "" })}
+                <span className="font-semibold text-slate-800">{displayName}</span>
               </div>
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-50 text-sm font-bold text-indigo-600 ring-1 ring-indigo-100">
                 {(displayName || "A").slice(0, 1).toUpperCase()}
@@ -188,7 +199,10 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
         <main className={fullHeight ? "flex min-h-0 flex-1 flex-col px-4 py-5 md:px-6 lg:px-8 lg:py-6" : "min-h-[calc(100vh-5rem)] px-4 py-5 md:px-6 lg:px-8 lg:py-6"}>
           <div className={`mx-auto w-full max-w-[1800px] animate-[fadeIn_.2s_ease-out] ${fullHeight ? "flex min-h-0 flex-1 flex-col" : ""}`}>
             {!isAdmin && <SubscriptionBanner />}
-            {children}
+            {/* key={location.pathname} resets the boundary's error state on
+                navigation, so a crash on one page doesn't stick around after
+                the user moves to a different route. */}
+            <RouteErrorBoundary key={location.pathname}>{children}</RouteErrorBoundary>
           </div>
         </main>
       </div>

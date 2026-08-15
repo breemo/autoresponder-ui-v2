@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../../context/AuthContext.jsx";
 import {
   PERMISSIONS,
-  PERMISSION_LABELS,
   ROLES,
-  ROLE_LABELS,
   getRoleDefaults,
   resolvePermissions,
   hasUserPermission,
@@ -17,16 +16,16 @@ const cardClass = "rounded-3xl border border-slate-200 bg-white shadow-sm";
 
 const PERMISSION_ORDER = Object.values(PERMISSIONS);
 
-function formatDate(value) {
+function formatDate(value, lang) {
   if (!value) return "—";
   try {
-    return new Date(value).toLocaleString("ar-EG", { dateStyle: "medium", timeStyle: "short" });
+    return new Date(value).toLocaleString(lang === "en" ? "en-US" : "ar-EG", { dateStyle: "medium", timeStyle: "short" });
   } catch {
     return value;
   }
 }
 
-async function callTeamAction(action, actorUserId, payload = {}) {
+async function callTeamAction(action, actorUserId, payload = {}, t) {
   const response = await fetch("/api/client-users", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -35,12 +34,12 @@ async function callTeamAction(action, actorUserId, payload = {}) {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data?.success === false) {
-    throw new Error(data?.message || "فشل تنفيذ العملية");
+    throw new Error(data?.message || t("integrationsPage.actionFailedGeneric"));
   }
   return data;
 }
 
-function PermissionChecklist({ selected, onToggle, lockedOn }) {
+function PermissionChecklist({ selected, onToggle, lockedOn, t }) {
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
       {PERMISSION_ORDER.map((key) => {
@@ -59,7 +58,7 @@ function PermissionChecklist({ selected, onToggle, lockedOn }) {
               disabled={locked}
               onChange={() => onToggle(key)}
             />
-            <span className="font-semibold">{PERMISSION_LABELS[key]}</span>
+            <span className="font-semibold">{t(`permissions.${key}`)}</span>
           </label>
         );
       })}
@@ -69,6 +68,7 @@ function PermissionChecklist({ selected, onToggle, lockedOn }) {
 
 export default function ClientTeam() {
   const { user } = useAuth();
+  const { t, i18n } = useTranslation();
 
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -100,13 +100,13 @@ export default function ClientTeam() {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok || data?.success === false) {
-        throw new Error(data?.message || "فشل تحميل الفريق");
+        throw new Error(data?.message || t("team.errorLoadTeam"));
       }
 
       setMembers(data.members || []);
     } catch (err) {
       console.error(err);
-      setError(err.message || "فشل تحميل الفريق");
+      setError(err.message || t("team.errorLoadTeam"));
     } finally {
       setLoading(false);
     }
@@ -148,7 +148,7 @@ export default function ClientTeam() {
     const email = addForm.email.trim();
 
     if (!name || !email) {
-      setError("يرجى إدخال الاسم والبريد الإلكتروني");
+      setError(t("team.errorNameEmail"));
       return;
     }
 
@@ -160,12 +160,12 @@ export default function ClientTeam() {
         email,
         role: addForm.role,
         permissions: Array.from(addForm.permissions),
-      });
+      }, t);
       setDrawerOpen(false);
       await fetchTeam();
       setReveal({ name: data.member.name, email: data.member.email, password: data.temp_password });
     } catch (err) {
-      setError(err.message || "فشل إضافة المستخدم");
+      setError(err.message || t("team.errorAddUser"));
     } finally {
       setSaving(false);
     }
@@ -175,7 +175,7 @@ export default function ClientTeam() {
     if (role === member.role || actionBusyId) return;
 
     if (member.role === "owner" && role !== "owner") {
-      if (!window.confirm("هل أنت متأكد من تغيير دور هذا المالك؟ لن يبقى مالكاً بعد هذا التغيير.")) return;
+      if (!window.confirm(t("team.confirmChangeOwnerRole"))) return;
     }
 
     setActionBusyId(member.client_user_id);
@@ -183,11 +183,11 @@ export default function ClientTeam() {
     setMsg("");
 
     try {
-      await callTeamAction("change_role", user.id, { target_user_id: member.user_id, role });
+      await callTeamAction("change_role", user.id, { target_user_id: member.user_id, role }, t);
       await fetchTeam();
-      setMsg("تم تحديث الدور بنجاح");
+      setMsg(t("team.roleUpdated"));
     } catch (err) {
-      setError(err.message || "فشل تحديث الدور");
+      setError(err.message || t("team.errorRoleUpdate"));
     } finally {
       setActionBusyId(null);
     }
@@ -196,18 +196,18 @@ export default function ClientTeam() {
   async function handleToggleActive(member) {
     if (actionBusyId) return;
 
-    if (member.is_active && !window.confirm(`هل تريد إيقاف ${member.name || member.email}؟`)) return;
+    if (member.is_active && !window.confirm(t("team.confirmDeactivate", { name: member.name || member.email }))) return;
 
     setActionBusyId(member.client_user_id);
     setError("");
     setMsg("");
 
     try {
-      await callTeamAction("set_active", user.id, { target_user_id: member.user_id, is_active: !member.is_active });
+      await callTeamAction("set_active", user.id, { target_user_id: member.user_id, is_active: !member.is_active }, t);
       await fetchTeam();
-      setMsg(member.is_active ? "تم إيقاف المستخدم" : "تم تفعيل المستخدم");
+      setMsg(member.is_active ? t("team.userDeactivated") : t("team.userActivated"));
     } catch (err) {
-      setError(err.message || "فشل تحديث حالة المستخدم");
+      setError(err.message || t("team.errorStatusUpdate"));
     } finally {
       setActionBusyId(null);
     }
@@ -215,18 +215,18 @@ export default function ClientTeam() {
 
   async function handleRemove(member) {
     if (actionBusyId) return;
-    if (!window.confirm(`هل تريد إزالة ${member.name || member.email} من الفريق؟ يفضّل الإيقاف بدلاً من الإزالة إن كنت تريد الاحتفاظ بإمكانية إعادته لاحقاً.`)) return;
+    if (!window.confirm(t("team.confirmRemove", { name: member.name || member.email }))) return;
 
     setActionBusyId(member.client_user_id);
     setError("");
     setMsg("");
 
     try {
-      await callTeamAction("remove", user.id, { target_user_id: member.user_id });
+      await callTeamAction("remove", user.id, { target_user_id: member.user_id }, t);
       await fetchTeam();
-      setMsg("تمت إزالة المستخدم من الفريق");
+      setMsg(t("team.userRemoved"));
     } catch (err) {
-      setError(err.message || "فشل إزالة المستخدم");
+      setError(err.message || t("team.errorRemove"));
     } finally {
       setActionBusyId(null);
     }
@@ -234,17 +234,17 @@ export default function ClientTeam() {
 
   async function handleResetPassword(member) {
     if (actionBusyId) return;
-    if (!window.confirm(`هل تريد إعادة تعيين كلمة مرور ${member.name || member.email}؟ سيُطلب منه تعيين كلمة مرور جديدة عند الدخول التالي.`)) return;
+    if (!window.confirm(t("team.confirmResetPassword", { name: member.name || member.email }))) return;
 
     setActionBusyId(member.client_user_id);
     setError("");
     setMsg("");
 
     try {
-      const data = await callTeamAction("reset_password", user.id, { target_user_id: member.user_id });
+      const data = await callTeamAction("reset_password", user.id, { target_user_id: member.user_id }, t);
       setReveal({ name: member.name, email: member.email, password: data.temp_password });
     } catch (err) {
-      setError(err.message || "فشل إعادة تعيين كلمة المرور");
+      setError(err.message || t("team.errorResetPassword"));
     } finally {
       setActionBusyId(null);
     }
@@ -280,12 +280,12 @@ export default function ClientTeam() {
       await callTeamAction("change_permissions", user.id, {
         target_user_id: permsModal.member.user_id,
         permissions: Array.from(permsModal.selected),
-      });
+      }, t);
       setPermsModal(null);
       await fetchTeam();
-      setMsg("تم تحديث الصلاحيات بنجاح");
+      setMsg(t("team.permissionsUpdated"));
     } catch (err) {
-      setError(err.message || "فشل تحديث الصلاحيات");
+      setError(err.message || t("team.errorPermissionsUpdate"));
     } finally {
       setActionBusyId(null);
     }
@@ -293,26 +293,26 @@ export default function ClientTeam() {
 
   if (!canManage) {
     return (
-      <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500" dir="rtl">
-        غير مصرح لك بإدارة فريق العمل.
+      <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
+        {t("team.noPermission")}
       </div>
     );
   }
 
   return (
-    <div className="space-y-5" dir="rtl">
+    <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.35em] text-indigo-600">TEAM</p>
-          <h2 className="mt-1 text-2xl font-black text-slate-950">فريق العمل</h2>
-          <p className="mt-1 text-sm text-slate-500">إدارة المستخدمين الذين لديهم وصول لحساب العميل هذا.</p>
+          <h2 className="mt-1 text-2xl font-black text-slate-950">{t("navigation.team")}</h2>
+          <p className="mt-1 text-sm text-slate-500">{t("team.subtitle")}</p>
         </div>
 
         <button
           onClick={openAddDrawer}
           className="h-11 rounded-2xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700"
         >
-          + إضافة مستخدم
+          {t("team.addUser")}
         </button>
       </div>
 
@@ -330,21 +330,21 @@ export default function ClientTeam() {
 
       <div className={`${cardClass} overflow-hidden`}>
         {loading ? (
-          <div className="p-10 text-center text-sm text-slate-500">جارِ تحميل الفريق...</div>
+          <div className="p-10 text-center text-sm text-slate-500">{t("team.loading")}</div>
         ) : members.length === 0 ? (
-          <div className="p-10 text-center text-sm text-slate-400">لا يوجد أعضاء في الفريق بعد.</div>
+          <div className="p-10 text-center text-sm text-slate-400">{t("team.empty")}</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="border-b border-slate-100 bg-slate-50/60 text-right text-xs font-bold uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="px-4 py-3">الاسم</th>
-                  <th className="px-4 py-3">البريد الإلكتروني</th>
-                  <th className="px-4 py-3">الدور</th>
-                  <th className="px-4 py-3">الحالة</th>
-                  <th className="px-4 py-3">تاريخ الإضافة</th>
-                  <th className="px-4 py-3">آخر دخول</th>
-                  <th className="px-4 py-3">إجراءات</th>
+                  <th className="px-4 py-3">{t("common.name")}</th>
+                  <th className="px-4 py-3">{t("common.email")}</th>
+                  <th className="px-4 py-3">{t("team.colRole")}</th>
+                  <th className="px-4 py-3">{t("common.status")}</th>
+                  <th className="px-4 py-3">{t("team.colAddedAt")}</th>
+                  <th className="px-4 py-3">{t("account.lastLogin")}</th>
+                  <th className="px-4 py-3">{t("team.colActions")}</th>
                 </tr>
               </thead>
 
@@ -357,7 +357,7 @@ export default function ClientTeam() {
                   return (
                     <tr key={member.client_user_id} className="border-b border-slate-50 last:border-0">
                       <td className="px-4 py-3 font-bold text-slate-900">
-                        {member.name || "—"} {isSelf && <span className="text-xs font-normal text-indigo-500">(أنت)</span>}
+                        {member.name || "—"} {isSelf && <span className="text-xs font-normal text-indigo-500">{t("team.you")}</span>}
                       </td>
                       <td className="px-4 py-3 text-slate-600" dir="ltr">{member.email}</td>
                       <td className="px-4 py-3">
@@ -366,20 +366,20 @@ export default function ClientTeam() {
                           disabled={busy || lastOwner}
                           onChange={(e) => handleChangeRole(member, e.target.value)}
                           className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-indigo-300 disabled:opacity-50"
-                          title={lastOwner ? "لا يمكن تغيير دور آخر مالك نشط" : undefined}
+                          title={lastOwner ? t("team.lockLastOwnerRole") : undefined}
                         >
                           {ROLES.map((r) => (
-                            <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                            <option key={r} value={r}>{t(`roles.${r}`)}</option>
                           ))}
                         </select>
                       </td>
                       <td className="px-4 py-3">
                         <span className={`rounded-full px-3 py-1 text-xs font-bold ${member.is_active ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
-                          {member.is_active ? "مفعّل" : "معطّل"}
+                          {member.is_active ? t("common.active") : t("common.inactive")}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-slate-500">{formatDate(member.created_at)}</td>
-                      <td className="px-4 py-3 text-xs text-slate-500">{formatDate(member.last_login_at)}</td>
+                      <td className="px-4 py-3 text-xs text-slate-500">{formatDate(member.created_at, i18n.language)}</td>
+                      <td className="px-4 py-3 text-xs text-slate-500">{formatDate(member.last_login_at, i18n.language)}</td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <button
@@ -387,16 +387,16 @@ export default function ClientTeam() {
                             disabled={busy}
                             className="rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                           >
-                            الصلاحيات
+                            {t("team.permissionsButton")}
                           </button>
 
                           <button
                             onClick={() => handleToggleActive(member)}
                             disabled={busy || lastOwner}
-                            title={lastOwner ? "لا يمكن إيقاف آخر مالك نشط" : undefined}
+                            title={lastOwner ? t("team.lockLastOwnerToggle") : undefined}
                             className="rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                           >
-                            {member.is_active ? "إيقاف" : "تفعيل"}
+                            {member.is_active ? t("team.deactivate") : t("common.activate")}
                           </button>
 
                           <button
@@ -404,16 +404,16 @@ export default function ClientTeam() {
                             disabled={busy || !member.is_active}
                             className="rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                           >
-                            إعادة تعيين كلمة المرور
+                            {t("team.resetPassword")}
                           </button>
 
                           <button
                             onClick={() => handleRemove(member)}
                             disabled={busy || lastOwner}
-                            title={lastOwner ? "لا يمكن إزالة آخر مالك نشط" : undefined}
+                            title={lastOwner ? t("team.lockLastOwnerRemove") : undefined}
                             className="rounded-xl bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100 disabled:opacity-50"
                           >
-                            إزالة
+                            {t("team.remove")}
                           </button>
                         </div>
                       </td>
@@ -439,7 +439,7 @@ export default function ClientTeam() {
             <div className="mb-6 flex items-start justify-between">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.25em] text-indigo-600">TEAM</p>
-                <h3 className="mt-1 text-2xl font-black text-slate-950">إضافة مستخدم</h3>
+                <h3 className="mt-1 text-2xl font-black text-slate-950">{t("team.drawerAddTitle")}</h3>
               </div>
 
               <button
@@ -447,13 +447,13 @@ export default function ClientTeam() {
                 onClick={() => setDrawerOpen(false)}
                 className="rounded-xl border px-3 py-2 text-sm"
               >
-                إغلاق
+                {t("common.close")}
               </button>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="mb-1 block text-sm font-bold">الاسم</label>
+                <label className="mb-1 block text-sm font-bold">{t("common.name")}</label>
                 <input
                   className={inputClass}
                   value={addForm.name}
@@ -462,7 +462,7 @@ export default function ClientTeam() {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-bold">البريد الإلكتروني</label>
+                <label className="mb-1 block text-sm font-bold">{t("common.email")}</label>
                 <input
                   type="email"
                   className={inputClass}
@@ -473,28 +473,28 @@ export default function ClientTeam() {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-bold">الدور</label>
+                <label className="mb-1 block text-sm font-bold">{t("team.fieldRole")}</label>
                 <select
                   className={inputClass}
                   value={addForm.role}
                   onChange={(e) => handleAddRoleChange(e.target.value)}
                 >
                   {ROLES.map((r) => (
-                    <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                    <option key={r} value={r}>{t(`roles.${r}`)}</option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-bold">الصلاحيات</label>
-                <PermissionChecklist selected={addForm.permissions} onToggle={toggleAddPermission} />
+                <label className="mb-2 block text-sm font-bold">{t("team.fieldPermissions")}</label>
+                <PermissionChecklist selected={addForm.permissions} onToggle={toggleAddPermission} t={t} />
                 <p className="mt-2 text-xs text-slate-500">
-                  محدّدة تلقائياً حسب الدور المختار — يمكنك تعديلها حسب الحاجة.
+                  {t("team.permissionsAutoHint")}
                 </p>
               </div>
 
               <p className="text-xs text-slate-500">
-                سيتم إنشاء كلمة مرور مؤقتة تلقائياً وعرضها لك مرة واحدة بعد الإضافة. سيُطلب من المستخدم تغييرها عند أول دخول.
+                {t("team.tempPasswordNote")}
               </p>
 
               <button
@@ -502,7 +502,7 @@ export default function ClientTeam() {
                 disabled={saving}
                 className="h-12 w-full rounded-2xl bg-indigo-600 font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50"
               >
-                {saving ? "جارِ الإضافة..." : "إضافة المستخدم"}
+                {saving ? t("team.adding") : t("team.addUserButton")}
               </button>
             </div>
           </form>
@@ -512,10 +512,10 @@ export default function ClientTeam() {
       {permsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" onClick={() => setPermsModal(null)}>
           <div className={`${cardClass} w-full max-w-lg p-6`} onClick={(e) => e.stopPropagation()}>
-            <p className="text-xs font-bold uppercase tracking-[0.25em] text-indigo-600">الصلاحيات</p>
+            <p className="text-xs font-bold uppercase tracking-[0.25em] text-indigo-600">{t("team.fieldPermissions")}</p>
             <h3 className="mt-1 text-lg font-black text-slate-950">{permsModal.member.name || permsModal.member.email}</h3>
             <p className="text-xs text-slate-500">
-              الدور: {ROLE_LABELS[permsModal.member.role]} — الصلاحيات الفعلية الحالية معروضة أدناه، يمكنك تعديلها.
+              {t("team.permsModalRolePrefix", { role: t(`roles.${permsModal.member.role}`) })}
             </p>
 
             <div className="mt-4">
@@ -523,12 +523,13 @@ export default function ClientTeam() {
                 selected={permsModal.selected}
                 onToggle={togglePermsModalPermission}
                 lockedOn={permsModal.member.role === "owner" ? PERMISSIONS.TEAM_MANAGEMENT : null}
+                t={t}
               />
             </div>
 
             {permsModal.member.role === "owner" && (
               <p className="mt-2 text-xs text-amber-600">
-                لا يمكن إزالة صلاحية "إدارة الفريق" من مالك الحساب لتجنّب فقدان القدرة على إدارته.
+                {t("team.ownerFloorNote")}
               </p>
             )}
 
@@ -539,14 +540,14 @@ export default function ClientTeam() {
                 disabled={actionBusyId === permsModal.member.client_user_id}
                 className="h-11 flex-1 rounded-2xl bg-indigo-600 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50"
               >
-                حفظ
+                {t("common.save")}
               </button>
               <button
                 type="button"
                 onClick={() => setPermsModal(null)}
                 className="h-11 rounded-2xl border border-slate-200 px-5 text-sm font-bold text-slate-700 hover:bg-slate-50"
               >
-                إلغاء
+                {t("common.cancel")}
               </button>
             </div>
           </div>
@@ -556,7 +557,7 @@ export default function ClientTeam() {
       {reveal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" onClick={() => setReveal(null)}>
           <div className={`${cardClass} w-full max-w-sm p-6`} onClick={(e) => e.stopPropagation()}>
-            <p className="text-xs font-bold uppercase tracking-[0.25em] text-indigo-600">كلمة مرور مؤقتة</p>
+            <p className="text-xs font-bold uppercase tracking-[0.25em] text-indigo-600">{t("team.tempPasswordTitle")}</p>
             <h3 className="mt-1 text-lg font-black text-slate-950">{reveal.name}</h3>
             <p className="text-xs text-slate-500" dir="ltr">{reveal.email}</p>
 
@@ -567,12 +568,12 @@ export default function ClientTeam() {
                 onClick={() => navigator.clipboard?.writeText(reveal.password)}
                 className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
               >
-                نسخ
+                {t("common.copy")}
               </button>
             </div>
 
             <p className="mt-3 text-xs font-semibold text-amber-600">
-              شارك كلمة المرور هذه بأمان مع المستخدم الآن — لن تظهر مرة أخرى. سيُطلب منه تغييرها عند أول دخول.
+              {t("team.shareWarning")}
             </p>
 
             <button
@@ -580,7 +581,7 @@ export default function ClientTeam() {
               onClick={() => setReveal(null)}
               className="mt-5 h-11 w-full rounded-2xl border border-slate-200 text-sm font-bold text-slate-700 hover:bg-slate-50"
             >
-              تم
+              {t("common.done")}
             </button>
           </div>
         </div>

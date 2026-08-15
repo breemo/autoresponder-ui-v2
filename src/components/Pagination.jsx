@@ -1,4 +1,5 @@
 import React, { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
 
 // Builds a compact page list like [1,2,3,4,5,'…',12] instead of rendering
@@ -29,18 +30,19 @@ function buildPageList(current, total) {
 // Forces LTR internally so page numbers always read left-to-right
 // regardless of the host page's RTL direction.
 export default function Pagination({ page, totalPages, onPageChange }) {
+  const { t } = useTranslation();
   const pages = useMemo(() => buildPageList(page, totalPages), [page, totalPages]);
 
   if (totalPages <= 1) return null;
 
   return (
-    <nav className="flex flex-wrap items-center justify-center gap-1.5" dir="ltr" aria-label="Pagination">
+    <nav className="flex flex-wrap items-center justify-center gap-1.5" dir="ltr" aria-label={t("pagination.ariaLabel")}>
       <button
         type="button"
         onClick={() => onPageChange(Math.max(1, page - 1))}
         disabled={page <= 1}
         className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-        aria-label="Previous page"
+        aria-label={t("pagination.previous")}
       >
         <ChevronLeftIcon className="h-4 w-4" />
       </button>
@@ -72,7 +74,7 @@ export default function Pagination({ page, totalPages, onPageChange }) {
         onClick={() => onPageChange(Math.min(totalPages, page + 1))}
         disabled={page >= totalPages}
         className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-        aria-label="Next page"
+        aria-label={t("pagination.next")}
       >
         <ChevronRightIcon className="h-4 w-4" />
       </button>

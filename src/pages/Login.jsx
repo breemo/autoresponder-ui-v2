@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../context/AuthContext";
 import { writeSessionExpiry } from "../lib/session.js";
@@ -7,6 +8,7 @@ import { writeSessionExpiry } from "../lib/session.js";
 export default function Login() {
   const navigate = useNavigate();
   const { setUser } = useAuth();
+  const { t } = useTranslation();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,7 +25,7 @@ const handleLogin = async (e) => {
     .single();
 
   if (error || !user) {
-    setMessage("❌ البريد الإلكتروني أو كلمة المرور غير صحيحة");
+    setMessage(t("login.errorInvalidCredentials"));
     return;
   }
 
@@ -38,12 +40,12 @@ const handleLogin = async (e) => {
       .maybeSingle();
 
     if (membershipError || !membership) {
-      setMessage("❌ هذا الحساب غير مرتبط بأي عميل");
+      setMessage(t("login.errorNoMembership"));
       return;
     }
 
     if (membership.is_active === false) {
-      setMessage("❌ تم إيقاف هذا الحساب، يرجى التواصل مع مالك الحساب");
+      setMessage(t("login.errorAccountDisabled"));
       return;
     }
 
@@ -56,6 +58,27 @@ const handleLogin = async (e) => {
       is_active: membership.is_active,
       permissions_overrides: membership.permissions_overrides,
     };
+
+    // Best-effort UI-language fetch — completely separate from AI/customer
+    // language, this only resolves which language the PORTAL itself
+    // renders in for this account (see LanguageContext.jsx for the
+    // resolution order). Both columns are new/optional and may not exist
+    // yet if the language migration hasn't been applied — caught and
+    // silently ignored so login never breaks because of this, exactly like
+    // the last_login_at best-effort update below.
+    try {
+      const { data: langRow } = await supabase
+        .from("client_users")
+        .select("language, clients(default_language)")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      finalUser.ui_language_user = langRow?.language || null;
+      finalUser.ui_language_client = langRow?.clients?.default_language || null;
+    } catch (langErr) {
+      // Column(s) not present yet, or any other failure — language simply
+      // falls back to the system default; never blocks login.
+    }
   }
 
   // 💾 3) نخزن البيانات الصحيحة للـ user
@@ -70,7 +93,7 @@ const handleLogin = async (e) => {
     () => {}
   );
 
-  setMessage(`✅ مرحبًا ${user.role === "admin" ? "بالمدير" : "بالعميل"}!`);
+  setMessage(user.role === "admin" ? t("login.successAdmin") : t("login.successClient"));
 
   setTimeout(() => {
     navigate(user.role === "admin" ? "/admin" : "/client");
@@ -86,7 +109,7 @@ const handleLogin = async (e) => {
         className="bg-white shadow-md rounded-lg px-8 py-6 w-96 border border-gray-100"
       >
         <h2 className="text-2xl font-bold mb-4 text-center text-blue-600">
-          AutoResponder
+          {t("login.title")}
         </h2>
 
         {message && (
@@ -97,7 +120,7 @@ const handleLogin = async (e) => {
 
         <input
           type="email"
-          placeholder="البريد الإلكتروني"
+          placeholder={t("login.emailPlaceholder")}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className="w-full mb-3 px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
@@ -106,7 +129,7 @@ const handleLogin = async (e) => {
 
         <input
           type="password"
-          placeholder="كلمة المرور"
+          placeholder={t("login.passwordPlaceholder")}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           className="w-full mb-4 px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
@@ -117,7 +140,7 @@ const handleLogin = async (e) => {
           type="submit"
           className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition-all"
         >
-          تسجيل الدخول
+          {t("login.submit")}
         </button>
       </form>
     </div>

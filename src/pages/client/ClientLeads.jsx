@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
 import ChannelIcon from "../../lib/channelIcons.jsx";
@@ -16,10 +17,10 @@ import {
 
 const PAGE_SIZE = 10;
 
-function formatDate(value) {
+function formatDate(value, lang) {
   if (!value) return "—";
   try {
-    return new Date(value).toLocaleString("ar-EG", {
+    return new Date(value).toLocaleString(lang === "en" ? "en-US" : "ar-EG", {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -50,6 +51,7 @@ function isLastSevenDays(dateValue) {
 
 export default function ClientLeads() {
   const { user } = useAuth();
+  const { t, i18n } = useTranslation();
   // client_id is resolved once at login via client_users (see Login.jsx) —
   // every user of this client shares the same client_id.
   const clientId = user?.client_id || null;
@@ -104,7 +106,7 @@ export default function ClientLeads() {
       }
     } catch (err) {
       console.error(err);
-      setError("فشل في جلب بيانات العملاء المحتملين");
+      setError(t("leads.errorFetch"));
     } finally {
       setLoading(false);
     }
@@ -163,16 +165,16 @@ export default function ClientLeads() {
   }
 
   return (
-    <div className="space-y-5" dir="rtl">
+    <div className="space-y-5">
       <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">
             <UserPlusIcon className="h-4 w-4" />
-            العملاء المحتملون
+            {t("navigation.leads")}
           </div>
-          <h1 className="text-2xl font-bold text-slate-950">العملاء المحتملون</h1>
+          <h1 className="text-2xl font-bold text-slate-950">{t("navigation.leads")}</h1>
           <p className="mt-1 text-sm text-slate-500">
-            العملاء الذين تركوا بياناتهم من المحادثات، مع إمكانية البحث والنسخ السريع.
+            {t("leads.subtitle")}
           </p>
         </div>
 
@@ -182,7 +184,7 @@ export default function ClientLeads() {
           className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
         >
           <ArrowPathIcon className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          تحديث
+          {t("common.refresh")}
         </button>
       </div>
 
@@ -196,7 +198,7 @@ export default function ClientLeads() {
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-slate-500">إجمالي العملاء المحتملين</p>
+              <p className="text-sm font-medium text-slate-500">{t("leads.statTotal")}</p>
               <p className="mt-3 text-3xl font-bold text-slate-950">{stats.total}</p>
             </div>
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100">
@@ -208,7 +210,7 @@ export default function ClientLeads() {
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-slate-500">أرقام فريدة</p>
+              <p className="text-sm font-medium text-slate-500">{t("leads.statUnique")}</p>
               <p className="mt-3 text-3xl font-bold text-emerald-600">{stats.unique}</p>
             </div>
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100">
@@ -220,7 +222,7 @@ export default function ClientLeads() {
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-slate-500">اليوم</p>
+              <p className="text-sm font-medium text-slate-500">{t("leads.statToday")}</p>
               <p className="mt-3 text-3xl font-bold text-blue-600">{stats.today}</p>
             </div>
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 ring-1 ring-blue-100">
@@ -232,7 +234,7 @@ export default function ClientLeads() {
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-slate-500">آخر 7 أيام</p>
+              <p className="text-sm font-medium text-slate-500">{t("leads.statWeek")}</p>
               <p className="mt-3 text-3xl font-bold text-violet-600">{stats.week}</p>
             </div>
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-50 text-violet-600 ring-1 ring-violet-100">
@@ -245,9 +247,9 @@ export default function ClientLeads() {
       <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-lg font-bold text-slate-950">قائمة العملاء المحتملين</h2>
+            <h2 className="text-lg font-bold text-slate-950">{t("leads.listTitle")}</h2>
             <p className="text-sm text-slate-500">
-              ظاهر {filteredLeads.length} من أصل {leads.length} عميل محتمل
+              {t("leads.listCount", { shown: filteredLeads.length, total: leads.length })}
             </p>
           </div>
 
@@ -255,7 +257,7 @@ export default function ClientLeads() {
             <MagnifyingGlassIcon className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
             <input
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pr-11 pl-4 text-sm outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-50"
-              placeholder="بحث بالاسم، الرقم، المرسل، أو رقم المحادثة..."
+              placeholder={t("leads.searchPlaceholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -263,12 +265,12 @@ export default function ClientLeads() {
         </div>
 
         {loading ? (
-          <div className="p-10 text-center text-sm text-slate-500">جارِ تحميل البيانات...</div>
+          <div className="p-10 text-center text-sm text-slate-500">{t("common.loading")}</div>
         ) : filteredLeads.length === 0 ? (
           <div className="p-10 text-center">
             <UserPlusIcon className="mx-auto mb-3 h-10 w-10 text-slate-300" />
-            <p className="font-semibold text-slate-700">لا يوجد عملاء محتملون مطابقون للبحث</p>
-            <p className="mt-1 text-sm text-slate-400">جرّب تغيير كلمة البحث أو تحديث الصفحة.</p>
+            <p className="font-semibold text-slate-700">{t("leads.emptyTitle")}</p>
+            <p className="mt-1 text-sm text-slate-400">{t("leads.emptySubtitle")}</p>
           </div>
         ) : (
           <>
@@ -276,12 +278,12 @@ export default function ClientLeads() {
               <table className="w-full min-w-[900px] text-right text-sm">
                 <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
-                    <th className="px-5 py-4 font-bold">العميل</th>
-                    <th className="px-5 py-4 font-bold">القناة</th>
-                    <th className="px-5 py-4 font-bold">رقم الهاتف</th>
-                    <th className="px-5 py-4 font-bold">المحادثة</th>
-                    <th className="px-5 py-4 font-bold">تاريخ الالتقاط</th>
-                    <th className="px-5 py-4 font-bold">إجراءات</th>
+                    <th className="px-5 py-4 font-bold">{t("leads.colClient")}</th>
+                    <th className="px-5 py-4 font-bold">{t("leads.colChannel")}</th>
+                    <th className="px-5 py-4 font-bold">{t("leads.colPhone")}</th>
+                    <th className="px-5 py-4 font-bold">{t("leads.colConversation")}</th>
+                    <th className="px-5 py-4 font-bold">{t("leads.colCapturedAt")}</th>
+                    <th className="px-5 py-4 font-bold">{t("leads.colActions")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -301,7 +303,7 @@ export default function ClientLeads() {
                           <div className="flex items-center gap-3">
                             <ChannelIcon channel={channel} size="h-11 w-11" />
                             <div>
-                              <p className="font-bold text-slate-950">{lead.name || "بدون اسم"}</p>
+                              <p className="font-bold text-slate-950">{lead.name || t("common.noName")}</p>
                               <p className="text-xs text-slate-400">Sender: {lead.sender_id || "—"}</p>
                             </div>
                           </div>
@@ -328,7 +330,7 @@ export default function ClientLeads() {
                           )}
                         </td>
 
-                        <td className="px-5 py-4 text-slate-600">{formatDate(lead.created_at)}</td>
+                        <td className="px-5 py-4 text-slate-600">{formatDate(lead.created_at, i18n.language)}</td>
 
                         <td className="px-5 py-4">
                           <div className="flex flex-wrap gap-2">
@@ -338,7 +340,7 @@ export default function ClientLeads() {
                               className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
                             >
                               <ClipboardDocumentIcon className="h-4 w-4" />
-                              {copied === lead.phone ? "تم النسخ" : "نسخ"}
+                              {copied === lead.phone ? t("common.copied") : t("common.copy")}
                             </button>
 
                             {whatsappLink && (
@@ -346,7 +348,7 @@ export default function ClientLeads() {
                                 href={whatsappLink}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                title="فتح محادثة واتساب"
+                                title={t("leads.openWhatsappTitle")}
                                 className="inline-flex items-center justify-center rounded-xl transition hover:opacity-80"
                               >
                                 <ChannelIcon channel="whatsapp" size="h-9 w-9" />
@@ -363,7 +365,7 @@ export default function ClientLeads() {
 
             <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-100 px-5 py-4 sm:flex-row">
               <p className="text-xs font-semibold text-slate-500">
-                صفحة {safePage} من {totalPages} — {filteredLeads.length} عميل محتمل إجمالاً
+                {t("leads.pageSummary", { page: safePage, total: totalPages, count: filteredLeads.length })}
               </p>
               <Pagination page={safePage} totalPages={totalPages} onPageChange={setPage} />
             </div>

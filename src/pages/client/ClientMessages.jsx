@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { PhotoIcon, DocumentIcon, MicrophoneIcon } from "@heroicons/react/24/outline";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -10,28 +11,28 @@ import ChannelIcon from "../../lib/channelIcons.jsx";
 // later without pretending any of them work today. No payload/backend
 // change accompanies this — text sending (sendHumanReply) is unchanged.
 const MEDIA_CONTROLS = [
-  { key: "image", label: "صورة", icon: PhotoIcon },
-  { key: "document", label: "ملف", icon: DocumentIcon },
-  { key: "voice", label: "رسالة صوتية", icon: MicrophoneIcon },
+  { key: "image", labelKey: "messagesPage.mediaImage", icon: PhotoIcon },
+  { key: "document", labelKey: "messagesPage.mediaDocument", icon: DocumentIcon },
+  { key: "voice", labelKey: "messagesPage.mediaVoice", icon: MicrophoneIcon },
 ];
 
-function formatDate(value) {
+function formatDate(value, lang) {
   if (!value) return "—";
   try {
-    return new Date(value).toLocaleString("ar-EG", { dateStyle: "medium", timeStyle: "short" });
+    return new Date(value).toLocaleString(lang === "en" ? "en-US" : "ar-EG", { dateStyle: "medium", timeStyle: "short" });
   } catch {
     return value;
   }
 }
 
-function relativeTime(value) {
+function relativeTime(value, t) {
   if (!value) return "—";
   const diff = Date.now() - new Date(value).getTime();
   const minutes = Math.max(1, Math.floor(diff / 60000));
-  if (minutes < 60) return `منذ ${minutes} د`;
+  if (minutes < 60) return t("common.timeMinutesAgo", { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `منذ ${hours} س`;
-  return `منذ ${Math.floor(hours / 24)} يوم`;
+  if (hours < 24) return t("common.timeHoursAgo", { count: hours });
+  return t("common.timeDaysAgo", { count: Math.floor(hours / 24) });
 }
 
 function getMessageText(msg = {}) {
@@ -48,9 +49,9 @@ function getMessageText(msg = {}) {
   );
 }
 
-function directionLabel(direction) {
-  if (["in", "inbound"].includes(direction)) return "واردة";
-  if (["out", "outbound"].includes(direction)) return "صادرة";
+function directionLabel(direction, t) {
+  if (["in", "inbound"].includes(direction)) return t("common.inbound");
+  if (["out", "outbound"].includes(direction)) return t("common.outbound");
   return direction || "—";
 }
 
@@ -92,6 +93,7 @@ function StatCard({ label, value, hint, icon, tone = "indigo" }) {
 
 export default function ClientMessages() {
   const { user } = useAuth();
+  const { t, i18n } = useTranslation();
   // client_id is resolved once at login via client_users (see Login.jsx).
   const clientId = user?.client_id || null;
 
@@ -239,7 +241,7 @@ export default function ClientMessages() {
       setSelectedConversationId((current) => current && merged.some((c) => c.conversation_id === current) ? current : merged[0]?.conversation_id || null);
     } catch (err) {
       console.error(err);
-      setError("فشل في جلب المحادثات");
+      setError(t("messagesPage.errorFetchConversations"));
     } finally {
       setLoadingConversations(false);
     }
@@ -271,7 +273,7 @@ export default function ClientMessages() {
       return rows;
     } catch (err) {
       console.error(err);
-      if (!silent) setError("فشل في جلب رسائل المحادثة");
+      if (!silent) setError(t("messagesPage.errorFetchMessages"));
       return null;
     } finally {
       if (!silent) setLoadingMessages(false);
@@ -328,7 +330,7 @@ export default function ClientMessages() {
 
       const data = await response.json().catch(() => ({}));
       if (!response.ok || data?.success === false) {
-        throw new Error(data?.message || "فشل في تحديث حالة المحادثة");
+        throw new Error(data?.message || t("messagesPage.errorStatusUpdate"));
       }
 
       const payload = { conversation_status: newStatus, updated_at: data.updated_at || new Date().toISOString() };
@@ -347,7 +349,7 @@ export default function ClientMessages() {
       );
     } catch (err) {
       console.error(err);
-      setError(err.message || "فشل في تحديث حالة المحادثة");
+      setError(err.message || t("messagesPage.errorStatusUpdate"));
     } finally {
       setUpdatingStatus(false);
     }
@@ -433,10 +435,10 @@ export default function ClientMessages() {
             : conv
         )
       );
-      setError(data?.message || "تعذر استلام المحادثة");
+      setError(data?.message || t("messagesPage.errorClaimFailed"));
     } catch (err) {
       console.error(err);
-      setError("فشل استلام المحادثة، حاول مرة أخرى");
+      setError(t("messagesPage.errorClaimRetry"));
     } finally {
       setClaimingId(null);
     }
@@ -486,14 +488,14 @@ export default function ClientMessages() {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok || data?.success === false) {
-        throw new Error(data?.message || "فشل إرسال الرد");
+        throw new Error(data?.message || t("messagesPage.errorSendReply"));
       }
 
       setDraft("");
       refreshMessagesAfterSend(conversationId, previousCount);
     } catch (err) {
       console.error(err);
-      setSendError(err.message || "فشل إرسال الرد، حاول مرة أخرى");
+      setSendError(err.message || t("messagesPage.errorSendRetry"));
     } finally {
       sendingRef.current = false;
       setSending(false);
@@ -530,49 +532,58 @@ export default function ClientMessages() {
   // seenRealtimeMessageIdsRef additionally guards the list's incremental
   // counters against a duplicate Realtime delivery of the same row.
   function handleRealtimeMessage(msg) {
-    if (!msg || !msg.conversation_id) return;
+    // Defensive: an uncaught exception thrown from inside a Realtime
+    // callback would otherwise surface as an unhandled error at the point
+    // React processes the resulting setState, with nothing here to explain
+    // why. Guarding the whole handler keeps one malformed/unexpected event
+    // payload from ever affecting anything beyond itself.
+    try {
+      if (!msg || !msg.conversation_id) return;
 
-    if (msg.id != null) {
-      if (seenRealtimeMessageIdsRef.current.has(msg.id)) return;
-      seenRealtimeMessageIdsRef.current.add(msg.id);
-    }
+      if (msg.id != null) {
+        if (seenRealtimeMessageIdsRef.current.has(msg.id)) return;
+        seenRealtimeMessageIdsRef.current.add(msg.id);
+      }
 
-    const messageText = getMessageText(msg);
+      const messageText = getMessageText(msg);
 
-    if (selectedConversationIdRef.current === msg.conversation_id) {
-      setConversationMessages((prev) => {
-        if (prev.some((m) => m.id === msg.id)) return prev;
-        return [...prev, { ...msg, message_text: messageText }];
+      if (selectedConversationIdRef.current === msg.conversation_id) {
+        setConversationMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, { ...msg, message_text: messageText }];
+        });
+      }
+
+      if (!conversationIdsRef.current.has(msg.conversation_id)) {
+        // Brand-new conversation this session hasn't listed yet — pick it up
+        // with a single refetch triggered by this real event, not a timer.
+        fetchConversations();
+        return;
+      }
+
+      setConversations((prev) => {
+        const idx = prev.findIndex((c) => c.conversation_id === msg.conversation_id);
+        if (idx === -1) return prev;
+
+        const existing = prev[idx];
+        const next = [...prev];
+        next[idx] = {
+          ...existing,
+          last_message: messageText || existing.last_message,
+          last_message_at: msg.created_at || existing.last_message_at,
+          updated_at: msg.created_at || existing.updated_at,
+          last_direction: msg.direction || existing.last_direction,
+          // Same counting rule fetchConversations already uses — only
+          // increment unread_count for a message explicitly marked unread.
+          messages_count: (existing.messages_count || 0) + 1,
+          unread_count: msg.is_read === false ? (existing.unread_count || 0) + 1 : existing.unread_count,
+        };
+        next.sort((a, b) => new Date(b.last_message_at || b.updated_at || 0) - new Date(a.last_message_at || a.updated_at || 0));
+        return next;
       });
+    } catch (err) {
+      console.error("Realtime message handling failed:", err);
     }
-
-    if (!conversationIdsRef.current.has(msg.conversation_id)) {
-      // Brand-new conversation this session hasn't listed yet — pick it up
-      // with a single refetch triggered by this real event, not a timer.
-      fetchConversations();
-      return;
-    }
-
-    setConversations((prev) => {
-      const idx = prev.findIndex((c) => c.conversation_id === msg.conversation_id);
-      if (idx === -1) return prev;
-
-      const existing = prev[idx];
-      const next = [...prev];
-      next[idx] = {
-        ...existing,
-        last_message: messageText || existing.last_message,
-        last_message_at: msg.created_at || existing.last_message_at,
-        updated_at: msg.created_at || existing.updated_at,
-        last_direction: msg.direction || existing.last_direction,
-        // Same counting rule fetchConversations already uses — only
-        // increment unread_count for a message explicitly marked unread.
-        messages_count: (existing.messages_count || 0) + 1,
-        unread_count: msg.is_read === false ? (existing.unread_count || 0) + 1 : existing.unread_count,
-      };
-      next.sort((a, b) => new Date(b.last_message_at || b.updated_at || 0) - new Date(a.last_message_at || a.updated_at || 0));
-      return next;
-    });
   }
 
   // Realtime subscription: INSERT events on public.messages, scoped to this
@@ -582,17 +593,35 @@ export default function ClientMessages() {
   // reveals new messages without a manual refresh. Torn down on unmount and
   // whenever clientId changes, so a client switch never leaves a stale
   // subscription listening for another tenant's messages.
+  //
+  // Wrapped defensively and given a status callback: none of this can
+  // legitimately throw synchronously during render (the whole effect body
+  // is gated behind `if (!clientId) return`), but if the Supabase project's
+  // `messages` table isn't in the Realtime publication, or the socket
+  // fails to connect, .subscribe()'s status callback is the only way to
+  // find out — previously this failed completely silently, indistinguishable
+  // from "no new messages happened yet".
   useEffect(() => {
     if (!clientId) return;
 
-    const channel = supabase
-      .channel(`messages-client-${clientId}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages", filter: `client_id=eq.${clientId}` },
-        (payload) => handleRealtimeMessage(payload.new)
-      )
-      .subscribe();
+    let channel;
+    try {
+      channel = supabase
+        .channel(`messages-client-${clientId}`)
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "messages", filter: `client_id=eq.${clientId}` },
+          (payload) => handleRealtimeMessage(payload.new)
+        )
+        .subscribe((subStatus, err) => {
+          if (subStatus === "CHANNEL_ERROR" || subStatus === "TIMED_OUT" || err) {
+            console.error("Realtime messages subscription failed:", subStatus, err);
+          }
+        });
+    } catch (err) {
+      console.error("Realtime messages subscription could not be created:", err);
+      return;
+    }
 
     return () => {
       supabase.removeChannel(channel);
@@ -685,55 +714,55 @@ export default function ClientMessages() {
   }), [conversations]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2" dir="rtl">
+    <div className="flex h-full min-h-0 flex-col gap-2">
       <div className="flex shrink-0 items-center justify-end">
-        <button onClick={fetchConversations} className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50">↻ تحديث</button>
+        <button onClick={fetchConversations} className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50">↻ {t("common.refresh")}</button>
       </div>
 
       {error && <div className="shrink-0 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:grid-cols-[380px_minmax(0,1fr)]" dir="rtl">
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:grid-cols-[380px_minmax(0,1fr)]">
         <aside className="flex h-full min-h-0 flex-col border-l border-slate-100 bg-slate-50/50">
           <div className="shrink-0 border-b border-slate-100 p-3">
             <div className="mb-2 flex items-center justify-between gap-3">
               <div>
-                <h2 className="font-bold text-slate-950">قائمة المحادثات</h2>
-                <p className="mt-1 text-xs text-slate-500">{filteredConversations.length} محادثة ظاهرة</p>
+                <h2 className="font-bold text-slate-950">{t("messagesPage.listTitle")}</h2>
+                <p className="mt-1 text-xs text-slate-500">{t("messagesPage.countSuffix", { count: filteredConversations.length })}</p>
               </div>
               <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-600">Live</span>
             </div>
 
             <div className="space-y-2">
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث بالاسم، الرقم، الرسالة، أو رقم المحادثة..." className="h-9 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("messagesPage.searchPlaceholder")} className="h-9 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50" />
               <div className="grid grid-cols-2 gap-2">
                 <select value={channel} onChange={(e) => setChannel(e.target.value)} className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-indigo-300">
-                  <option value="all">كل القنوات</option>
+                  <option value="all">{t("messagesPage.allChannels")}</option>
                   <option value="facebook">Facebook</option>
                   <option value="telegram">Telegram</option>
                   <option value="whatsapp">WhatsApp</option>
                   <option value="instagram">Instagram</option>
                 </select>
                 <select value={status} onChange={(e) => setStatus(e.target.value)} className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-indigo-300">
-                  <option value="all">كل الحالات</option>
-                  <option value="active">نشطة</option>
-                  <option value="open">مفتوحة</option>
-                  <option value="closed">مغلقة</option>
-                  <option value="lead_captured">العملاء المحتملون</option>
-                  <option value="waiting_human">بانتظار موظف</option>
+                  <option value="all">{t("messagesPage.allStatuses")}</option>
+                  <option value="active">{t("messagesPage.statusActive")}</option>
+                  <option value="open">{t("messagesPage.statusOpen")}</option>
+                  <option value="closed">{t("messagesPage.statusClosed")}</option>
+                  <option value="lead_captured">{t("navigation.leads")}</option>
+                  <option value="waiting_human">{t("common.waitingHuman")}</option>
                 </select>
               </div>
               <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600">
                 <input type="checkbox" checked={leadsOnly} onChange={(e) => setLeadsOnly(e.target.checked)} />
-                فقط المحادثات التي فيها عميل محتمل
+                {t("messagesPage.leadsOnlyFilter")}
               </label>
             </div>
           </div>
 
           <div className="flex-1 min-h-0 overflow-y-auto p-2">
             {loadingConversations ? (
-              <div className="p-8 text-center text-sm text-slate-500">جارِ تحميل المحادثات...</div>
+              <div className="p-8 text-center text-sm text-slate-500">{t("messagesPage.loadingConversations")}</div>
             ) : filteredConversations.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-400">لا توجد محادثات مطابقة.</div>
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-400">{t("messagesPage.noMatchingConversations")}</div>
             ) : (
               filteredConversations.map((conv) => {
                 const isActive = conv.conversation_id === selectedConversationId;
@@ -746,20 +775,20 @@ export default function ClientMessages() {
       <ChannelIcon channel={conv.channel || conv.platform} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="truncate text-sm font-bold text-slate-950">{conv.lead_name || conv.sender || conv.sender_id || "بدون اسم"}</p>
-                          <span className="shrink-0 text-[11px] text-slate-400">{relativeTime(conv.last_message_at || conv.updated_at)}</span>
+                          <p className="truncate text-sm font-bold text-slate-950">{conv.lead_name || conv.sender || conv.sender_id || t("common.noName")}</p>
+                          <span className="shrink-0 text-[11px] text-slate-400">{relativeTime(conv.last_message_at || conv.updated_at, t)}</span>
                         </div>
-                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{conv.last_message || "لا توجد رسالة بعد"}</p>
+                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{conv.last_message || t("messagesPage.noMessageYet")}</p>
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                          <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${platformClass}`}>{conv.channel || conv.platform || "غير معروف"}</span>
+                          <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${platformClass}`}>{conv.channel || conv.platform || t("messagesPage.unknownChannel")}</span>
                           <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${statusClass}`}>{conv.conversation_status || "active"}</span>
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">{conv.messages_count} رسائل</span>
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">{t("messagesPage.messagesCountSuffix", { count: conv.messages_count })}</span>
                           {conv.unread_count > 0 && (
-                            <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[11px] font-bold text-white">{conv.unread_count} غير مقروءة</span>
+                            <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[11px] font-bold text-white">{t("messagesPage.unreadCountSuffix", { count: conv.unread_count })}</span>
                           )}
                           {conv.assigned_user_id && (
                             <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
-                              مستلمة: {conv.assigned_user?.name || "موظف"}
+                              {t("messagesPage.claimedByPrefix", { name: conv.assigned_user?.name || t("roles.agent") })}
                             </span>
                           )}
                         </div>
@@ -774,7 +803,7 @@ export default function ClientMessages() {
 
         <section className="flex min-h-0 flex-col bg-white">
           {!selectedConversation ? (
-            <div className="flex flex-1 items-center justify-center text-sm text-slate-400">اختر محادثة من القائمة</div>
+            <div className="flex flex-1 items-center justify-center text-sm text-slate-400">{t("messagesPage.selectConversationPrompt")}</div>
           ) : (
             <>
               <div className="shrink-0 border-b border-slate-100 p-3">
@@ -782,11 +811,11 @@ export default function ClientMessages() {
                   <div className="flex items-start gap-3">
                     <ChannelIcon channel={selectedConversation.channel || selectedConversation.platform} size="h-10 w-10" />
                     <div>
-                      <h2 className="text-base font-bold text-slate-950">{selectedLead?.name || selectedConversation.lead_name || selectedConversation.sender || selectedConversation.sender_id || "بدون اسم"}</h2>
+                      <h2 className="text-base font-bold text-slate-950">{selectedLead?.name || selectedConversation.lead_name || selectedConversation.sender || selectedConversation.sender_id || t("common.noName")}</h2>
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">{selectedConversation.channel || selectedConversation.platform || "غير معروف"}</span>
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">{selectedConversation.channel || selectedConversation.platform || t("messagesPage.unknownChannel")}</span>
                         <span className={`rounded-full border px-3 py-1 text-xs font-bold ${statusStyles[selectedConversation.conversation_status] || "bg-slate-100 text-slate-600 border-slate-200"}`}>{selectedConversation.conversation_status || "active"}</span>
-                        <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-600">{conversationMessages.length} رسائل</span>
+                        <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-600">{t("messagesPage.messagesCountSuffix", { count: conversationMessages.length })}</span>
                       </div>
                     </div>
                   </div>
@@ -794,45 +823,45 @@ export default function ClientMessages() {
                   <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                     {conversationStatus === "waiting_human" && !selectedConversation.assigned_user_id && (
                       <>
-                        <span className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">بانتظار موظف</span>
+                        <span className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">{t("common.waitingHuman")}</span>
                         <button
                           onClick={() => claimConversation(selectedConversation.conversation_id)}
                           disabled={claimingId === selectedConversation.conversation_id}
                           className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50"
                         >
-                          {claimingId === selectedConversation.conversation_id ? "جارٍ الاستلام..." : "استلام المحادثة"}
+                          {claimingId === selectedConversation.conversation_id ? t("messagesPage.claiming") : t("messagesPage.claimConversation")}
                         </button>
                       </>
                     )}
                     {conversationStatus === "waiting_human" && selectedConversation.assigned_user_id && (
                       <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">
-                        مستلمة بواسطة {selectedConversation.assigned_user?.name || "موظف"}
+                        {t("messagesPage.claimedByFullPrefix", { name: selectedConversation.assigned_user?.name || t("roles.agent") })}
                       </span>
                     )}
                     {conversationStatus !== "waiting_human" && conversationStatus !== "closed" && (
-                      <button onClick={takeoverConversation} disabled={updatingStatus} className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">تحويل لموظف</button>
+                      <button onClick={takeoverConversation} disabled={updatingStatus} className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">{t("common.transferToAgent")}</button>
                     )}
                     {conversationStatus !== "closed" && canControlConversation && (
-                      <button onClick={closeConversation} disabled={updatingStatus} className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">إغلاق</button>
+                      <button onClick={closeConversation} disabled={updatingStatus} className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">{t("common.close")}</button>
                     )}
                     {conversationStatus === "closed" && (
-                      <button onClick={reopenConversation} disabled={updatingStatus} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">إعادة فتح</button>
+                      <button onClick={reopenConversation} disabled={updatingStatus} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">{t("messagesPage.reopenConversation")}</button>
                     )}
                   </div>
                 </div>
 
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                  <span className="font-bold text-slate-500">العميل المحتمل:</span>
-                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 font-semibold text-slate-700">{selectedLead?.name || "بدون اسم"}</span>
-                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 font-semibold text-slate-700">{selectedLead?.phone || "بدون رقم"}</span>
+                  <span className="font-bold text-slate-500">{t("messagesPage.leadLabelPrefix")}</span>
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 font-semibold text-slate-700">{selectedLead?.name || t("common.noName")}</span>
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 font-semibold text-slate-700">{selectedLead?.phone || t("messagesPage.noPhone")}</span>
                 </div>
               </div>
 
               <div ref={messagesScrollRef} onScroll={handleMessagesScroll} className="min-h-0 flex-1 overflow-y-auto bg-slate-50/40 p-3">
                 {loadingMessages ? (
-                  <div className="p-8 text-center text-sm text-slate-500">جارِ تحميل رسائل المحادثة...</div>
+                  <div className="p-8 text-center text-sm text-slate-500">{t("messagesPage.loadingMessages")}</div>
                 ) : conversationMessages.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-400">لا توجد رسائل لهذه المحادثة.</div>
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-400">{t("messagesPage.noMessagesForConversation")}</div>
                 ) : (
                   <div className="space-y-2.5">
                     {conversationMessages.map((msg) => {
@@ -841,8 +870,8 @@ export default function ClientMessages() {
                         <div key={msg.id} className={`flex ${isInbound ? "justify-start" : "justify-end"}`}>
                           <div className={`max-w-[58%] rounded-2xl px-3.5 py-2.5 shadow-sm ${isInbound ? "rounded-tr-lg border border-slate-200 bg-white text-slate-800" : "rounded-tl-lg bg-indigo-600/95 text-white shadow-indigo-100"}`}>
                             <div className="mb-1.5 flex items-center gap-2">
-                              <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${isInbound ? "bg-slate-100 text-slate-500" : "bg-white/15 text-white"}`}>{directionLabel(msg.direction)}</span>
-                              <span className={`text-[11px] ${isInbound ? "text-slate-400" : "text-indigo-100"}`}>{formatDate(msg.created_at)}</span>
+                              <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${isInbound ? "bg-slate-100 text-slate-500" : "bg-white/15 text-white"}`}>{directionLabel(msg.direction, t)}</span>
+                              <span className={`text-[11px] ${isInbound ? "text-slate-400" : "text-indigo-100"}`}>{formatDate(msg.created_at, i18n.language)}</span>
                             </div>
                             <div className="whitespace-pre-wrap break-words text-sm leading-6">{msg.message_text || getMessageText(msg) || "—"}</div>
                           </div>
@@ -863,8 +892,8 @@ export default function ClientMessages() {
                 {!canControlConversation && (
                   <div className="mb-2 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
                     {selectedConversation.assigned_user_id
-                      ? `هذه المحادثة مستلمة بواسطة ${selectedConversation.assigned_user?.name || "موظف"}`
-                      : "يجب استلام المحادثة أولاً"}
+                      ? t("messagesPage.claimedByNotice", { name: selectedConversation.assigned_user?.name || t("roles.agent") })
+                      : t("messagesPage.mustClaimFirst")}
                   </div>
                 )}
 
@@ -874,12 +903,12 @@ export default function ClientMessages() {
                       architecture is ready without faking a capability the
                       channel/n8n side doesn't support today. */}
                   <div className="flex shrink-0 items-center gap-1.5">
-                    {MEDIA_CONTROLS.map(({ key, label, icon: Icon }) => (
+                    {MEDIA_CONTROLS.map(({ key, labelKey, icon: Icon }) => (
                       <button
                         key={key}
                         type="button"
                         disabled
-                        title={`${label} — قريباً`}
+                        title={t("messagesPage.mediaComingSoon", { label: t(labelKey) })}
                         className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
                       >
                         <Icon className="h-5 w-5" />
@@ -892,7 +921,7 @@ export default function ClientMessages() {
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={handleComposerKeyDown}
                     disabled={sending || !canControlConversation}
-                    placeholder={canControlConversation ? "اكتب ردك هنا... (Enter للإرسال، Shift+Enter لسطر جديد)" : "لا يمكنك الرد على هذه المحادثة"}
+                    placeholder={canControlConversation ? t("messagesPage.composerPlaceholderEnabled") : t("messagesPage.composerPlaceholderDisabled")}
                     rows={2}
                     className="min-h-[44px] max-h-40 flex-1 resize-none rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50 disabled:bg-slate-50 disabled:text-slate-400"
                   />
@@ -903,7 +932,7 @@ export default function ClientMessages() {
                     disabled={sending || !draft.trim() || !canControlConversation}
                     className="h-11 shrink-0 rounded-2xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50"
                   >
-                    {sending ? "جارِ الإرسال..." : "إرسال"}
+                    {sending ? t("messagesPage.sending") : t("messagesPage.send")}
                   </button>
                 </div>
               </div>

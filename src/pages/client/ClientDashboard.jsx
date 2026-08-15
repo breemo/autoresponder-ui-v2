@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
 import ChannelIcon from "../../lib/channelIcons.jsx";
@@ -25,13 +26,15 @@ import {
 } from "recharts";
 import { PERMISSIONS, hasUserPermission } from "../../lib/permissions.js";
 
-const SOURCE_LABELS = {
-  ai: "الذكاء الاصطناعي",
-  auto: "Auto",
-  system: "System",
-  quick_reply: "Quick",
-  human: "موظف",
-};
+// "auto"/"system"/"quick_reply" are internal reply-source labels that read
+// the same in Arabic and English (developer-facing shorthand, not a
+// translated sentence) — only "ai" and "human" have real approved
+// terminology, resolved via t() below.
+function getSourceLabel(key, t) {
+  if (key === "ai") return t("replyMode.ai");
+  if (key === "human") return t("roles.agent");
+  return { auto: "Auto", system: "System", quick_reply: "Quick" }[key] || key;
+}
 
 const SOURCE_COLORS = {
   ai: "bg-violet-50 text-violet-700 border-violet-100",
@@ -41,31 +44,34 @@ const SOURCE_COLORS = {
   human: "bg-amber-50 text-amber-700 border-amber-100",
 };
 
-const SUBSCRIPTION_STATUS_LABELS = {
-  active: "مفعّل",
-  trial: "تجريبي",
-  cancelled: "ملغى",
-  expired: "منتهي",
-  suspended: "موقوف",
-  upgraded: "تمت الترقية",
-};
+function getSubscriptionStatusLabel(status, t) {
+  const map = {
+    active: t("common.active"),
+    trial: t("common.trial"),
+    cancelled: t("common.cancelled"),
+    expired: t("common.expired"),
+    suspended: t("common.suspended"),
+    upgraded: t("common.upgraded"),
+  };
+  return map[status] || status;
+}
 
-function relativeTime(value) {
+function relativeTime(value, t) {
   if (!value) return "-";
   const diff = Date.now() - new Date(value).getTime();
   const minutes = Math.max(0, Math.round(diff / 60000));
-  if (minutes < 1) return "الآن";
-  if (minutes < 60) return `منذ ${minutes} د`;
+  if (minutes < 1) return t("common.timeNow");
+  if (minutes < 60) return t("common.timeMinutesAgo", { count: minutes });
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `منذ ${hours} س`;
+  if (hours < 24) return t("common.timeHoursAgo", { count: hours });
   const days = Math.round(hours / 24);
-  return `منذ ${days} يوم`;
+  return t("common.timeDaysAgo", { count: days });
 }
 
-function formatDate(value) {
+function formatDate(value, lang) {
   if (!value) return "—";
   try {
-    return new Date(value).toLocaleDateString("ar-EG", { year: "numeric", month: "short", day: "numeric" });
+    return new Date(value).toLocaleDateString(lang === "en" ? "en-US" : "ar-EG", { year: "numeric", month: "short", day: "numeric" });
   } catch {
     return "—";
   }
@@ -84,12 +90,13 @@ function getDaysRemaining(endDate) {
 }
 
 function UsageBar({ label, used, limit }) {
+  const { t } = useTranslation();
   if (limit === null || limit === undefined) {
     return (
       <div>
         <div className="mb-1.5 flex items-center justify-between text-xs font-semibold text-slate-500">
           <span>{label}</span>
-          <span>غير محدود</span>
+          <span>{t("common.unlimited")}</span>
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-slate-100">
           <div className="h-full w-full rounded-full bg-slate-200" />
@@ -156,6 +163,7 @@ function SectionCard({ title, subtitle, action, children }) {
 
 export default function ClientDashboard() {
   const { user } = useAuth();
+  const { t, i18n } = useTranslation();
   // client_id is resolved once at login via client_users (see Login.jsx) —
   // every user of this client (Owner/Agent/IT) shares the same client_id,
   // so they all resolve the same business data below.
@@ -173,11 +181,12 @@ export default function ClientDashboard() {
 
   useEffect(() => {
     if (!realClientId) {
-      setError("⚠️ لم يتم العثور على حسابك كعميل");
+      setError(t("dashboard.errorNoClient"));
       setLoading(false);
       return;
     }
     loadDashboard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [realClientId]);
 
   async function loadDashboard() {
@@ -258,7 +267,7 @@ export default function ClientDashboard() {
       }
     } catch (err) {
       console.error(err);
-      setError("حدث خطأ أثناء تحميل بيانات النظرة العامة");
+      setError(t("dashboard.errorLoad"));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -319,16 +328,17 @@ export default function ClientDashboard() {
     ).length;
     const waitingHuman = conversationStates.filter((s) => s.conversation_status === "waiting_human").length;
 
+    const dateLocale = i18n.language === "en" ? "en-US" : "ar-EG";
     const days = {};
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const key = d.toLocaleDateString("ar-EG", { weekday: "short" });
+      const key = d.toLocaleDateString(dateLocale, { weekday: "short" });
       days[key] = { day: key, inbound: 0, outbound: 0 };
     }
 
     messages.forEach((msg) => {
-      const day = new Date(msg.created_at).toLocaleDateString("ar-EG", { weekday: "short" });
+      const day = new Date(msg.created_at).toLocaleDateString(dateLocale, { weekday: "short" });
       if (!days[day]) return;
       if (msg.direction === "inbound") days[day].inbound += 1;
       if (msg.direction === "outbound") days[day].outbound += 1;
@@ -353,18 +363,19 @@ export default function ClientDashboard() {
       chartData: Object.values(days),
       connectedIntegrations: integrations.filter((i) => i.is_active).length,
     };
-  }, [messages, conversationStates, integrations]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, conversationStates, integrations, i18n.language]);
 
-  const displayName = user?.business_name || user?.name || user?.email || "عميلنا";
+  const displayName = user?.business_name || user?.name || user?.email || t("dashboard.defaultClientName");
   const recentConversations = dashboard.conversations.slice(0, 5);
   const daysRemaining = subscription?.end_date ? getDaysRemaining(subscription.end_date) : null;
 
   return (
-    <div className="space-y-5" dir="rtl">
+    <div className="space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-black tracking-tight text-slate-950">مرحباً {displayName} 👋</h1>
-          <p className="mt-1 text-sm font-medium text-slate-500">نظرة تشغيلية سريعة على المحادثات، الأتمتة، والاشتراك.</p>
+          <h1 className="text-3xl font-black tracking-tight text-slate-950">{t("dashboard.greeting", { name: displayName })}</h1>
+          <p className="mt-1 text-sm font-medium text-slate-500">{t("dashboard.subtitle")}</p>
         </div>
         <button
           type="button"
@@ -373,7 +384,7 @@ export default function ClientDashboard() {
           className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
         >
           <ArrowPathIcon className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-          تحديث
+          {t("common.refresh")}
         </button>
       </div>
 
@@ -383,26 +394,26 @@ export default function ClientDashboard() {
 
       {/* 1. Conversations */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="المحادثات المفتوحة" value={loading ? "..." : dashboard.openConversations} subtitle="تحتاج متابعة أو رد" icon={ChatBubbleLeftRightIcon} tone="violet" />
-        <StatCard title="بانتظار موظف" value={loading ? "..." : dashboard.waitingHuman} subtitle="تم تحويلها لموظف" icon={ClockIcon} tone="amber" />
-        <StatCard title="العملاء المحتملون" value={loading ? "..." : leadsCount} subtitle="أرقام وبيانات تم التقاطها" icon={UserPlusIcon} tone="emerald" />
-        <StatCard title="القنوات المفعّلة" value={loading ? "..." : dashboard.connectedIntegrations} subtitle="منصات ربط نشطة" icon={UserGroupIcon} tone="blue" />
+        <StatCard title={t("dashboard.openConversationsTitle")} value={loading ? "..." : dashboard.openConversations} subtitle={t("dashboard.openConversationsSubtitle")} icon={ChatBubbleLeftRightIcon} tone="violet" />
+        <StatCard title={t("common.waitingHuman")} value={loading ? "..." : dashboard.waitingHuman} subtitle={t("dashboard.waitingHumanSubtitle")} icon={ClockIcon} tone="amber" />
+        <StatCard title={t("navigation.leads")} value={loading ? "..." : leadsCount} subtitle={t("dashboard.leadsSubtitle")} icon={UserPlusIcon} tone="emerald" />
+        <StatCard title={t("dashboard.channelsTitle")} value={loading ? "..." : dashboard.connectedIntegrations} subtitle={t("dashboard.channelsSubtitle")} icon={UserGroupIcon} tone="blue" />
       </div>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
         <div className="xl:col-span-2">
           <SectionCard
-            title="أحدث المحادثات"
-            subtitle="آخر النشاط عبر كل القنوات"
+            title={t("dashboard.recentConversationsTitle")}
+            subtitle={t("dashboard.recentConversationsSubtitle")}
             action={
               <Link to="/client/messages" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50">
-                فتح المحادثات
+                {t("dashboard.openConversationsLink")}
               </Link>
             }
           >
             {recentConversations.length === 0 ? (
               <div className="flex min-h-[220px] items-center justify-center rounded-2xl border border-dashed border-slate-200 text-sm font-semibold text-slate-400">
-                لا توجد محادثات بعد.
+                {t("dashboard.noConversations")}
               </div>
             ) : (
               <div className="space-y-3">
@@ -411,14 +422,14 @@ export default function ClientDashboard() {
                     <ChannelIcon channel={conversation.channel} size="h-11 w-11" />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate text-sm font-black text-slate-950">{conversation.sender || "مستخدم"}</p>
+                        <p className="truncate text-sm font-black text-slate-950">{conversation.sender || t("common.noName")}</p>
                         <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">{conversation.status || "active"}</span>
                       </div>
-                      <p className="mt-1 truncate text-sm font-medium text-slate-500">{conversation.lastMessage || "لا توجد رسالة"}</p>
+                      <p className="mt-1 truncate text-sm font-medium text-slate-500">{conversation.lastMessage || t("dashboard.noMessage")}</p>
                     </div>
                     <div className="text-left">
-                      <p className="text-xs font-bold text-slate-400">{relativeTime(conversation.updatedAt)}</p>
-                      <p className="mt-1 text-xs font-semibold text-slate-500">{conversation.count} رسالة</p>
+                      <p className="text-xs font-bold text-slate-400">{relativeTime(conversation.updatedAt, t)}</p>
+                      <p className="mt-1 text-xs font-semibold text-slate-500">{t("dashboard.messageCount", { count: conversation.count })}</p>
                     </div>
                   </div>
                 ))}
@@ -428,12 +439,12 @@ export default function ClientDashboard() {
         </div>
 
         {/* 2. Messages / Automation */}
-        <SectionCard title="الأتمتة والردود" subtitle="توزيع الردود الصادرة حسب المصدر">
+        <SectionCard title={t("dashboard.automationTitle")} subtitle={t("dashboard.automationSubtitle")}>
           <div className="space-y-4">
             {dashboard.sourceStats.map((source) => (
               <div key={source.key}>
                 <div className="mb-2 flex items-center justify-between">
-                  <span className={`rounded-full border px-2.5 py-1 text-xs font-black ${SOURCE_COLORS[source.key]}`}>{SOURCE_LABELS[source.key]}</span>
+                  <span className={`rounded-full border px-2.5 py-1 text-xs font-black ${SOURCE_COLORS[source.key]}`}>{getSourceLabel(source.key, t)}</span>
                   <span className="text-sm font-black text-slate-950">{source.value}</span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-slate-100">
@@ -447,7 +458,7 @@ export default function ClientDashboard() {
 
       {/* 5/6/7. Plan, Subscription, Usage */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <SectionCard title="الباقة الحالية" subtitle={null}>
+        <SectionCard title={t("common.currentPlan")} subtitle={null}>
           {plan ? (
             <div>
               <p className="text-2xl font-black text-slate-950">{plan.name}</p>
@@ -458,56 +469,56 @@ export default function ClientDashboard() {
             </div>
           ) : (
             <div className="flex min-h-[100px] items-center justify-center rounded-2xl border border-dashed border-slate-200 text-sm font-semibold text-slate-400">
-              لا توجد باقة مرتبطة بحسابك.
+              {t("dashboard.noPlan")}
             </div>
           )}
         </SectionCard>
 
-        <SectionCard title="تفاصيل الاشتراك" subtitle={null}>
+        <SectionCard title={t("common.subscriptionDetails")} subtitle={null}>
           {subscription ? (
             <div className="space-y-3 text-sm">
               <div className="flex items-center justify-between">
-                <span className="text-slate-500">النوع</span>
-                <span className="font-bold text-slate-900">{subscription.subscription_type === "trial" ? "تجريبي" : "مدفوع"}</span>
+                <span className="text-slate-500">{t("common.type")}</span>
+                <span className="font-bold text-slate-900">{subscription.subscription_type === "trial" ? t("common.trial") : t("common.paid")}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-slate-500">الحالة</span>
+                <span className="text-slate-500">{t("common.status")}</span>
                 <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${subscriptionStatus?.is_active ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
-                  {SUBSCRIPTION_STATUS_LABELS[subscription.status] || subscription.status}
+                  {getSubscriptionStatusLabel(subscription.status, t)}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-slate-500">تاريخ البدء</span>
-                <span className="font-semibold text-slate-700">{formatDate(subscription.start_date)}</span>
+                <span className="text-slate-500">{t("featureSettingsPage.startDateLabel")}</span>
+                <span className="font-semibold text-slate-700">{formatDate(subscription.start_date, i18n.language)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-slate-500">تاريخ الانتهاء</span>
-                <span className="font-semibold text-slate-700">{formatDate(subscription.end_date)}</span>
+                <span className="text-slate-500">{t("featureSettingsPage.endDateLabel")}</span>
+                <span className="font-semibold text-slate-700">{formatDate(subscription.end_date, i18n.language)}</span>
               </div>
               <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-                <span className="text-slate-500">الأيام المتبقية</span>
+                <span className="text-slate-500">{t("common.daysRemaining")}</span>
                 <span className={`font-black ${daysRemaining !== null && daysRemaining < 0 ? "text-rose-600" : "text-indigo-600"}`}>
-                  {daysRemaining === null ? "—" : daysRemaining < 0 ? "منتهي" : `${daysRemaining} يوم`}
+                  {daysRemaining === null ? "—" : daysRemaining < 0 ? t("common.expired") : t("featureSettingsPage.remainingDaysValue", { days: daysRemaining })}
                 </span>
               </div>
             </div>
           ) : (
             <div className="flex min-h-[100px] items-center justify-center rounded-2xl border border-dashed border-slate-200 text-sm font-semibold text-slate-400">
-              لا يوجد اشتراك مسجل حالياً.
+              {t("dashboard.noSubscription")}
             </div>
           )}
         </SectionCard>
 
-        <SectionCard title="الاستخدام" subtitle={null}>
+        <SectionCard title={t("common.usage")} subtitle={null}>
           {subscription && plan ? (
             <div className="space-y-4">
-              <UsageBar label="الرسائل" used={subscription.messages_used} limit={plan.messages_limit} />
-              <UsageBar label="ردود الذكاء الاصطناعي" used={subscription.ai_replies_used} limit={plan.ai_replies_limit} />
-              <UsageBar label="ردود تلقائية" used={subscription.auto_replies_used} limit={plan.auto_replies_limit} />
+              <UsageBar label={t("common.messagesLabel")} used={subscription.messages_used} limit={plan.messages_limit} />
+              <UsageBar label={t("dashboard.usageAiReplies")} used={subscription.ai_replies_used} limit={plan.ai_replies_limit} />
+              <UsageBar label={t("dashboard.usageAutoReplies")} used={subscription.auto_replies_used} limit={plan.auto_replies_limit} />
             </div>
           ) : (
             <div className="flex min-h-[100px] items-center justify-center rounded-2xl border border-dashed border-slate-200 text-sm font-semibold text-slate-400">
-              بيانات الاستخدام غير متوفرة بدون باقة واشتراك فعّال.
+              {t("dashboard.usageUnavailable")}
             </div>
           )}
         </SectionCard>
@@ -515,7 +526,7 @@ export default function ClientDashboard() {
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
         <div className="xl:col-span-2">
-          <SectionCard title="نشاط الرسائل" subtitle="الوارد والصادر خلال آخر 7 أيام">
+          <SectionCard title={t("dashboard.messageActivityTitle")} subtitle={t("dashboard.messageActivitySubtitle")}>
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={dashboard.chartData} margin={{ top: 10, right: 8, left: 0, bottom: 0 }}>
@@ -533,8 +544,8 @@ export default function ClientDashboard() {
                   <XAxis dataKey="day" tickLine={false} axisLine={false} />
                   <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
                   <Tooltip />
-                  <Area type="monotone" dataKey="inbound" stroke="#4f46e5" strokeWidth={3} fill="url(#inboundGradient)" name="وارد" />
-                  <Area type="monotone" dataKey="outbound" stroke="#10b981" strokeWidth={3} fill="url(#outboundGradient)" name="صادر" />
+                  <Area type="monotone" dataKey="inbound" stroke="#4f46e5" strokeWidth={3} fill="url(#inboundGradient)" name={t("dashboard.chartInbound")} />
+                  <Area type="monotone" dataKey="outbound" stroke="#10b981" strokeWidth={3} fill="url(#outboundGradient)" name={t("dashboard.chartOutbound")} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -544,13 +555,13 @@ export default function ClientDashboard() {
         <div className="space-y-5">
           {/* 4. Integrations */}
           <SectionCard
-            title="التكاملات"
-            subtitle="حالة القنوات المرتبطة"
-            action={<Link to="/client/integrations" className="text-xs font-black text-violet-700">إدارة</Link>}
+            title={t("navigation.integrations")}
+            subtitle={t("dashboard.integrationsSubtitle")}
+            action={<Link to="/client/integrations" className="text-xs font-black text-violet-700">{t("dashboard.manage")}</Link>}
           >
             <div className="space-y-3">
               {integrations.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-center text-sm font-semibold text-slate-400">لا توجد قنوات مفعلة بعد.</div>
+                <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-center text-sm font-semibold text-slate-400">{t("dashboard.noChannels")}</div>
               ) : (
                 integrations.slice(0, 5).map((item) => {
                   const slug = item.features?.slug || item.config?.platform || "integration";
@@ -560,11 +571,11 @@ export default function ClientDashboard() {
                         <ChannelIcon channel={slug} size="h-10 w-10" />
                         <div>
                           <p className="text-sm font-black text-slate-900">{item.features?.name || slug}</p>
-                          <p className="text-xs font-semibold text-slate-400">{item.is_active ? "مفعّل" : "معطّل"}</p>
+                          <p className="text-xs font-semibold text-slate-400">{item.is_active ? t("common.active") : t("common.inactive")}</p>
                         </div>
                       </div>
                       <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${item.is_active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                        {item.is_active ? "مفعّل" : "معطّل"}
+                        {item.is_active ? t("common.active") : t("common.inactive")}
                       </span>
                     </div>
                   );
@@ -573,30 +584,30 @@ export default function ClientDashboard() {
             </div>
           </SectionCard>
 
-          <SectionCard title="إجراءات سريعة" subtitle={null}>
+          <SectionCard title={t("dashboard.quickActionsTitle")} subtitle={null}>
             <div className="grid grid-cols-2 gap-3">
               {hasUserPermission(user, PERMISSIONS.INBOX) && (
                 <Link to="/client/messages" className="rounded-2xl border border-slate-200 p-4 transition hover:border-violet-200 hover:bg-violet-50/40">
                   <InboxIcon className="mb-3 h-5 w-5 text-violet-700" />
-                  <p className="text-sm font-black text-slate-900">فتح المحادثات</p>
+                  <p className="text-sm font-black text-slate-900">{t("dashboard.openConversationsLink")}</p>
                 </Link>
               )}
               {hasUserPermission(user, PERMISSIONS.AUTO_REPLIES) && (
                 <Link to="/client/auto-replies" className="rounded-2xl border border-slate-200 p-4 transition hover:border-violet-200 hover:bg-violet-50/40">
                   <PlusIcon className="mb-3 h-5 w-5 text-violet-700" />
-                  <p className="text-sm font-black text-slate-900">الردود التلقائية</p>
+                  <p className="text-sm font-black text-slate-900">{t("navigation.autoReplies")}</p>
                 </Link>
               )}
               {hasUserPermission(user, PERMISSIONS.AUTO_REPLIES) && (
                 <Link to="/client/quick-replies" className="rounded-2xl border border-slate-200 p-4 transition hover:border-violet-200 hover:bg-violet-50/40">
                   <CheckCircleIcon className="mb-3 h-5 w-5 text-violet-700" />
-                  <p className="text-sm font-black text-slate-900">الردود السريعة</p>
+                  <p className="text-sm font-black text-slate-900">{t("navigation.quickReplies")}</p>
                 </Link>
               )}
               {hasUserPermission(user, PERMISSIONS.SETTINGS) && (
                 <Link to="/client/settings" className="rounded-2xl border border-slate-200 p-4 transition hover:border-violet-200 hover:bg-violet-50/40">
                   <Cog6ToothIcon className="mb-3 h-5 w-5 text-violet-700" />
-                  <p className="text-sm font-black text-slate-900">الإعدادات</p>
+                  <p className="text-sm font-black text-slate-900">{t("navigation.settings")}</p>
                 </Link>
               )}
             </div>

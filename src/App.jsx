@@ -2,6 +2,8 @@
 import React from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
+import { LanguageProvider } from "./context/LanguageContext.jsx";
+import "./lib/i18n.js";
 import { PERMISSIONS, hasUserPermission } from "./lib/permissions.js";
 import AdminPlanFeatures from "./pages/admin/AdminPlanFeatures.jsx";
 
@@ -73,6 +75,7 @@ function ClientRoute({ children, permission }) {
 export default function App() {
   return (
     <AuthProvider>
+      <LanguageProvider>
       <Router>
         <Routes>
           <Route path="/" element={<Login />} />
@@ -176,6 +179,7 @@ export default function App() {
 
         </Routes>
       </Router>
+      </LanguageProvider>
     </AuthProvider>
   );
 }

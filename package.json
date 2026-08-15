@@ -8,8 +8,10 @@
   "dependencies": {
     "@heroicons/react": "^2.2.0",
     "@supabase/supabase-js": "^2.81.1",
+    "i18next": "^26.3.6",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-i18next": "^17.0.11",
     "react-router-dom": "^6.26.0",
     "recharts": "^3.4.1"
   },

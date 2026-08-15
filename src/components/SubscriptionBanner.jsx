@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { supabase } from "../lib/supabaseClient.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -15,6 +16,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 // architecture note.
 export default function SubscriptionBanner() {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const [status, setStatus] = useState(null); // null = unknown/loading, avoids flashing the banner
 
   useEffect(() => {
@@ -51,22 +53,21 @@ export default function SubscriptionBanner() {
   if (!status || status.is_active) return null;
 
   return (
-    <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 sm:flex-row sm:items-center sm:justify-between" dir="rtl">
+    <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-start gap-2">
         <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 shrink-0" />
         <p>
-          اشتراكك غير نشط أو منتهي. يمكنك الاستمرار في عرض بياناتك، لكن إجراءات الخدمة (إرسال الردود، إضافة أرقام/تكاملات جديدة)
-          معطّلة حتى تجديد الاشتراك.
+          {t("subscriptionBanner.message")}
         </p>
       </div>
       {/* Placeholder for a future "Renew Subscription" / payment-gateway action. */}
       <button
         type="button"
         disabled
-        title="سيتم تفعيل هذا الخيار مع بوابة الدفع القادمة"
+        title={t("subscriptionBanner.renewButtonTitle")}
         className="shrink-0 cursor-not-allowed rounded-xl border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-700 opacity-70"
       >
-        تجديد الاشتراك (قريباً)
+        {t("subscriptionBanner.renewButton")}
       </button>
     </div>
   );
