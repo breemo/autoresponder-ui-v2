@@ -20,19 +20,22 @@ html {
   scroll-behavior: smooth;
 }
 
-/* "Inter" was previously first in this stack but is never actually loaded
-   anywhere (no @font-face, no <link>, no npm font package) — on any
-   machine that happens to have it installed locally the whole app would
-   silently render in a different typeface than everywhere else it's
-   tested, which is exactly the kind of environment-dependent
-   inconsistency this stack should never depend on. The system-font stack
-   below (what every page already renders with in practice) also has full
-   Arabic glyph coverage on every major platform, unlike Inter. */
+/* "Inter" is the app's intended typeface (this is the font Auto Replies
+   and every other Client Portal page is designed around). It's now
+   actually loaded — see the @fontsource/inter imports in main.jsx, which
+   bundle the woff2 files with the app (no external/CDN request, works
+   offline) — rather than just being named here and hoping the visiting
+   machine happened to have it installed locally, which is what silently
+   made the previous version of this rule a no-op on any machine without
+   Inter pre-installed. Inter has no Arabic glyphs, so Arabic text falls
+   through per-glyph (standard browser behavior) to the system-font stack
+   that follows, which has full native Arabic coverage on every major
+   platform. */
 body {
   margin: 0;
   background: var(--app-bg);
   color: #111827;
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }

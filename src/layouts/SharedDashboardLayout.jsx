@@ -98,7 +98,7 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
   // the same centralized function My Account uses, so this is the one
   // and only place personal-language persistence logic lives. It writes
   // client_users.language exclusively — never clients.default_language.
-  const { language, setUserLanguage } = useLanguage();
+  const { language, setUserLanguage, isRtl } = useLanguage();
   const [switchingLanguage, setSwitchingLanguage] = useState(false);
   // Mobile/tablet drawer nav (below the lg breakpoint the sidebar is
   // off-canvas by default — see the <aside> below). Desktop is unaffected;
@@ -157,14 +157,25 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
           (physical): in LTR that resolves to left/right exactly as
           before; in RTL it resolves to right/left, so the sidebar sits on
           the right with its divider on its left — no JS direction checks
-          needed, this follows the document's dir automatically.
+          needed for POSITION, this follows the document's dir
+          automatically.
           Below lg the sidebar is a fixed drawer, translated fully
           off-canvas (off the start edge) until mobileNavOpen; at lg+ it's
           always in place (lg:translate-x-0), matching the original
-          always-visible desktop sidebar exactly. */}
+          always-visible desktop sidebar exactly.
+          The off-canvas TRANSFORM direction, unlike position/border above,
+          is resolved in JS via isRtl rather than Tailwind's rtl: variant:
+          Tailwind compiles rtl: variants to rules placed AFTER the lg:
+          breakpoint block in the stylesheet, so at equal specificity
+          `rtl:translate-x-full` was winning over `lg:translate-x-0` by
+          plain source order — permanently hiding the sidebar off-canvas
+          for Arabic at every viewport width, including desktop. Computing
+          the closed-state class in JS means only one base transform class
+          is ever present, so lg: reliably overrides it at lg+ exactly as
+          it does for English. */}
       <aside
         className={`fixed start-0 top-0 z-50 flex h-screen w-72 flex-col border-e border-slate-800/80 bg-[#0F172A] text-slate-100 transition-transform duration-200 ease-in-out lg:translate-x-0 ${
-          mobileNavOpen ? "translate-x-0" : "-translate-x-full rtl:translate-x-full"
+          mobileNavOpen ? "translate-x-0" : isRtl ? "translate-x-full" : "-translate-x-full"
         }`}
       >
         <div className="flex h-20 items-center gap-3 border-b border-slate-800 px-5">
