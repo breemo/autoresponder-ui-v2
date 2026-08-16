@@ -74,23 +74,37 @@ export function formatFileSize(bytes) {
   return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unitIndex]}`;
 }
 
-// Validates a browser File against the centralized limits for a given
-// media message type. Returns { valid: true } or
+// Validates plain media metadata (mime type + byte size) against the
+// centralized limits for a given message type. This is the server-safe
+// form — api/media-upload-url.js only ever receives JSON fields, never a
+// browser File object, so it calls this directly. validateMediaFile below
+// is a thin wrapper over this so both call sites share exactly one rule
+// set. Returns { valid: true } or
 // { valid: false, reason: "unsupported_type" | "too_large", maxBytes? }.
-// UI-only — never a security boundary by itself; the future upload
-// endpoint must re-validate server-side before minting a signed upload
-// URL, the same "client-side checks are UX, not enforcement" principle
-// already applied to permission gating elsewhere in this app.
-export function validateMediaFile(messageType, file) {
+// Never a security boundary by itself on the client; the server
+// (api/media-upload-url.js) re-runs this exact check before ever minting a
+// signed upload URL, the same "client-side checks are UX, not enforcement"
+// principle already applied to permission gating elsewhere in this app.
+export function validateMediaMeta(messageType, { mimeType, sizeBytes } = {}) {
   const limits = MEDIA_LIMITS[messageType];
-  if (!limits || !file) return { valid: false, reason: "unsupported_type" };
-  if (limits.mimeTypes.length && !limits.mimeTypes.includes(file.type)) {
+  if (!limits) return { valid: false, reason: "unsupported_type" };
+  if (limits.mimeTypes.length && !limits.mimeTypes.includes(mimeType)) {
     return { valid: false, reason: "unsupported_type" };
   }
-  if (file.size > limits.maxBytes) {
+  const size = Number(sizeBytes);
+  if (!Number.isFinite(size) || size <= 0) return { valid: false, reason: "unsupported_type" };
+  if (size > limits.maxBytes) {
     return { valid: false, reason: "too_large", maxBytes: limits.maxBytes };
   }
   return { valid: true };
+}
+
+// Validates a browser File against the centralized limits for a given
+// media message type. UI-only — never a security boundary by itself; see
+// validateMediaMeta above for the shared rule set and the server-side note.
+export function validateMediaFile(messageType, file) {
+  if (!file) return { valid: false, reason: "unsupported_type" };
+  return validateMediaMeta(messageType, { mimeType: file.type, sizeBytes: file.size });
 }
 
 // ---------------------------------------------------------------------------
@@ -139,4 +153,51 @@ export function isWhatsAppEvolutionChannel(channel) {
 // here later without touching call sites.
 export function canSendMediaOnChannel(channel) {
   return isWhatsAppEvolutionChannel(channel);
+}
+
+// ---------------------------------------------------------------------------
+// WhatsApp Media & Attachment Support v1 — Phase B: Storage foundation
+// ---------------------------------------------------------------------------
+//
+// Private bucket only. NOT created by this phase — see
+// api/media-upload-url.js / api/media-read-url.js (the only two places that
+// ever mint a URL against it) and the phase report for the manual Storage
+// setup this still requires. Centralized here so every reference to the
+// bucket name/lifetimes comes from exactly one place.
+export const MEDIA_BUCKET = "chat-media";
+
+// Fixed 2-hour validity — Supabase Storage's createSignedUploadUrl() does
+// not accept a custom expiry, so this documents the platform's own fixed
+// value rather than configuring anything. Source: node_modules/@supabase/
+// storage-js StorageFileApi.d.ts ("They are valid for 2 hours.").
+export const SIGNED_UPLOAD_URL_TTL_SECONDS = 7200;
+
+// createSignedUrl() DOES accept a custom expiresIn — this value is passed
+// directly as that argument by api/media-read-url.js, so it's genuinely
+// enforced (not just documentation).
+export const SIGNED_READ_URL_TTL_SECONDS = 300;
+
+// Strips any directory component and any character outside a conservative
+// safe set, collapses repeated underscores, and caps length. The object
+// path already isolates tenants/conversations (see buildMediaObjectPath
+// below), so this only guards against a hostile/garbled filename breaking
+// the resulting Storage path or a later download prompt — never a security
+// boundary by itself.
+export function sanitizeFileName(fileName) {
+  const base = String(fileName || "").split(/[/\\]/).pop() || "file";
+  const cleaned = base.replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/_{2,}/g, "_").slice(0, 120);
+  return cleaned || "file";
+}
+
+// Object path convention: {client_id}/{conversation_id}/{unique-id}-{sanitized-file-name}
+// clientId and conversationId must always be server-derived values (see
+// api/media-upload-url.js: actor.membership.client_id from
+// resolveActingMembership(), and a conversation_id already verified against
+// a real conversation_state row owned by that client) — never raw request
+// input. This namespaces every object per tenant/conversation even though
+// the bucket itself has no RLS policies yet (Task 1 — not created in this
+// phase).
+export function buildMediaObjectPath({ clientId, conversationId, fileName }) {
+  const uniqueId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${clientId}/${conversationId}/${uniqueId}-${sanitizeFileName(fileName)}`;
 }

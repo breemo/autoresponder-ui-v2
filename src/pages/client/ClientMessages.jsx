@@ -83,6 +83,148 @@ const statusStyles = {
   waiting_human: "bg-amber-50 text-amber-700 border-amber-100",
 };
 
+// Resolves and caches a short-lived signed READ url for one media message,
+// then renders the actual media (image/audio) or a compact file card
+// (document). Extracted as its own component so each message manages its
+// own request/cache lifecycle independently — WhatsApp Media & Attachment
+// Support v1 Phase B. Never invoked for message_type "text" or a
+// historical/null message_type (see the isMedia guard at the call site) —
+// those keep rendering exactly as before, unchanged.
+//
+// If Storage isn't configured/created yet (see api/media-read-url.js —
+// this is the expected state right now, since Task 1 explicitly does not
+// create the bucket), the fetch below resolves to success:false and this
+// simply shows the existing "unavailable" placeholder — it never throws or
+// breaks the surrounding message list.
+function MediaAttachment({ msg, mediaControl, isInbound, conversationId, actorUserId, t }) {
+  const [status, setStatus] = useState("idle"); // idle | loading | ready | error
+  // Distinguishes "Storage isn't set up yet" (the expected state right now
+  // — see api/media-read-url.js's STORAGE_NOT_CONFIGURED/STORAGE_UNAVAILABLE
+  // codes) from any other failure, so the placeholder can say so instead of
+  // a generic "failed to load" that would be misleading before Storage
+  // exists at all.
+  const [storageUnavailable, setStorageUnavailable] = useState(false);
+  // Cached in a ref, not state — updating it must never itself trigger a
+  // re-render; `status` alone drives rendering, and reading the ref during
+  // render for the ready case is safe because both are always set together.
+  const cacheRef = useRef({ url: "", expiresAt: 0 });
+  const MediaIcon = mediaControl?.icon;
+  const isImage = msg.message_type === MESSAGE_TYPES.IMAGE;
+  const isAudio = msg.message_type === MESSAGE_TYPES.AUDIO;
+
+  async function resolveUrl() {
+    if (!msg.media_path) return null;
+    if (cacheRef.current.url && Date.now() < cacheRef.current.expiresAt) {
+      return cacheRef.current.url;
+    }
+    setStatus("loading");
+    setStorageUnavailable(false);
+    try {
+      const response = await fetch("/api/media-read-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          actor_user_id: actorUserId,
+          media_path: msg.media_path,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.success === false || !data?.url) {
+        setStatus("error");
+        setStorageUnavailable(data?.code === "STORAGE_NOT_CONFIGURED" || data?.code === "STORAGE_UNAVAILABLE");
+        return null;
+      }
+      // Small safety buffer (10s) so the cached URL is never handed out
+      // right as it's about to expire.
+      const ttlMs = Math.max(0, (Number(data.expires_in) || 60) - 10) * 1000;
+      cacheRef.current = { url: data.url, expiresAt: Date.now() + ttlMs };
+      setStatus("ready");
+      return data.url;
+    } catch {
+      setStatus("error");
+      return null;
+    }
+  }
+
+  // Images/audio need a src up front to render inline, so resolve as soon
+  // as this message mounts (or its media_path changes — it never does in
+  // practice, but this keeps the effect correct if it ever did). Documents
+  // resolve lazily on click instead (see handleOpenDocument), since a file
+  // card renders fine without ever fetching a URL if the user never opens
+  // it — this is the "avoid unnecessary repeated requests" behavior.
+  useEffect(() => {
+    cacheRef.current = { url: "", expiresAt: 0 };
+    if (!msg.media_path) {
+      setStatus("error");
+      return;
+    }
+    setStatus("idle");
+    if (isImage || isAudio) resolveUrl();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [msg.media_path, msg.message_type]);
+
+  async function handleOpenDocument() {
+    const url = await resolveUrl();
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  const mutedClass = isInbound ? "text-slate-400" : "text-indigo-100";
+  const cardClass = isInbound ? "border-slate-200 bg-slate-50" : "border-white/20 bg-white/10";
+
+  const errorText = storageUnavailable ? t("messagesPage.storageUnavailable") : t("messagesPage.mediaLoadFailed");
+
+  if (isImage) {
+    if (status === "ready" && cacheRef.current.url) {
+      return (
+        <img
+          src={cacheRef.current.url}
+          alt={msg.media_file_name || ""}
+          className="mb-1.5 max-h-64 w-full rounded-xl border border-slate-200 object-cover"
+        />
+      );
+    }
+    return (
+      <div className={`mb-1.5 flex h-28 items-center justify-center rounded-xl border p-2 text-xs font-semibold ${cardClass} ${mutedClass}`}>
+        {status === "error" ? errorText : t("messagesPage.mediaLoading")}
+      </div>
+    );
+  }
+
+  if (isAudio) {
+    if (status === "ready" && cacheRef.current.url) {
+      return <audio controls src={cacheRef.current.url} className="mb-1.5 w-full" />;
+    }
+    return (
+      <div className={`mb-1.5 flex items-center gap-2 rounded-xl border p-2 text-xs font-semibold ${cardClass} ${mutedClass}`}>
+        {status === "error" ? errorText : t("messagesPage.mediaLoading")}
+      </div>
+    );
+  }
+
+  // document (also the safe default for any unexpected media message_type
+  // — never crashes, always falls back to the same compact card)
+  return (
+    <div className={`mb-1.5 flex items-center gap-2 rounded-xl border p-2 ${cardClass}`}>
+      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${isInbound ? "bg-white text-slate-400" : "bg-white/15 text-white"}`}>
+        {MediaIcon && <MediaIcon className="h-5 w-5" />}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs font-bold">{msg.media_file_name || (mediaControl ? t(mediaControl.labelKey) : "")}</p>
+        <p className={`text-[11px] ${mutedClass}`}>{formatFileSize(msg.media_size_bytes) || t("messagesPage.mediaPreviewUnavailable")}</p>
+      </div>
+      <button
+        type="button"
+        onClick={handleOpenDocument}
+        disabled={status === "loading"}
+        className={`shrink-0 rounded-lg px-2 py-1 text-[11px] font-bold transition ${isInbound ? "text-indigo-600 hover:bg-indigo-100" : "text-white hover:bg-white/10"} disabled:opacity-50`}
+      >
+        {status === "loading" ? t("messagesPage.mediaLoading") : status === "error" ? t("messagesPage.retry") : t("messagesPage.openFile")}
+      </button>
+    </div>
+  );
+}
+
 function StatCard({ label, value, hint, icon, tone = "indigo" }) {
   const tones = {
     indigo: "bg-indigo-50 text-indigo-600 border-indigo-100",
@@ -531,6 +673,59 @@ export default function ClientMessages() {
   function removeAttachment() {
     setAttachment(null);
     setSendError("");
+  }
+
+  // Uploads the selected attachment directly to Supabase Storage via a
+  // short-lived signed URL minted server-side (api/media-upload-url.js —
+  // this function never touches the service-role key or any Storage admin
+  // credential itself). WhatsApp Media & Attachment Support v1 Phase B:
+  // prepared for once canSendMedia is confirmed true for a real WhatsApp
+  // Evolution conversation — completely unreachable today, since
+  // canSendMedia is always false (see src/lib/mediaMessages.js) and nothing
+  // in this file currently calls this function. Deliberately upload-on-
+  // send rather than upload-on-selection, so choosing then removing an
+  // attachment never leaves an orphaned object in Storage.
+  //
+  // Returns the attachment metadata api/human-reply.js's future media
+  // payload will need. Does not call /api/human-reply itself — see
+  // sendHumanReply, which still never sends message_type/attachment to it
+  // regardless of what this function returns (Storage readiness and n8n
+  // media delivery are two separate, independently gated concerns).
+  async function uploadAttachmentToStorage(conversationId, pendingAttachment) {
+    const { file, type } = pendingAttachment;
+
+    const urlResponse = await fetch("/api/media-upload-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        actor_user_id: user?.id,
+        message_type: type,
+        file_name: file.name,
+        mime_type: file.type,
+        size_bytes: file.size,
+      }),
+    });
+
+    const urlData = await urlResponse.json().catch(() => ({}));
+    if (!urlResponse.ok || urlData?.success === false) {
+      throw new Error(urlData?.message || t("messagesPage.errorUploadFailed"));
+    }
+
+    const { error: uploadError } = await supabase.storage
+      .from(urlData.bucket)
+      .uploadToSignedUrl(urlData.path, urlData.token, file);
+
+    if (uploadError) {
+      throw new Error(t("messagesPage.errorUploadFailed"));
+    }
+
+    return {
+      media_path: urlData.path,
+      media_mime_type: file.type,
+      media_file_name: file.name,
+      media_size_bytes: file.size,
+    };
   }
 
   // Sends a human reply via the server-side proxy only. Must never insert
@@ -989,7 +1184,6 @@ export default function ClientMessages() {
                       const isMedia = isMediaMessageType(msg.message_type);
                       const captionText = msg.message_text || getMessageText(msg);
                       const mediaControl = isMedia ? MEDIA_CONTROLS.find((c) => c.type === msg.message_type) : null;
-                      const MediaIcon = mediaControl?.icon;
                       return (
                         <div key={msg.id} className={`flex ${isInbound ? "justify-start" : "justify-end"}`}>
                           <div className={`max-w-[58%] rounded-2xl px-3.5 py-2.5 shadow-sm ${isInbound ? "rounded-tr-lg border border-slate-200 bg-white text-slate-800" : "rounded-tl-lg bg-indigo-600/95 text-white shadow-indigo-100"}`}>
@@ -998,25 +1192,14 @@ export default function ClientMessages() {
                               <span className={`text-[11px] ${isInbound ? "text-slate-400" : "text-indigo-100"}`}>{formatDate(msg.created_at, i18n.language)}</span>
                             </div>
                             {isMedia && (
-                              // Structural placeholder only — Storage doesn't
-                              // exist yet, so there is no URL to resolve or
-                              // fetch. No <img>/<audio> src is ever set here;
-                              // this intentionally never attempts a network
-                              // request for media content. See Task 4 /
-                              // src/lib/mediaMessages.js.
-                              <div className={`mb-1.5 flex items-center gap-2 rounded-xl border p-2 ${isInbound ? "border-slate-200 bg-slate-50" : "border-white/20 bg-white/10"}`}>
-                                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${isInbound ? "bg-white text-slate-400" : "bg-white/15 text-white"}`}>
-                                  {MediaIcon && <MediaIcon className="h-5 w-5" />}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-xs font-bold">
-                                    {msg.media_file_name || (mediaControl ? t(mediaControl.labelKey) : "")}
-                                  </p>
-                                  <p className={`text-[11px] ${isInbound ? "text-slate-400" : "text-indigo-100"}`}>
-                                    {formatFileSize(msg.media_size_bytes) || t("messagesPage.mediaPreviewUnavailable")}
-                                  </p>
-                                </div>
-                              </div>
+                              <MediaAttachment
+                                msg={msg}
+                                mediaControl={mediaControl}
+                                isInbound={isInbound}
+                                conversationId={selectedConversation.conversation_id}
+                                actorUserId={user?.id}
+                                t={t}
+                              />
                             )}
                             {(!isMedia || captionText) && (
                               <div className="whitespace-pre-wrap break-words text-sm leading-6">{isMedia ? captionText : captionText || "—"}</div>

@@ -635,6 +635,12 @@
     "errorUnsupportedFileType": "نوع الملف غير مدعوم",
     "errorFileTooLarge": "حجم الملف كبير جداً (الحد الأقصى {{max}})",
     "mediaSendingUnavailable": "إرسال الوسائط غير متاح حالياً",
-    "mediaPreviewUnavailable": "سيتوفر عرض الوسائط عند تفعيل التخزين"
+    "mediaPreviewUnavailable": "سيتوفر عرض الوسائط عند تفعيل التخزين",
+    "errorUploadFailed": "فشل رفع الملف، يرجى المحاولة مرة أخرى",
+    "mediaLoadFailed": "فشل تحميل الوسائط",
+    "mediaLoading": "جاري تحميل الوسائط...",
+    "openFile": "فتح الملف",
+    "retry": "إعادة المحاولة",
+    "storageUnavailable": "التخزين غير متاح حالياً"
   }
 }
