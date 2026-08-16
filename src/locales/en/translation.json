@@ -629,6 +629,12 @@
     "errorClaimFailed": "Couldn't claim the conversation",
     "errorClaimRetry": "Failed to claim the conversation, please try again",
     "errorSendReply": "Failed to send the reply",
-    "errorSendRetry": "Failed to send the reply, please try again"
+    "errorSendRetry": "Failed to send the reply, please try again",
+    "removeAttachment": "Remove attachment",
+    "captionPlaceholder": "Add an optional caption... (Enter to send, Shift+Enter for a new line)",
+    "errorUnsupportedFileType": "Unsupported file type",
+    "errorFileTooLarge": "File is too large (max {{max}})",
+    "mediaSendingUnavailable": "Media sending isn't available yet",
+    "mediaPreviewUnavailable": "Media preview will be available once storage is connected"
   }
 }

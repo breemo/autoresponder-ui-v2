@@ -1,19 +1,32 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowLeftIcon, PhotoIcon, DocumentIcon, MicrophoneIcon } from "@heroicons/react/24/outline";
+import { ArrowLeftIcon, PhotoIcon, DocumentIcon, MicrophoneIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
 import ChannelIcon from "../../lib/channelIcons.jsx";
+import {
+  MESSAGE_TYPES,
+  isMediaMessageType,
+  getAcceptAttribute,
+  formatFileSize,
+  validateMediaFile,
+  canSendMediaOnChannel,
+} from "../../lib/mediaMessages.js";
 
-// Prepared, disabled controls for future media sending. Each media type is
-// its own clearly-labelled placeholder (rather than one generic "attach"
-// button), so the composer's structure is ready to wire up per media type
-// later without pretending any of them work today. No payload/backend
-// change accompanies this — text sending (sendHumanReply) is unchanged.
+// Media controls — WhatsApp Media & Attachment Support v1 foundation only.
+// `type` maps each button to a canonical MESSAGE_TYPES value (single
+// source of truth for both the composer below and the message renderer,
+// which reuses this same array to resolve a media message's icon/label).
+// Enabling actually sending anything still requires BOTH: (a)
+// canSendMediaOnChannel() confirming the open conversation is WhatsApp
+// Evolution — see src/lib/mediaMessages.js for why that's not resolvable
+// yet and stays permanently false until confirmed — and (b) the future
+// Storage/n8n delivery work. Until then these render exactly like the
+// previous "coming soon" disabled placeholders for every conversation.
 const MEDIA_CONTROLS = [
-  { key: "image", labelKey: "messagesPage.mediaImage", icon: PhotoIcon },
-  { key: "document", labelKey: "messagesPage.mediaDocument", icon: DocumentIcon },
-  { key: "voice", labelKey: "messagesPage.mediaVoice", icon: MicrophoneIcon },
+  { key: "image", type: MESSAGE_TYPES.IMAGE, labelKey: "messagesPage.mediaImage", icon: PhotoIcon },
+  { key: "document", type: MESSAGE_TYPES.DOCUMENT, labelKey: "messagesPage.mediaDocument", icon: DocumentIcon },
+  { key: "voice", type: MESSAGE_TYPES.AUDIO, labelKey: "messagesPage.mediaVoice", icon: MicrophoneIcon },
 ];
 
 function formatDate(value, lang) {
@@ -120,6 +133,14 @@ export default function ClientMessages() {
   const [sendError, setSendError] = useState("");
   const sendingRef = useRef(false);
 
+  // Selected media attachment (WhatsApp Media & Attachment Support v1
+  // foundation — file selection only, nothing is uploaded anywhere yet).
+  // Shape: { type, file, previewUrl }. previewUrl is only set for images
+  // (an object URL for the thumbnail) and is revoked below whenever it
+  // changes or the component unmounts, so it never leaks memory.
+  const [attachment, setAttachment] = useState(null);
+  const fileInputRefs = useRef({});
+
   // Message pane scroll behavior: jump to the latest message when a
   // conversation is opened, but don't yank the view down if the user has
   // scrolled up to read older messages.
@@ -137,6 +158,15 @@ export default function ClientMessages() {
   // messages_count/unread_count.
   const conversationIdsRef = useRef(new Set());
   const seenRealtimeMessageIdsRef = useRef(new Set());
+
+  // Revokes the previous attachment's object URL (if any) whenever the
+  // attachment changes or the component unmounts — avoids leaking memory
+  // across repeated select/remove cycles.
+  useEffect(() => {
+    return () => {
+      if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+    };
+  }, [attachment]);
 
   async function fetchConversations() {
     if (!clientId) return;
@@ -460,16 +490,74 @@ export default function ClientMessages() {
     }
   }
 
+  // Opens the hidden file input for a media control. Only reachable when
+  // canSendMedia is true (see the button's own disabled state below) —
+  // this function itself doesn't re-check, matching how other UI-only
+  // guards in this file already work (the real enforcement, once media
+  // sending exists, will live server-side).
+  function handleMediaButtonClick(key) {
+    fileInputRefs.current[key]?.click();
+  }
+
+  // Validates the selected file against the centralized limits (see
+  // src/lib/mediaMessages.js) and stores it as the pending attachment, or
+  // shows a translated error and leaves the current draft/attachment
+  // untouched. Never uploads anything — there is nowhere to upload to yet.
+  function handleFileSelected(type, e) {
+    const file = e.target.files?.[0];
+    // Reset the input's value so selecting the exact same file again later
+    // (e.g. after removing it) still fires onChange.
+    e.target.value = "";
+    if (!file) return;
+
+    const result = validateMediaFile(type, file);
+    if (!result.valid) {
+      setSendError(
+        result.reason === "too_large"
+          ? t("messagesPage.errorFileTooLarge", { max: formatFileSize(result.maxBytes) })
+          : t("messagesPage.errorUnsupportedFileType")
+      );
+      return;
+    }
+
+    setSendError("");
+    setAttachment({
+      type,
+      file,
+      previewUrl: type === MESSAGE_TYPES.IMAGE ? URL.createObjectURL(file) : null,
+    });
+  }
+
+  function removeAttachment() {
+    setAttachment(null);
+    setSendError("");
+  }
+
   // Sends a human reply via the server-side proxy only. Must never insert
   // into `messages` directly and must never touch conversation_status /
   // current_step — those are owned by the explicit action buttons above.
   async function sendHumanReply() {
     const trimmed = draft.trim();
-    if (!trimmed || !selectedConversationId || sendingRef.current) return;
+    if ((!trimmed && !attachment) || !selectedConversationId || sendingRef.current) return;
     // Mirrors the composer's own disabled state (see canControlConversation)
     // — belt-and-suspenders against any path that could still call this
     // directly. The server (api/human-reply.js) is the authoritative check.
     if (!canControlConversation) return;
+
+    // Media sending isn't wired up yet — Storage and the n8n Evolution
+    // delivery workflow don't exist (see api/human-reply.js, which
+    // independently rejects any non-text message_type server-side too).
+    // In practice this is unreachable today: canSendMedia gates every
+    // media button closed until a WhatsApp Evolution conversation can be
+    // positively identified (see src/lib/mediaMessages.js), so an
+    // attachment can never actually be selected yet. This guard exists so
+    // that if the gate is ever flipped open before the send path is
+    // finished, this never makes a network call with an incomplete
+    // payload — text sending below is completely unaffected.
+    if (attachment) {
+      setSendError(t("messagesPage.mediaSendingUnavailable"));
+      return;
+    }
 
     sendingRef.current = true;
     setSending(true);
@@ -655,10 +743,12 @@ export default function ClientMessages() {
   useEffect(() => {
     selectedConversationIdRef.current = selectedConversationId;
 
-    // Switching conversations abandons any in-progress draft/error for the
-    // previous one rather than carrying it over to the newly selected chat.
+    // Switching conversations abandons any in-progress draft/error/
+    // attachment for the previous one rather than carrying it over to the
+    // newly selected chat.
     setDraft("");
     setSendError("");
+    setAttachment(null);
 
     if (selectedConversationId) {
       fetchConversationMessages(selectedConversationId);
@@ -705,6 +795,13 @@ export default function ClientMessages() {
   const isWaitingHuman = conversationStatus === "waiting_human";
   const isOwnedByMe = !!selectedConversation?.assigned_user_id && selectedConversation.assigned_user_id === user?.id;
   const canControlConversation = !isWaitingHuman || isOwnedByMe;
+
+  // WhatsApp Media & Attachment Support v1 — see src/lib/mediaMessages.js
+  // for exactly why this is currently always false (the WhatsApp Evolution
+  // channel value can't yet be distinguished from WhatsApp Cloud API in
+  // this app's data). Facebook/Telegram/unknown channels are also always
+  // false here since EVOLUTION_CHANNEL_VALUES never matches them either.
+  const canSendMedia = canSendMediaOnChannel(selectedConversation?.channel || selectedConversation?.platform);
 
   const stats = useMemo(() => ({
     total: conversations.length,
@@ -885,6 +982,14 @@ export default function ClientMessages() {
                   <div className="space-y-2.5">
                     {conversationMessages.map((msg) => {
                       const isInbound = ["inbound", "in"].includes(msg.direction);
+                      // isMediaMessageType(undefined/null) is false, so every
+                      // historical row (message_type never set) takes the
+                      // exact same path as before — no behavior change for
+                      // existing/text messages.
+                      const isMedia = isMediaMessageType(msg.message_type);
+                      const captionText = msg.message_text || getMessageText(msg);
+                      const mediaControl = isMedia ? MEDIA_CONTROLS.find((c) => c.type === msg.message_type) : null;
+                      const MediaIcon = mediaControl?.icon;
                       return (
                         <div key={msg.id} className={`flex ${isInbound ? "justify-start" : "justify-end"}`}>
                           <div className={`max-w-[58%] rounded-2xl px-3.5 py-2.5 shadow-sm ${isInbound ? "rounded-tr-lg border border-slate-200 bg-white text-slate-800" : "rounded-tl-lg bg-indigo-600/95 text-white shadow-indigo-100"}`}>
@@ -892,7 +997,30 @@ export default function ClientMessages() {
                               <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${isInbound ? "bg-slate-100 text-slate-500" : "bg-white/15 text-white"}`}>{directionLabel(msg.direction, t)}</span>
                               <span className={`text-[11px] ${isInbound ? "text-slate-400" : "text-indigo-100"}`}>{formatDate(msg.created_at, i18n.language)}</span>
                             </div>
-                            <div className="whitespace-pre-wrap break-words text-sm leading-6">{msg.message_text || getMessageText(msg) || "—"}</div>
+                            {isMedia && (
+                              // Structural placeholder only — Storage doesn't
+                              // exist yet, so there is no URL to resolve or
+                              // fetch. No <img>/<audio> src is ever set here;
+                              // this intentionally never attempts a network
+                              // request for media content. See Task 4 /
+                              // src/lib/mediaMessages.js.
+                              <div className={`mb-1.5 flex items-center gap-2 rounded-xl border p-2 ${isInbound ? "border-slate-200 bg-slate-50" : "border-white/20 bg-white/10"}`}>
+                                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${isInbound ? "bg-white text-slate-400" : "bg-white/15 text-white"}`}>
+                                  {MediaIcon && <MediaIcon className="h-5 w-5" />}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-xs font-bold">
+                                    {msg.media_file_name || (mediaControl ? t(mediaControl.labelKey) : "")}
+                                  </p>
+                                  <p className={`text-[11px] ${isInbound ? "text-slate-400" : "text-indigo-100"}`}>
+                                    {formatFileSize(msg.media_size_bytes) || t("messagesPage.mediaPreviewUnavailable")}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {(!isMedia || captionText) && (
+                              <div className="whitespace-pre-wrap break-words text-sm leading-6">{isMedia ? captionText : captionText || "—"}</div>
+                            )}
                           </div>
                         </div>
                       );
@@ -916,22 +1044,68 @@ export default function ClientMessages() {
                   </div>
                 )}
 
+                {/* Selected-attachment preview — WhatsApp Media & Attachment
+                    Support v1 foundation. File selection only; nothing is
+                    uploaded anywhere yet (see handleFileSelected /
+                    sendHumanReply above). */}
+                {attachment && (
+                  <div className="mb-2 flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-2">
+                    {attachment.type === MESSAGE_TYPES.IMAGE && attachment.previewUrl ? (
+                      <img src={attachment.previewUrl} alt="" className="h-12 w-12 shrink-0 rounded-xl object-cover" />
+                    ) : (
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400">
+                        {attachment.type === MESSAGE_TYPES.AUDIO ? <MicrophoneIcon className="h-5 w-5" /> : <DocumentIcon className="h-5 w-5" />}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-slate-900">{attachment.file.name}</p>
+                      <p className="text-xs text-slate-500">{formatFileSize(attachment.file.size)}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={removeAttachment}
+                      className="shrink-0 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
+                      aria-label={t("messagesPage.removeAttachment")}
+                    >
+                      <XMarkIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+
                 <div className="flex items-end gap-2">
-                  {/* Prepared for future media sending — not wired to any send
-                      path yet. Kept visibly disabled so the composer's
-                      architecture is ready without faking a capability the
-                      channel/n8n side doesn't support today. */}
+                  {/* Media controls — WhatsApp Media & Attachment Support v1
+                      foundation. Each button opens its hidden file input
+                      only when canSendMedia is true (currently always false
+                      — see src/lib/mediaMessages.js for exactly why, and
+                      what needs confirming to change it). Facebook/Telegram/
+                      unknown channels always render the same disabled
+                      "coming soon" state as before. */}
                   <div className="flex shrink-0 items-center gap-1.5">
-                    {MEDIA_CONTROLS.map(({ key, labelKey, icon: Icon }) => (
-                      <button
-                        key={key}
-                        type="button"
-                        disabled
-                        title={t("messagesPage.mediaComingSoon", { label: t(labelKey) })}
-                        className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
-                      >
-                        <Icon className="h-5 w-5" />
-                      </button>
+                    {MEDIA_CONTROLS.map(({ key, type, labelKey, icon: Icon }) => (
+                      <React.Fragment key={key}>
+                        <input
+                          ref={(el) => {
+                            fileInputRefs.current[key] = el;
+                          }}
+                          type="file"
+                          accept={getAcceptAttribute(type)}
+                          className="hidden"
+                          onChange={(e) => handleFileSelected(type, e)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleMediaButtonClick(key)}
+                          disabled={!canSendMedia || sending || !canControlConversation}
+                          title={canSendMedia ? t(labelKey) : t("messagesPage.mediaComingSoon", { label: t(labelKey) })}
+                          className={`flex h-11 w-11 items-center justify-center rounded-2xl border transition ${
+                            canSendMedia
+                              ? "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                              : "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
+                          }`}
+                        >
+                          <Icon className="h-5 w-5" />
+                        </button>
+                      </React.Fragment>
                     ))}
                   </div>
 
@@ -940,7 +1114,13 @@ export default function ClientMessages() {
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={handleComposerKeyDown}
                     disabled={sending || !canControlConversation}
-                    placeholder={canControlConversation ? t("messagesPage.composerPlaceholderEnabled") : t("messagesPage.composerPlaceholderDisabled")}
+                    placeholder={
+                      canControlConversation
+                        ? attachment
+                          ? t("messagesPage.captionPlaceholder")
+                          : t("messagesPage.composerPlaceholderEnabled")
+                        : t("messagesPage.composerPlaceholderDisabled")
+                    }
                     rows={2}
                     className="min-h-[44px] max-h-40 flex-1 resize-none rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50 disabled:bg-slate-50 disabled:text-slate-400"
                   />
@@ -948,7 +1128,7 @@ export default function ClientMessages() {
                   <button
                     type="button"
                     onClick={sendHumanReply}
-                    disabled={sending || !draft.trim() || !canControlConversation}
+                    disabled={sending || (!draft.trim() && !attachment) || !canControlConversation}
                     className="h-11 shrink-0 rounded-2xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50"
                   >
                     {sending ? t("messagesPage.sending") : t("messagesPage.send")}

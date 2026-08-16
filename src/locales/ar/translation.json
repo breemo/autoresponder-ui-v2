@@ -629,6 +629,12 @@
     "errorClaimFailed": "تعذر استلام المحادثة",
     "errorClaimRetry": "فشل استلام المحادثة، حاول مرة أخرى",
     "errorSendReply": "فشل إرسال الرد",
-    "errorSendRetry": "فشل إرسال الرد، حاول مرة أخرى"
+    "errorSendRetry": "فشل إرسال الرد، حاول مرة أخرى",
+    "removeAttachment": "إزالة المرفق",
+    "captionPlaceholder": "أضف وصفاً اختيارياً... (Enter للإرسال، Shift+Enter لسطر جديد)",
+    "errorUnsupportedFileType": "نوع الملف غير مدعوم",
+    "errorFileTooLarge": "حجم الملف كبير جداً (الحد الأقصى {{max}})",
+    "mediaSendingUnavailable": "إرسال الوسائط غير متاح حالياً",
+    "mediaPreviewUnavailable": "سيتوفر عرض الوسائط عند تفعيل التخزين"
   }
 }

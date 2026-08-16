@@ -1,6 +1,7 @@
 import { getSupabaseServerClient } from "./_lib/supabaseServer.js";
 import { resolveActingMembership, actorHasPermission } from "./_lib/clientAuthz.js";
 import { PERMISSIONS } from "../src/lib/permissions.js";
+import { MESSAGE_TYPES, MEDIA_MESSAGE_TYPES } from "../src/lib/mediaMessages.js";
 
 const SETTING_KEY = "human_reply_webhook_url";
 
@@ -33,7 +34,35 @@ export default async function handler(req, res) {
   const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
   const actor_user_id = req.body?.actor_user_id;
 
-  if (!conversation_id || !message) {
+  // WhatsApp Media & Attachment Support v1 — request-shape foundation only
+  // (see src/lib/mediaMessages.js). message_type defaults to "text" so
+  // every existing caller (which never sends this field) is completely
+  // unaffected. attachment is only inspected, never trusted for anything
+  // beyond the reject-early check below — real validation/consumption
+  // doesn't exist yet because Storage and the n8n media workflow don't
+  // exist yet.
+  const message_type = typeof req.body?.message_type === "string" ? req.body.message_type : MESSAGE_TYPES.TEXT;
+  const attachment = req.body?.attachment && typeof req.body.attachment === "object" ? req.body.attachment : null;
+  const isMediaMessage = message_type !== MESSAGE_TYPES.TEXT;
+
+  if (!conversation_id) {
+    return res.status(400).json({ success: false, message: "conversation_id is required" });
+  }
+  if (isMediaMessage && !MEDIA_MESSAGE_TYPES.includes(message_type)) {
+    return res.status(400).json({ success: false, message: "Unknown message_type" });
+  }
+  // Shape-only check (not full validation — there's nothing to validate
+  // against yet, no Storage). Gives a clear 400 for a malformed media
+  // request instead of letting it fall through to the generic 501 below,
+  // so the eventual real implementation has a request-validation seam
+  // already in place to build on.
+  if (isMediaMessage && (!attachment || typeof attachment.media_path !== "string" || !attachment.media_path)) {
+    return res.status(400).json({ success: false, message: "attachment.media_path is required for a media message" });
+  }
+  // A media message's text is an optional caption (may legitimately be
+  // empty) — only a plain text message requires non-empty message content,
+  // exactly like today.
+  if (!isMediaMessage && !message) {
     return res.status(400).json({
       success: false,
       message: "conversation_id and message are required",
@@ -86,6 +115,26 @@ export default async function handler(req, res) {
 
   // No subscription/entitlement check here — see the architecture note
   // above. n8n decides whether this client is allowed to send.
+
+  // WhatsApp Media & Attachment Support v1 — Storage and the n8n media-
+  // delivery workflow don't exist yet, so any media send is rejected here,
+  // deliberately AFTER every authorization/ownership check above has
+  // already run (so this endpoint never becomes an unauthenticated way to
+  // probe "is media supported" for a conversation the caller isn't even
+  // allowed to act on), and BEFORE the webhook lookup/fetch below — this
+  // guarantees an incomplete/unsupported payload can never reach the
+  // current production n8n webhook, which only knows how to handle
+  // { conversation_id, message, sent_by_user_id }. Remove this block once
+  // the real Evolution media n8n workflow exists and this payload's shape
+  // has been finalized against it (see attachment above, currently only
+  // shape-checked, never consumed).
+  if (isMediaMessage) {
+    return res.status(501).json({
+      success: false,
+      message: "Media sending is not available yet",
+      code: "MEDIA_NOT_SUPPORTED",
+    });
+  }
 
   const { data: setting, error: settingError } = await supabase
     .from("system_settings")
