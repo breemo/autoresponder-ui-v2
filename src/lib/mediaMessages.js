@@ -111,35 +111,27 @@ export function validateMediaFile(messageType, file) {
 // WhatsApp Evolution channel gating
 // ---------------------------------------------------------------------------
 //
-// v1 media support is WhatsApp Evolution ONLY. This app also has a
-// separate, distinct "WhatsApp Cloud API" feature (features.slug =
-// "whatsapp", see AdminClientSettings.jsx's FEATURE_META: title "WhatsApp
-// Cloud API") that is explicitly NOT in scope for media in this phase.
+// v1 media support is WhatsApp Evolution ONLY.
 //
-// IMPORTANT — could not be safely resolved from this repository:
-// ClientIntegrations.jsx's own webhook-URL builder (buildGeneratedLinks's
-// `platform` ternary) collapses BOTH the "whatsapp" (Cloud API) and
-// "whatsapp_evolution" feature slugs to the exact same literal platform
-// string "whatsapp" when building the inbound webhook URL
-// (`${webhookBase}/${platform}/${channelKey}`). If n8n's inbound webhook
-// (`POST inbound/:platform/:channelKey`, see
-// engineering/knowledge/N8N_WORKFLOWS.md) writes that same `:platform`
-// segment into messages.channel / conversation_state.platform, a plain
-// "whatsapp" value is AMBIGUOUS between the two integrations — enabling
-// media on it would risk also enabling it for Cloud API conversations,
-// which this phase explicitly must not do. No other column visible to
-// this repository (messages, conversation_state) disambiguates the two.
-//
-// Until the real runtime value is confirmed, EVOLUTION_CHANNEL_VALUES
-// stays empty and isWhatsAppEvolutionChannel() always returns false —
-// media controls stay disabled everywhere, for every channel, which is
-// the safe default. To enable v1: confirm the actual channel/platform
-// value written for a real WhatsApp Evolution conversation (inspect a
-// live messages/conversation_state row for a known Evolution-connected
-// client, or confirm the exact `:platform` segment n8n's Evolution inbound
-// path uses) and add that exact value to this array — no other code
-// change is required.
-export const EVOLUTION_CHANNEL_VALUES = [];
+// BUSINESS DECISION (confirmed by product, not independently re-derived
+// from data — see the now-superseded ambiguity note this replaces):
+// WhatsApp Evolution is, for the current version of Auto Responder, the
+// ONLY supported WhatsApp implementation. The distinct "WhatsApp Cloud
+// API" feature (features.slug = "whatsapp", see AdminClientSettings.jsx's
+// FEATURE_META: title "WhatsApp Cloud API") exists in the admin/plan
+// catalog but is not yet a live, connectable client integration — so the
+// channel/platform literal "whatsapp" that appears on a real
+// messages/conversation_state row is, today, unambiguously an Evolution
+// conversation. This is a product-scope assumption, not a schema-level
+// guarantee: if WhatsApp Cloud API is ever actually connected as a client
+// integration, this array must be replaced with an explicit
+// integration-identity check (a channel_key/feature_id-type column
+// propagated onto messages/conversation_state — see the Phase A/B
+// architecture verification reports for exactly what that would require)
+// before both could safely coexist. Do not add "whatsapp" back to a
+// broad/substring match if that day comes — it must go back to an exact,
+// disambiguated value.
+export const EVOLUTION_CHANNEL_VALUES = ["whatsapp"];
 
 export function isWhatsAppEvolutionChannel(channel) {
   const key = String(channel || "").trim().toLowerCase();

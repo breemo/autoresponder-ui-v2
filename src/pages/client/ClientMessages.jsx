@@ -13,16 +13,17 @@ import {
   canSendMediaOnChannel,
 } from "../../lib/mediaMessages.js";
 
-// Media controls — WhatsApp Media & Attachment Support v1 foundation only.
-// `type` maps each button to a canonical MESSAGE_TYPES value (single
-// source of truth for both the composer below and the message renderer,
-// which reuses this same array to resolve a media message's icon/label).
-// Enabling actually sending anything still requires BOTH: (a)
-// canSendMediaOnChannel() confirming the open conversation is WhatsApp
-// Evolution — see src/lib/mediaMessages.js for why that's not resolvable
-// yet and stays permanently false until confirmed — and (b) the future
-// Storage/n8n delivery work. Until then these render exactly like the
-// previous "coming soon" disabled placeholders for every conversation.
+// Media controls — WhatsApp Media & Attachment Support v1. `type` maps each
+// button to a canonical MESSAGE_TYPES value (single source of truth for
+// both the composer below and the message renderer, which reuses this
+// same array to resolve a media message's icon/label). Enabled per
+// conversation by canSendMediaOnChannel() — currently true for WhatsApp
+// (Evolution is the only supported WhatsApp implementation right now, see
+// src/lib/mediaMessages.js) and always false for Facebook/Telegram/unknown.
+// Attachment SELECTION and Storage upload preparation are ready (Phase B),
+// but actual delivery through n8n to the customer is still deliberately
+// blocked — see sendHumanReply's attachment guard and
+// api/human-reply.js's 501 MEDIA_NOT_SUPPORTED rejection.
 const MEDIA_CONTROLS = [
   { key: "image", type: MESSAGE_TYPES.IMAGE, labelKey: "messagesPage.mediaImage", icon: PhotoIcon },
   { key: "document", type: MESSAGE_TYPES.DOCUMENT, labelKey: "messagesPage.mediaDocument", icon: DocumentIcon },
@@ -678,12 +679,15 @@ export default function ClientMessages() {
   // Uploads the selected attachment directly to Supabase Storage via a
   // short-lived signed URL minted server-side (api/media-upload-url.js —
   // this function never touches the service-role key or any Storage admin
-  // credential itself). WhatsApp Media & Attachment Support v1 Phase B:
-  // prepared for once canSendMedia is confirmed true for a real WhatsApp
-  // Evolution conversation — completely unreachable today, since
-  // canSendMedia is always false (see src/lib/mediaMessages.js) and nothing
-  // in this file currently calls this function. Deliberately upload-on-
-  // send rather than upload-on-selection, so choosing then removing an
+  // credential itself). WhatsApp Media & Attachment Support v1: canSendMedia
+  // is now true for a WhatsApp conversation (see src/lib/mediaMessages.js —
+  // Evolution is currently the only supported WhatsApp implementation), so
+  // an attachment CAN be selected — but this function is still never called
+  // from anywhere in this file (see sendHumanReply below, which
+  // deliberately stops before calling it). Media delivery through n8n
+  // doesn't exist yet, so it stays unused/dormant until that lands, at
+  // which point it's the prepared next step. Deliberately upload-on-send
+  // rather than upload-on-selection, so choosing then removing an
   // attachment never leaves an orphaned object in Storage.
   //
   // Returns the attachment metadata api/human-reply.js's future media
@@ -739,16 +743,17 @@ export default function ClientMessages() {
     // directly. The server (api/human-reply.js) is the authoritative check.
     if (!canControlConversation) return;
 
-    // Media sending isn't wired up yet — Storage and the n8n Evolution
-    // delivery workflow don't exist (see api/human-reply.js, which
-    // independently rejects any non-text message_type server-side too).
-    // In practice this is unreachable today: canSendMedia gates every
-    // media button closed until a WhatsApp Evolution conversation can be
-    // positively identified (see src/lib/mediaMessages.js), so an
-    // attachment can never actually be selected yet. This guard exists so
-    // that if the gate is ever flipped open before the send path is
-    // finished, this never makes a network call with an incomplete
-    // payload — text sending below is completely unaffected.
+    // Media DELIVERY isn't wired up yet — Storage exists (chat-media, see
+    // Phase B) and canSendMedia is now true for WhatsApp (Evolution is
+    // currently the only supported WhatsApp implementation, see
+    // src/lib/mediaMessages.js), so an attachment can genuinely be
+    // selected here — but the n8n media-delivery workflow does not exist
+    // yet (api/human-reply.js independently rejects any non-text
+    // message_type server-side too). This intentionally stops BEFORE
+    // calling uploadAttachmentToStorage, so selecting an attachment and
+    // pressing Send never uploads a file that could never be delivered —
+    // no orphaned Storage object, no network call with an incomplete
+    // payload. Text sending below is completely unaffected either way.
     if (attachment) {
       setSendError(t("messagesPage.mediaSendingUnavailable"));
       return;
