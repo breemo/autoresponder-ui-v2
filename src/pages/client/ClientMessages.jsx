@@ -17,13 +17,13 @@ import {
 // button to a canonical MESSAGE_TYPES value (single source of truth for
 // both the composer below and the message renderer, which reuses this
 // same array to resolve a media message's icon/label). Enabled per
-// conversation by canSendMediaOnChannel() — currently true for WhatsApp
-// (Evolution is the only supported WhatsApp implementation right now, see
-// src/lib/mediaMessages.js) and always false for Facebook/Telegram/unknown.
-// Attachment SELECTION and Storage upload preparation are ready (Phase B),
-// but actual delivery through n8n to the customer is still deliberately
-// blocked — see sendHumanReply's attachment guard and
-// api/human-reply.js's 501 MEDIA_NOT_SUPPORTED rejection.
+// conversation by canSendMediaOnChannel() — see
+// SUPPORTED_MEDIA_CHANNEL_VALUES in src/lib/mediaMessages.js for exactly
+// which channel values are enabled (currently whatsapp/facebook/telegram)
+// and always false for any other/unknown channel. WhatsApp/Evolution is
+// the only channel with runtime-verified end-to-end n8n media delivery —
+// Facebook/Telegram controls are enabled here for controlled testing while
+// their own Human Reply MEDIA DRAFT delivery is completed.
 const MEDIA_CONTROLS = [
   { key: "image", type: MESSAGE_TYPES.IMAGE, labelKey: "messagesPage.mediaImage", icon: PhotoIcon },
   { key: "document", type: MESSAGE_TYPES.DOCUMENT, labelKey: "messagesPage.mediaDocument", icon: DocumentIcon },
@@ -996,11 +996,10 @@ export default function ClientMessages() {
   const isOwnedByMe = !!selectedConversation?.assigned_user_id && selectedConversation.assigned_user_id === user?.id;
   const canControlConversation = !isWaitingHuman || isOwnedByMe;
 
-  // WhatsApp Media & Attachment Support v1 — see src/lib/mediaMessages.js
-  // for exactly why this is currently always false (the WhatsApp Evolution
-  // channel value can't yet be distinguished from WhatsApp Cloud API in
-  // this app's data). Facebook/Telegram/unknown channels are also always
-  // false here since EVOLUTION_CHANNEL_VALUES never matches them either.
+  // Media & Attachment Support — see SUPPORTED_MEDIA_CHANNEL_VALUES in
+  // src/lib/mediaMessages.js for exactly which channel values this allows
+  // (whatsapp/facebook/telegram today). Any other/unknown channel value
+  // stays false here.
   const canSendMedia = canSendMediaOnChannel(selectedConversation?.channel || selectedConversation?.platform);
 
   const stats = useMemo(() => ({
@@ -1261,13 +1260,13 @@ export default function ClientMessages() {
                 )}
 
                 <div className="flex items-end gap-2">
-                  {/* Media controls — WhatsApp Media & Attachment Support v1
-                      foundation. Each button opens its hidden file input
-                      only when canSendMedia is true (currently always false
-                      — see src/lib/mediaMessages.js for exactly why, and
-                      what needs confirming to change it). Facebook/Telegram/
-                      unknown channels always render the same disabled
-                      "coming soon" state as before. */}
+                  {/* Media controls — each button opens its hidden file
+                      input only when canSendMedia is true, i.e. the
+                      conversation's channel is in
+                      SUPPORTED_MEDIA_CHANNEL_VALUES (src/lib/mediaMessages.js
+                      — whatsapp/facebook/telegram today). Any other/unknown
+                      channel renders the same disabled "coming soon" state
+                      as before. */}
                   <div className="flex shrink-0 items-center gap-1.5">
                     {MEDIA_CONTROLS.map(({ key, type, labelKey, icon: Icon }) => (
                       <React.Fragment key={key}>

@@ -108,13 +108,25 @@ export function validateMediaFile(messageType, file) {
 }
 
 // ---------------------------------------------------------------------------
-// WhatsApp Evolution channel gating
+// Supported media channels
 // ---------------------------------------------------------------------------
 //
-// v1 media support is WhatsApp Evolution ONLY.
+// Media UI availability, per channel/platform value on a
+// messages/conversation_state row. WhatsApp Evolution is the only channel
+// with a runtime-verified, end-to-end n8n Human Reply MEDIA DRAFT delivery
+// (text/image/audio/document). Facebook and Telegram are enabled here so
+// their own media delivery can be built and runtime-tested against that
+// same n8n workflow — enabling the control is NOT a claim that
+// Facebook/Telegram media delivery already works; see the Human Reply
+// MEDIA DRAFT workflow status before assuming otherwise.
 //
-// BUSINESS DECISION (confirmed by product, not independently re-derived
-// from data — see the now-superseded ambiguity note this replaces):
+// This is a UI-availability gate only. api/human-reply.js's media
+// authorization/validation never branches on channel — it already applies
+// uniformly to any conversation regardless of platform — so extending this
+// array needs no server-side change.
+//
+// BUSINESS DECISION carried over from the original WhatsApp-only gate
+// (confirmed by product, not independently re-derived from data):
 // WhatsApp Evolution is, for the current version of Auto Responder, the
 // ONLY supported WhatsApp implementation. The distinct "WhatsApp Cloud
 // API" feature (features.slug = "whatsapp", see AdminClientSettings.jsx's
@@ -124,27 +136,27 @@ export function validateMediaFile(messageType, file) {
 // messages/conversation_state row is, today, unambiguously an Evolution
 // conversation. This is a product-scope assumption, not a schema-level
 // guarantee: if WhatsApp Cloud API is ever actually connected as a client
-// integration, this array must be replaced with an explicit
+// integration, "whatsapp" must be replaced with an explicit
 // integration-identity check (a channel_key/feature_id-type column
 // propagated onto messages/conversation_state — see the Phase A/B
 // architecture verification reports for exactly what that would require)
 // before both could safely coexist. Do not add "whatsapp" back to a
 // broad/substring match if that day comes — it must go back to an exact,
 // disambiguated value.
-export const EVOLUTION_CHANNEL_VALUES = ["whatsapp"];
+export const SUPPORTED_MEDIA_CHANNEL_VALUES = ["whatsapp", "facebook", "telegram"];
 
-export function isWhatsAppEvolutionChannel(channel) {
+export function isSupportedMediaChannel(channel) {
   const key = String(channel || "").trim().toLowerCase();
   if (!key) return false;
-  return EVOLUTION_CHANNEL_VALUES.includes(key);
+  return SUPPORTED_MEDIA_CHANNEL_VALUES.includes(key);
 }
 
 // Single gate the composer checks before enabling any media control. Kept
-// separate from isWhatsAppEvolutionChannel so a future per-plan/feature
-// check (e.g. does this client's plan even include media) can be added
-// here later without touching call sites.
+// separate from isSupportedMediaChannel so a future per-plan/feature check
+// (e.g. does this client's plan even include media) can be added here
+// later without touching call sites.
 export function canSendMediaOnChannel(channel) {
-  return isWhatsAppEvolutionChannel(channel);
+  return isSupportedMediaChannel(channel);
 }
 
 // ---------------------------------------------------------------------------
