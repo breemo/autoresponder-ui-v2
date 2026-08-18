@@ -679,22 +679,13 @@ export default function ClientMessages() {
   // Uploads the selected attachment directly to Supabase Storage via a
   // short-lived signed URL minted server-side (api/media-upload-url.js —
   // this function never touches the service-role key or any Storage admin
-  // credential itself). WhatsApp Media & Attachment Support v1: canSendMedia
-  // is now true for a WhatsApp conversation (see src/lib/mediaMessages.js —
-  // Evolution is currently the only supported WhatsApp implementation), so
-  // an attachment CAN be selected — but this function is still never called
-  // from anywhere in this file (see sendHumanReply below, which
-  // deliberately stops before calling it). Media delivery through n8n
-  // doesn't exist yet, so it stays unused/dormant until that lands, at
-  // which point it's the prepared next step. Deliberately upload-on-send
-  // rather than upload-on-selection, so choosing then removing an
+  // credential itself). Called from sendHumanReply only when the user
+  // presses Send (never on file selection), so choosing then removing an
   // attachment never leaves an orphaned object in Storage.
   //
-  // Returns the attachment metadata api/human-reply.js's future media
-  // payload will need. Does not call /api/human-reply itself — see
-  // sendHumanReply, which still never sends message_type/attachment to it
-  // regardless of what this function returns (Storage readiness and n8n
-  // media delivery are two separate, independently gated concerns).
+  // Returns the attachment metadata api/human-reply.js's media payload
+  // needs (media_path/media_mime_type/media_file_name/media_size_bytes —
+  // same names as the messages table's media_* columns).
   async function uploadAttachmentToStorage(conversationId, pendingAttachment) {
     const { file, type } = pendingAttachment;
 
@@ -742,19 +733,11 @@ export default function ClientMessages() {
     // — belt-and-suspenders against any path that could still call this
     // directly. The server (api/human-reply.js) is the authoritative check.
     if (!canControlConversation) return;
-
-    // Media DELIVERY isn't wired up yet — Storage exists (chat-media, see
-    // Phase B) and canSendMedia is now true for WhatsApp (Evolution is
-    // currently the only supported WhatsApp implementation, see
-    // src/lib/mediaMessages.js), so an attachment can genuinely be
-    // selected here — but the n8n media-delivery workflow does not exist
-    // yet (api/human-reply.js independently rejects any non-text
-    // message_type server-side too). This intentionally stops BEFORE
-    // calling uploadAttachmentToStorage, so selecting an attachment and
-    // pressing Send never uploads a file that could never be delivered —
-    // no orphaned Storage object, no network call with an incomplete
-    // payload. Text sending below is completely unaffected either way.
-    if (attachment) {
+    // Belt-and-suspenders mirror of the media controls' own disabled state
+    // (canSendMedia — WhatsApp/Evolution only). The attachment can only be
+    // selected via those controls, but api/human-reply.js is the actual
+    // authoritative gate for Facebook/Telegram/unknown channels.
+    if (attachment && !canSendMedia) {
       setSendError(t("messagesPage.mediaSendingUnavailable"));
       return;
     }
@@ -765,12 +748,28 @@ export default function ClientMessages() {
 
     const conversationId = selectedConversationId;
     const previousCount = conversationMessages.length;
+    const pendingAttachment = attachment;
 
     try {
+      // Upload-on-send only (never on selection) — see
+      // uploadAttachmentToStorage. If /api/human-reply then fails, the
+      // uploaded object is not deleted: this app has no client-safe delete
+      // permission against the private chat-media bucket (only signed
+      // upload/read URLs are ever minted, both scoped and short-lived), and
+      // inventing one would weaken Storage security. That upload becomes an
+      // orphan in this failure case — documented, not silently hidden.
+      const media = pendingAttachment ? await uploadAttachmentToStorage(conversationId, pendingAttachment) : null;
+
       const response = await fetch("/api/human-reply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation_id: conversationId, message: trimmed, actor_user_id: user?.id }),
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          message: trimmed,
+          actor_user_id: user?.id,
+          message_type: pendingAttachment ? pendingAttachment.type : MESSAGE_TYPES.TEXT,
+          ...(media || {}),
+        }),
       });
 
       const data = await response.json().catch(() => ({}));
@@ -780,6 +779,7 @@ export default function ClientMessages() {
       }
 
       setDraft("");
+      setAttachment(null);
       refreshMessagesAfterSend(conversationId, previousCount);
     } catch (err) {
       console.error(err);
@@ -1233,9 +1233,9 @@ export default function ClientMessages() {
                 )}
 
                 {/* Selected-attachment preview — WhatsApp Media & Attachment
-                    Support v1 foundation. File selection only; nothing is
-                    uploaded anywhere yet (see handleFileSelected /
-                    sendHumanReply above). */}
+                    Support v1. Upload only happens on Send (see
+                    handleFileSelected / sendHumanReply above), so this
+                    preview alone never writes to Storage. */}
                 {attachment && (
                   <div className="mb-2 flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-2">
                     {attachment.type === MESSAGE_TYPES.IMAGE && attachment.previewUrl ? (

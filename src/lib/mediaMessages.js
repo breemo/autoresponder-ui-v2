@@ -193,3 +193,21 @@ export function buildMediaObjectPath({ clientId, conversationId, fileName }) {
   const uniqueId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return `${clientId}/${conversationId}/${uniqueId}-${sanitizeFileName(fileName)}`;
 }
+
+// Verifies a media_path sits inside the {clientId}/{conversationId}/ Storage
+// namespace buildMediaObjectPath above always mints into. Used by
+// api/human-reply.js to authorize a media send: unlike api/media-read-url.js
+// (which checks an already-existing `messages` row), no messages row exists
+// yet at send time — n8n creates it — so the object path's own namespace
+// prefix is the only ownership signal available. clientId must always be
+// actor.membership.client_id (server-derived, never the request body) and
+// conversationId the value already checked against that same actor's
+// conversation_state. A caller can therefore never reach another tenant's or
+// another conversation's object this way; at most they could reference an
+// unminted/nonexistent path inside their own already-authorized
+// client/conversation namespace, which carries no cross-tenant risk.
+export function mediaPathBelongsToConversation({ mediaPath, clientId, conversationId }) {
+  if (typeof mediaPath !== "string" || !mediaPath) return false;
+  const prefix = `${clientId}/${conversationId}/`;
+  return mediaPath.startsWith(prefix) && mediaPath.length > prefix.length;
+}

@@ -1,7 +1,14 @@
 import { getSupabaseServerClient } from "./_lib/supabaseServer.js";
 import { resolveActingMembership, actorHasPermission } from "./_lib/clientAuthz.js";
 import { PERMISSIONS } from "../src/lib/permissions.js";
-import { MESSAGE_TYPES, MEDIA_MESSAGE_TYPES } from "../src/lib/mediaMessages.js";
+import {
+  MESSAGE_TYPES,
+  MEDIA_MESSAGE_TYPES,
+  MEDIA_BUCKET,
+  SIGNED_READ_URL_TTL_SECONDS,
+  validateMediaMeta,
+  mediaPathBelongsToConversation,
+} from "../src/lib/mediaMessages.js";
 
 const SETTING_KEY = "human_reply_webhook_url";
 
@@ -34,15 +41,17 @@ export default async function handler(req, res) {
   const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
   const actor_user_id = req.body?.actor_user_id;
 
-  // WhatsApp Media & Attachment Support v1 — request-shape foundation only
-  // (see src/lib/mediaMessages.js). message_type defaults to "text" so
-  // every existing caller (which never sends this field) is completely
-  // unaffected. attachment is only inspected, never trusted for anything
-  // beyond the reject-early check below — real validation/consumption
-  // doesn't exist yet because Storage and the n8n media workflow don't
-  // exist yet.
+  // WhatsApp Media & Attachment Support v1. message_type defaults to "text"
+  // so every existing caller (which never sends this field) is completely
+  // unaffected. Media fields are flat, mirroring the messages table's own
+  // media_* columns and api/media-upload-url.js's response shape — the same
+  // names used throughout the client (uploadAttachmentToStorage in
+  // ClientMessages.jsx).
   const message_type = typeof req.body?.message_type === "string" ? req.body.message_type : MESSAGE_TYPES.TEXT;
-  const attachment = req.body?.attachment && typeof req.body.attachment === "object" ? req.body.attachment : null;
+  const media_path = typeof req.body?.media_path === "string" ? req.body.media_path : "";
+  const media_mime_type = typeof req.body?.media_mime_type === "string" ? req.body.media_mime_type : "";
+  const media_file_name = typeof req.body?.media_file_name === "string" ? req.body.media_file_name : "";
+  const media_size_bytes = req.body?.media_size_bytes;
   const isMediaMessage = message_type !== MESSAGE_TYPES.TEXT;
 
   if (!conversation_id) {
@@ -51,13 +60,25 @@ export default async function handler(req, res) {
   if (isMediaMessage && !MEDIA_MESSAGE_TYPES.includes(message_type)) {
     return res.status(400).json({ success: false, message: "Unknown message_type" });
   }
-  // Shape-only check (not full validation — there's nothing to validate
-  // against yet, no Storage). Gives a clear 400 for a malformed media
-  // request instead of letting it fall through to the generic 501 below,
-  // so the eventual real implementation has a request-validation seam
-  // already in place to build on.
-  if (isMediaMessage && (!attachment || typeof attachment.media_path !== "string" || !attachment.media_path)) {
-    return res.status(400).json({ success: false, message: "attachment.media_path is required for a media message" });
+  if (isMediaMessage && (!media_path || !media_file_name)) {
+    return res.status(400).json({
+      success: false,
+      message: "media_path and media_file_name are required for a media message",
+    });
+  }
+  // Same rule set api/media-upload-url.js already enforced when the object
+  // was uploaded — re-checked here rather than trusted, exactly like the
+  // "client-side checks are UX, not enforcement" principle applied
+  // everywhere else in this app.
+  if (isMediaMessage) {
+    const validation = validateMediaMeta(message_type, { mimeType: media_mime_type, sizeBytes: media_size_bytes });
+    if (!validation.valid) {
+      return res.status(400).json({
+        success: false,
+        message: validation.reason === "too_large" ? "File is too large" : "Unsupported file type",
+        code: validation.reason === "too_large" ? "FILE_TOO_LARGE" : "UNSUPPORTED_FILE_TYPE",
+      });
+    }
   }
   // A media message's text is an optional caption (may legitimately be
   // empty) — only a plain text message requires non-empty message content,
@@ -116,24 +137,48 @@ export default async function handler(req, res) {
   // No subscription/entitlement check here — see the architecture note
   // above. n8n decides whether this client is allowed to send.
 
-  // WhatsApp Media & Attachment Support v1 — Storage and the n8n media-
-  // delivery workflow don't exist yet, so any media send is rejected here,
-  // deliberately AFTER every authorization/ownership check above has
-  // already run (so this endpoint never becomes an unauthenticated way to
-  // probe "is media supported" for a conversation the caller isn't even
-  // allowed to act on), and BEFORE the webhook lookup/fetch below — this
-  // guarantees an incomplete/unsupported payload can never reach the
-  // current production n8n webhook, which only knows how to handle
-  // { conversation_id, message, sent_by_user_id }. Remove this block once
-  // the real Evolution media n8n workflow exists and this payload's shape
-  // has been finalized against it (see attachment above, currently only
-  // shape-checked, never consumed).
+  // WhatsApp Media & Attachment Support v1 — media authorization, deliberately
+  // AFTER every actor/permission/Human-Takeover check above has already run
+  // (so this endpoint never becomes a way to probe/sign a path for a
+  // conversation the caller isn't even allowed to act on). No `messages` row
+  // exists yet for this media (n8n creates it), so — unlike
+  // api/media-read-url.js — ownership is verified via the object path's own
+  // {client_id}/{conversation_id}/ namespace, which only api/media-upload-url.js
+  // ever mints into (see mediaPathBelongsToConversation).
+  let mediaReadUrl = null;
   if (isMediaMessage) {
-    return res.status(501).json({
-      success: false,
-      message: "Media sending is not available yet",
-      code: "MEDIA_NOT_SUPPORTED",
-    });
+    if (!mediaPathBelongsToConversation({ mediaPath: media_path, clientId: actor.membership.client_id, conversationId: conversation_id })) {
+      return res.status(403).json({ success: false, message: "الوسائط غير مصرح بها لهذه المحادثة" });
+    }
+
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return res.status(503).json({
+        success: false,
+        message: "Storage is not configured yet",
+        code: "STORAGE_NOT_CONFIGURED",
+      });
+    }
+
+    try {
+      const { data: signed, error: signError } = await supabase.storage
+        .from(MEDIA_BUCKET)
+        .createSignedUrl(media_path, SIGNED_READ_URL_TTL_SECONDS);
+
+      if (signError || !signed?.signedUrl) {
+        return res.status(503).json({
+          success: false,
+          message: "Storage is not available yet",
+          code: "STORAGE_UNAVAILABLE",
+        });
+      }
+      mediaReadUrl = signed.signedUrl;
+    } catch (error) {
+      return res.status(503).json({
+        success: false,
+        message: "Storage is not available yet",
+        code: "STORAGE_UNAVAILABLE",
+      });
+    }
   }
 
   const { data: setting, error: settingError } = await supabase
@@ -152,16 +197,33 @@ export default async function handler(req, res) {
   }
 
   try {
-    // sent_by_user_id is additive and safe to send even though n8n does not
-    // read it yet — see the "Human takeover readiness" note in the
-    // implementation report for exactly what n8n would need to do to start
-    // persisting it onto the outbound message row.
+    // sent_by_user_id and message_type are additive and safe to send even
+    // where an n8n workflow doesn't read them yet — same precedent as the
+    // pre-existing sent_by_user_id field (see the "Human takeover
+    // readiness" note in the implementation report). Text payload shape is
+    // otherwise byte-for-byte unchanged from before media support existed,
+    // so the current production webhook keeps working untouched. Media
+    // fields are only ever present for a media message.
+    const payload = {
+      conversation_id,
+      message_type,
+      message,
+      sent_by_user_id: actor.user.id,
+    };
+    if (isMediaMessage) {
+      payload.media_url = mediaReadUrl;
+      payload.media_path = media_path;
+      payload.media_mime_type = media_mime_type;
+      payload.media_file_name = media_file_name;
+      payload.media_size_bytes = media_size_bytes;
+    }
+
     const response = await fetch(webhookUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ conversation_id, message, sent_by_user_id: actor.user.id }),
+      body: JSON.stringify(payload),
     });
 
     const text = await response.text();
