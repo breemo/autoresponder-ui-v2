@@ -106,4 +106,23 @@ body {
   .ui-badge {
     @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium;
   }
+
+  /* Dynamic-viewport-height fallback for the app's viewport-locked
+     full-height routes (SharedDashboardLayout's FULL_HEIGHT_ROUTES — the
+     Inbox — and its fixed sidebar). 100vh on mobile Safari/Chrome doesn't
+     subtract the browser's own dynamic address bar, which can clip the
+     bottom few px of a viewport-locked layout (e.g. hide part of the
+     Inbox composer under the browser chrome). 100dvh tracks the actual
+     visible viewport instead. Written as two declarations of the same
+     property in one rule (not Tailwind's own h-dvh utility) so a browser
+     that doesn't understand the dvh unit just ignores the second,
+     invalid declaration and keeps the 100vh value — a standard CSS
+     fallback that doesn't depend on Tailwind's utility generation order
+     (verified empirically: this project's compiled output places h-dvh
+     BEFORE h-screen, which would make h-screen win if both utility
+     classes were applied to one element instead of using this rule). */
+  .h-app-viewport {
+    height: 100vh;
+    height: 100dvh;
+  }
 }

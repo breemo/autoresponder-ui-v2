@@ -2,7 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover lets the page render edge-to-edge on notched/
+         home-indicator devices, which is required for env(safe-area-*)
+         to resolve to anything other than 0 (see the composer/sidebar
+         safe-area padding in ClientMessages.jsx / SharedDashboardLayout.jsx).
+         Verified no other page has fixed/sticky bottom UI that would need
+         its own compensating padding for this. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Auto Responder App</title>
   </head>
   <body>

@@ -141,13 +141,22 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
   }
 
   return (
-    <div className={`bg-[#F5F7FB] text-slate-900 ${fullHeight ? "h-screen overflow-hidden" : "min-h-screen"}`}>
-      {/* Mobile/tablet drawer backdrop. lg:hidden is a belt-and-suspenders
+    <div className={`bg-[#F5F7FB] text-slate-900 ${fullHeight ? "h-app-viewport overflow-hidden" : "min-h-screen"}`}>
+      {/* Mobile/tablet drawer backdrop. xl:hidden is a belt-and-suspenders
           guard — the trigger button that sets mobileNavOpen is itself
-          lg:hidden, so this should never render at lg+ in practice. */}
+          xl:hidden, so this should never render at xl+ in practice.
+          Threshold coordinated with ClientMessages.jsx's own md/xl Inbox
+          breakpoints (see the aside below) — the sidebar only becomes a
+          persistent, always-visible column at xl (1280px+, "desktop" in
+          the Inbox's own three-tier model), so between md and xl
+          ("tablet") the Inbox gets its full two-pane list+chat width
+          instead of losing ~288px to a fixed sidebar it doesn't have room
+          for. This was previously lg (1024px), which opened a dead zone
+          where the sidebar was already permanently visible but the Inbox
+          was still single-pane. */}
       {mobileNavOpen && (
         <div
-          className="fixed inset-0 z-40 bg-slate-950/50 lg:hidden"
+          className="fixed inset-0 z-40 bg-slate-950/50 xl:hidden"
           onClick={() => setMobileNavOpen(false)}
           aria-hidden="true"
         />
@@ -159,22 +168,27 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
           the right with its divider on its left — no JS direction checks
           needed for POSITION, this follows the document's dir
           automatically.
-          Below lg the sidebar is a fixed drawer, translated fully
-          off-canvas (off the start edge) until mobileNavOpen; at lg+ it's
-          always in place (lg:translate-x-0), matching the original
-          always-visible desktop sidebar exactly.
+          Below xl the sidebar is a fixed drawer, translated fully
+          off-canvas (off the start edge) until mobileNavOpen; at xl+ it's
+          always in place (xl:translate-x-0), matching the original
+          always-visible desktop sidebar. Threshold moved from lg to xl to
+          coordinate with the Inbox's own tablet tier — see the backdrop
+          comment above.
+          h-app-viewport (see index.css) instead of h-screen: a fixed
+          full-height drawer is exactly the kind of element 100vh clips on
+          mobile browsers with a dynamic address bar.
           The off-canvas TRANSFORM direction, unlike position/border above,
           is resolved in JS via isRtl rather than Tailwind's rtl: variant:
-          Tailwind compiles rtl: variants to rules placed AFTER the lg:
+          Tailwind compiles rtl: variants to rules placed AFTER the
           breakpoint block in the stylesheet, so at equal specificity
-          `rtl:translate-x-full` was winning over `lg:translate-x-0` by
+          `rtl:translate-x-full` was winning over `xl:translate-x-0` by
           plain source order — permanently hiding the sidebar off-canvas
           for Arabic at every viewport width, including desktop. Computing
           the closed-state class in JS means only one base transform class
-          is ever present, so lg: reliably overrides it at lg+ exactly as
+          is ever present, so xl: reliably overrides it at xl+ exactly as
           it does for English. */}
       <aside
-        className={`fixed start-0 top-0 z-50 flex h-screen w-72 flex-col border-e border-slate-800/80 bg-[#0F172A] text-slate-100 transition-transform duration-200 ease-in-out lg:translate-x-0 ${
+        className={`fixed start-0 top-0 z-50 flex h-app-viewport w-72 flex-col border-e border-slate-800/80 bg-[#0F172A] text-slate-100 transition-transform duration-200 ease-in-out xl:translate-x-0 ${
           mobileNavOpen ? "translate-x-0" : isRtl ? "translate-x-full" : "-translate-x-full"
         }`}
       >
@@ -191,7 +205,7 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
           <button
             type="button"
             onClick={() => setMobileNavOpen(false)}
-            className="shrink-0 rounded-xl p-1.5 text-slate-400 transition hover:bg-slate-800 hover:text-white lg:hidden"
+            className="shrink-0 rounded-xl p-1.5 text-slate-400 transition hover:bg-slate-800 hover:text-white xl:hidden"
             aria-label={t("common.closeMenu")}
           >
             <XMarkIcon className="h-5 w-5" />
@@ -234,7 +248,13 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
           })}
         </nav>
 
-        <div className="border-t border-slate-800 p-4">
+        {/* px-4 pt-4 + an explicit safe-area-aware pb (instead of p-4) so
+            this bottom-most drawer content stays clear of the home-
+            indicator area on notched phones (viewport-fit=cover in
+            index.html makes the drawer render edge-to-edge without this).
+            max(1rem, ...) keeps the original 1rem/p-4 spacing wherever the
+            inset is 0 (i.e. everywhere non-notched, including desktop). */}
+        <div className="border-t border-slate-800 px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))]">
           <button
             onClick={logout}
             className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-700 px-4 py-3 text-sm font-medium text-slate-300 transition hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-200"
@@ -245,16 +265,17 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
         </div>
       </aside>
 
-      <div className={`lg:ps-72 ${fullHeight ? "flex h-full flex-col" : ""}`}>
+      <div className={`xl:ps-72 ${fullHeight ? "flex h-full flex-col" : ""}`}>
         <header className="sticky top-0 z-30 shrink-0 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl">
           <div className="flex min-h-20 items-center justify-between gap-4 px-5 py-4 md:px-8">
             <div className="flex min-w-0 items-center gap-3">
-              {/* Mobile/tablet nav trigger — hidden at lg+ where the
-                  sidebar is already always visible. */}
+              {/* Mobile/tablet nav trigger — hidden at xl+ where the
+                  sidebar is already always visible (see the aside above
+                  for why this moved from lg to xl). */}
               <button
                 type="button"
                 onClick={() => setMobileNavOpen(true)}
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 lg:hidden"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 xl:hidden"
                 aria-label={t("common.openMenu")}
               >
                 <Bars3Icon className="h-5 w-5" />
@@ -269,26 +290,33 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
             </div>
 
             <div className="flex shrink-0 items-center gap-3">
-              {/* Personal UI language toggle — client portal only. One
-                  click swaps ar<->en via LanguageContext's setUserLanguage,
-                  the same centralized persistence function My Account uses
-                  (writes client_users.language, never clients.default_language).
-                  Admin has no switcher here — Login.jsx never fetches
-                  ui_language_* for admin accounts, so admin always renders
-                  the 'ar' fallback regardless. */}
-              {!isAdmin && (
-                <button
-                  type="button"
-                  onClick={toggleLanguage}
-                  disabled={switchingLanguage}
-                  title={t("common.switchLanguage")}
-                  aria-label={t("common.switchLanguage")}
-                  className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <span aria-hidden="true">🌐</span>
-                  <span>{language === "en" ? "عربي" : "EN"}</span>
-                </button>
-              )}
+              {/* Personal UI language toggle — now shown for both portals.
+                  One click swaps ar<->en via LanguageContext's
+                  setUserLanguage, the same centralized function My Account
+                  uses. For a client account this writes client_users.language
+                  (never clients.default_language); for an admin account
+                  there is no client_users row to write to at all, so
+                  setUserLanguage persists the choice locally only (cached
+                  + mirrored onto the stored user object — see the
+                  role !== "client" branch in LanguageContext.jsx) instead
+                  of attempting a DB write that could only ever match zero
+                  rows. No new DB column was added for this — it reuses the
+                  existing local-cache fallback the same function already
+                  had for a logged-out/unpersisted state. Rendered
+                  unconditionally (no responsive/hidden classes here or on
+                  this header), so it's reachable at every breakpoint the
+                  same way the rest of this header bar already is. */}
+              <button
+                type="button"
+                onClick={toggleLanguage}
+                disabled={switchingLanguage}
+                title={t("common.switchLanguage")}
+                aria-label={t("common.switchLanguage")}
+                className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <span aria-hidden="true">🌐</span>
+                <span>{language === "en" ? "عربي" : "EN"}</span>
+              </button>
 
               <div className="hidden items-center gap-3 md:flex">
                 <div className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-500 shadow-sm">

@@ -258,6 +258,19 @@ export default function ClientMessages() {
   const [conversationMessages, setConversationMessages] = useState([]);
   const [selectedLead, setSelectedLead] = useState(null);
 
+  // Below md, which single Inbox pane is showing — "list" or "chat" —
+  // deliberately kept separate from selectedConversationId (which is only
+  // ever "which conversation's content is loaded", the same on every
+  // viewport). Mixing the two caused mobile to open straight into Chat
+  // whenever a conversation got auto-selected (initial load, a realtime
+  // refetch, a filter change) — none of that is a user asking to see a
+  // chat. Only an explicit tap on a conversation (or the Back button) may
+  // change this; see the aside/section render below for how it gates
+  // mobile-only visibility, and the click/back handlers for the only two
+  // places it's ever set. Ignored entirely at md+ (see those same render
+  // classes), where both panes are always visible regardless of this value.
+  const [mobileInboxView, setMobileInboxView] = useState("list");
+
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
@@ -411,7 +424,16 @@ export default function ClientMessages() {
       });
 
       setConversations(merged);
-      setSelectedConversationId((current) => current && merged.some((c) => c.conversation_id === current) ? current : merged[0]?.conversation_id || null);
+      // Auto-selecting the first conversation here is safe on every
+      // viewport, including mobile: selectedConversationId is purely
+      // "which conversation's content is loaded" — it no longer also
+      // decides which mobile pane is showing (see mobileInboxView below,
+      // and the aside/section render below that reads it instead). A
+      // previous version of this fix gated this fallback by viewport via
+      // window.matchMedia to work around selectedConversationId still
+      // doing double duty; that's no longer needed now that the two
+      // concerns are separate state.
+      setSelectedConversationId((current) => (current && merged.some((c) => c.conversation_id === current) ? current : merged[0]?.conversation_id || null));
     } catch (err) {
       console.error(err);
       setError(t("messagesPage.errorFetchConversations"));
@@ -937,6 +959,10 @@ export default function ClientMessages() {
       return;
     }
     const exists = filteredConversations.some((c) => c.conversation_id === selectedConversationId);
+    // Auto-selecting here (e.g. a filter change drops the current
+    // selection) is safe on every viewport — see the note on
+    // fetchConversations' own fallback above; this never touches
+    // mobileInboxView, so it can never silently open the mobile chat pane.
     if (!exists) setSelectedConversationId(filteredConversations[0].conversation_id);
   }, [filteredConversations, selectedConversationId]);
 
@@ -1017,16 +1043,27 @@ export default function ClientMessages() {
 
       {error && <div className="shrink-0 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>}
 
-      {/* Below xl the grid is a single stacked column, so both the list and
-          the open conversation would otherwise render on top of each
-          other at full (squeezed) height. selectedConversationId (already
-          existing state, no new logic) toggles which of the two panes is
-          visible below xl — a classic responsive master/detail pattern.
-          At xl+, xl:flex forces both panes visible again regardless of
-          selection, exactly matching the existing side-by-side desktop
-          layout. */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:grid-cols-[380px_minmax(0,1fr)]">
-        <aside className={`${selectedConversationId ? "hidden xl:flex" : "flex"} h-full min-h-0 flex-col border-e border-slate-100 bg-slate-50/50`}>
+      {/* Three-tier responsive Inbox, coordinated with
+          SharedDashboardLayout's sidebar breakpoint (also moved to xl —
+          see that file):
+            - Below md (mobile): single stacked column. mobileInboxView
+              (see its declaration above — deliberately NOT
+              selectedConversationId, which stays "which conversation's
+              content is loaded" on every viewport) toggles which of the
+              two panes is visible — a classic responsive master/detail
+              pattern, with the back button below returning to the list.
+            - md to xl (tablet): both panes visible side by side
+              (md:grid-cols-[...]) at a slightly narrower list column, while
+              the dashboard sidebar is still an off-canvas drawer (< xl), so
+              the Inbox gets the full width instead of losing ~288px to a
+              persistent sidebar it doesn't have room for. mobileInboxView
+              is ignored here — the md:flex on the aside/section below
+              always wins.
+            - xl+ (desktop): both panes visible at the original list width,
+              alongside the now-persistent sidebar. mobileInboxView ignored
+              here too, same as tablet. */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[380px_minmax(0,1fr)]">
+        <aside className={`${mobileInboxView === "chat" ? "hidden md:flex" : "flex"} h-full min-h-0 flex-col border-e border-slate-100 bg-slate-50/50`}>
           <div className="shrink-0 border-b border-slate-100 p-3">
             <div className="mb-2 flex items-center justify-between gap-3">
               <div>
@@ -1073,8 +1110,18 @@ export default function ClientMessages() {
                 const platformClass = platformStyles[(conv.channel || conv.platform || "").toLowerCase()] || "border-slate-200 bg-slate-50 text-slate-600";
                 const statusClass = statusStyles[conv.conversation_status] || "bg-slate-100 text-slate-600 border-slate-200";
 
+                // Explicit selection: the only two writers of
+                // mobileInboxView are this click and the Back button below
+                // — never fetches/realtime/filtering.
                 return (
-                  <button key={conv.conversation_id} onClick={() => setSelectedConversationId(conv.conversation_id)} className={`mb-1.5 w-full rounded-xl border p-2 text-start transition ${isActive ? "border-indigo-200 bg-white shadow-sm ring-4 ring-indigo-50" : "border-transparent hover:border-slate-200 hover:bg-white"}`}>
+                  <button
+                    key={conv.conversation_id}
+                    onClick={() => {
+                      setSelectedConversationId(conv.conversation_id);
+                      setMobileInboxView("chat");
+                    }}
+                    className={`mb-1.5 w-full rounded-xl border p-2 text-start transition ${isActive ? "border-indigo-200 bg-white shadow-sm ring-4 ring-indigo-50" : "border-transparent hover:border-slate-200 hover:bg-white"}`}
+                  >
                     <div className="flex items-start gap-3">
       <ChannelIcon channel={conv.channel || conv.platform} />
                       <div className="min-w-0 flex-1">
@@ -1105,28 +1152,44 @@ export default function ClientMessages() {
           </div>
         </aside>
 
-        <section className={`${selectedConversationId ? "flex" : "hidden xl:flex"} min-h-0 flex-col bg-white`}>
+        <section className={`${mobileInboxView === "chat" ? "flex" : "hidden md:flex"} min-h-0 flex-col bg-white`}>
           {!selectedConversation ? (
             <div className="flex flex-1 items-center justify-center text-sm text-slate-400">{t("messagesPage.selectConversationPrompt")}</div>
           ) : (
             <>
               <div className="shrink-0 border-b border-slate-100 p-3">
                 <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="flex items-start gap-3">
-                    {/* Below xl the list is its own pane (see aside above)
-                        — this returns to it. Hidden at xl+ where both
-                        panes are already visible side by side. */}
+                  <div className="flex min-w-0 items-start gap-3">
+                    {/* Below md the list is its own pane (see aside above)
+                        — this returns to it by switching mobileInboxView
+                        back to "list", NOT by clearing
+                        selectedConversationId (that stays "which
+                        conversation's content is loaded" regardless of
+                        which pane is showing, so the chat is still there,
+                        scrolled to the same place, if the user taps back
+                        into it from the list). Hidden at md+ where both
+                        panes are already visible side by side. Renders a
+                        visible "Back" label (not just the arrow icon) so
+                        it reads unambiguously as navigation rather than
+                        blending in with the other small icon-only controls
+                        in this header — flagged in mobile visual QA. */}
                     <button
                       type="button"
-                      onClick={() => setSelectedConversationId(null)}
-                      className="shrink-0 rounded-lg border border-slate-200 bg-white p-2 text-slate-500 transition hover:bg-slate-50 xl:hidden"
+                      onClick={() => setMobileInboxView("list")}
+                      className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 md:hidden"
                       aria-label={t("common.back")}
                     >
                       <ArrowLeftIcon className="h-4 w-4 rtl:rotate-180" />
+                      {t("common.back")}
                     </button>
                     <ChannelIcon channel={selectedConversation.channel || selectedConversation.platform} size="h-10 w-10" />
-                    <div>
-                      <h2 className="text-base font-bold text-slate-950">{selectedLead?.name || selectedConversation.lead_name || selectedConversation.sender || selectedConversation.sender_id || t("common.noName")}</h2>
+                    {/* min-w-0 so a long sender/lead name truncates instead
+                        of forcing this header row wider than its pane —
+                        the same truncate pattern the conversation list
+                        items already use (see filteredConversations.map
+                        above). */}
+                    <div className="min-w-0">
+                      <h2 className="truncate text-base font-bold text-slate-950">{selectedLead?.name || selectedConversation.lead_name || selectedConversation.sender || selectedConversation.sender_id || t("common.noName")}</h2>
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                         <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">{selectedConversation.channel || selectedConversation.platform || t("messagesPage.unknownChannel")}</span>
                         <span className={`rounded-full border px-3 py-1 text-xs font-bold ${statusStyles[selectedConversation.conversation_status] || "bg-slate-100 text-slate-600 border-slate-200"}`}>{selectedConversation.conversation_status || "active"}</span>
@@ -1135,7 +1198,14 @@ export default function ClientMessages() {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                  {/* border-t/pt-2 (removed again at lg, where this sits
+                      beside the identity block instead of stacked below
+                      it) gives this control group its own visual
+                      separation from the identity/badges block above
+                      instead of the two running directly into each other
+                      — flagged as "excessively cramped" in mobile visual
+                      QA. */}
+                  <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2 lg:justify-end lg:border-t-0 lg:pt-0">
                     {conversationStatus === "waiting_human" && !selectedConversation.assigned_user_id && (
                       <>
                         <span className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">{t("common.waitingHuman")}</span>
@@ -1149,7 +1219,14 @@ export default function ClientMessages() {
                       </>
                     )}
                     {conversationStatus === "waiting_human" && selectedConversation.assigned_user_id && (
-                      <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">
+                      // max-w-full truncate: this pill embeds the assigned
+                      // employee's name, which — unlike every other badge
+                      // in this header — is arbitrary-length user data, not
+                      // a fixed vocabulary word. Without a bound it could
+                      // force real horizontal overflow instead of wrapping
+                      // (flex-wrap only wraps BETWEEN items; it doesn't
+                      // shrink an individual item wider than its row).
+                      <span className="max-w-full truncate rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">
                         {t("messagesPage.claimedByFullPrefix", { name: selectedConversation.assigned_user?.name || t("roles.agent") })}
                       </span>
                     )}
@@ -1216,7 +1293,15 @@ export default function ClientMessages() {
                 )}
               </div>
 
-              <div className="shrink-0 border-t border-slate-100 bg-white p-3">
+              {/* px-3 pt-3 + a safe-area-aware pb (instead of p-3) so the
+                  composer — the one piece of the Inbox that must "remain
+                  fully visible above browser/device UI" — stays clear of
+                  the home-indicator area on notched phones (viewport-
+                  fit=cover in index.html renders this pane edge-to-edge
+                  without this). max(0.75rem, ...) keeps the original
+                  0.75rem/p-3 spacing wherever the inset is 0, i.e.
+                  everywhere non-notched, including desktop. */}
+              <div className="shrink-0 border-t border-slate-100 bg-white px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]">
                 {sendError && (
                   <div className="mb-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
                     {sendError}
@@ -1309,7 +1394,13 @@ export default function ClientMessages() {
                         : t("messagesPage.composerPlaceholderDisabled")
                     }
                     rows={2}
-                    className="min-h-[44px] max-h-40 flex-1 resize-none rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50 disabled:bg-slate-50 disabled:text-slate-400"
+                    // min-w-0: without it, a flex item's default min-width
+                    // is its content's intrinsic width — for a <textarea>
+                    // that's its default `cols` sizing (~20 characters),
+                    // which was wide enough to force horizontal overflow
+                    // of the whole composer row on narrow phones once the
+                    // 3 media buttons + send button were also on-screen.
+                    className="min-h-[44px] max-h-40 min-w-0 flex-1 resize-none rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50 disabled:bg-slate-50 disabled:text-slate-400"
                   />
 
                   <button

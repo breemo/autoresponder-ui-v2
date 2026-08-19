@@ -89,6 +89,26 @@ export function LanguageProvider({ children }) {
 
       if (!user?.id) return { success: false, persisted: false };
 
+      // Admin accounts have no client_users row at all (see Login.jsx —
+      // the client_users membership lookup, and this same ui_language_user
+      // fetch, only ever run for role === "client"), so there is no DB row
+      // for the write below to ever match. Rather than issue a request
+      // that's silently a no-op against the wrong table, stop here: the
+      // language has already changed live (i18n.changeLanguage above) and
+      // is already cached (writeLocalCache above, plus mirrored onto the
+      // stored user object here) — same local persistence the anonymous/
+      // pre-login state already relies on (see readLocalCache/
+      // LOCAL_CACHE_KEY), just also attached to this account's cached
+      // user object so resolveLanguage picks it up first on the next load
+      // without a network round trip. No new DB column, no migration —
+      // this is the existing frontend persistence mechanism, reused as-is.
+      if (user.role !== "client") {
+        const updatedUser = { ...user, ui_language_user: lang };
+        localStorage.setItem("user", JSON.stringify(updatedUser));
+        auth?.setUser?.(updatedUser);
+        return { success: true, persisted: false };
+      }
+
       try {
         const { error } = await supabase.from("client_users").update({ language: lang }).eq("user_id", user.id);
         if (error) throw error;
