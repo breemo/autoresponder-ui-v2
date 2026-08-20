@@ -1,5 +1,6 @@
 {
   "type": "module",
+  "packageManager": "pnpm@9.15.9",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -27,5 +28,10 @@
   },
   "overrides": {
     "workbox-build": "7.3.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "workbox-build": "7.3.0"
+    }
   }
 }
