@@ -118,16 +118,34 @@ begin
     raise exception 'apply_conversation_lifecycle_action: unsupported action %', p_action;
   end if;
 
+  -- Every RETURNS TABLE output column above (conversation_id, sender_id,
+  -- conversation_status, current_step, assigned_user_id, assigned_at,
+  -- solved_by, solved_at, reopened_by, reopened_at, updated_at) is also a
+  -- real column name on public.conversation_state. PL/pgSQL turns each
+  -- RETURNS TABLE column into an implicit output variable in scope for
+  -- the whole function body, so any UNQUALIFIED reference to one of those
+  -- names inside a SQL statement is ambiguous between "the output
+  -- variable" and "the table column" (Postgres error 42702) -- this is
+  -- exactly what broke 'accept' in production. Every UPDATE/SELECT below
+  -- now qualifies every WHERE-clause column reference with the `cs` alias
+  -- (client_id included, even though it isn't itself a RETURNS TABLE name,
+  -- for uniform/defensive style) so there is never a bare column name for
+  -- PL/pgSQL to potentially resolve against a variable instead. SET-clause
+  -- and INSERT-target-list column names are left unqualified because
+  -- those two syntactic positions are always resolved as table columns by
+  -- the SQL grammar itself (you cannot alias-qualify them, and PL/pgSQL
+  -- does not attempt variable substitution there) -- they were never
+  -- ambiguous in the first place.
   if p_action = 'accept' then
-    -- Unchanged atomic-claim WHERE clause -- see the header comment.
-    update public.conversation_state
+    -- Unchanged atomic-claim WHERE condition -- see the header comment.
+    update public.conversation_state as cs
       set assigned_user_id = p_actor_user_id,
           assigned_at = now()
-      where client_id = p_client_id
-        and conversation_id = p_conversation_id
-        and conversation_status = 'waiting_human'
-        and assigned_user_id is null
-      returning * into v_row;
+      where cs.client_id = p_client_id
+        and cs.conversation_id = p_conversation_id
+        and cs.conversation_status = 'waiting_human'
+        and cs.assigned_user_id is null
+      returning cs.* into v_row;
 
     if found then
       v_outcome := 'ok';
@@ -137,8 +155,8 @@ begin
       -- Either doesn't exist for this client, or exists but is no longer
       -- claimable (already taken / not waiting_human) -- distinguish the
       -- two so the caller can return 404 vs 409 exactly as before.
-      select * into v_row from public.conversation_state
-        where client_id = p_client_id and conversation_id = p_conversation_id
+      select cs.* into v_row from public.conversation_state as cs
+        where cs.client_id = p_client_id and cs.conversation_id = p_conversation_id
         limit 1;
       v_outcome := case when v_row.id is null then 'not_found' else 'conflict' end;
     end if;
@@ -157,16 +175,16 @@ begin
     -- assigned_user_id/assigned_at are deliberately absent from the SET
     -- list -- preserved exactly as the pre-existing close behavior
     -- already did.
-    update public.conversation_state
+    update public.conversation_state as cs
       set conversation_status = 'closed',
           current_step = 'done',
           solved_by = p_actor_user_id,
           solved_at = now(),
           updated_at = now()
-      where client_id = p_client_id
-        and conversation_id = p_conversation_id
-        and (conversation_status <> 'waiting_human' or assigned_user_id = p_actor_user_id)
-      returning * into v_row;
+      where cs.client_id = p_client_id
+        and cs.conversation_id = p_conversation_id
+        and (cs.conversation_status <> 'waiting_human' or cs.assigned_user_id = p_actor_user_id)
+      returning cs.* into v_row;
 
     if found then
       v_outcome := 'ok';
@@ -178,8 +196,8 @@ begin
       -- someone else or by no one yet) -- distinguish the two so the
       -- caller can return 404 vs 403 exactly as the pre-existing
       -- SELECT-based check already did.
-      select * into v_row from public.conversation_state
-        where client_id = p_client_id and conversation_id = p_conversation_id
+      select cs.* into v_row from public.conversation_state as cs
+        where cs.client_id = p_client_id and cs.conversation_id = p_conversation_id
         limit 1;
       v_outcome := case when v_row.id is null then 'not_found' else 'forbidden' end;
     end if;
@@ -190,7 +208,7 @@ begin
     -- the pre-existing reopen behavior already left them (reopen has
     -- never touched them). assigned_user_id/assigned_at ARE cleared here,
     -- preserving the pre-existing reopen behavior unchanged.
-    update public.conversation_state
+    update public.conversation_state as cs
       set conversation_status = 'active',
           current_step = null,
           assigned_user_id = null,
@@ -198,9 +216,9 @@ begin
           reopened_by = p_actor_user_id,
           reopened_at = now(),
           updated_at = now()
-      where client_id = p_client_id
-        and conversation_id = p_conversation_id
-      returning * into v_row;
+      where cs.client_id = p_client_id
+        and cs.conversation_id = p_conversation_id
+      returning cs.* into v_row;
 
     if found then
       v_outcome := 'ok';
