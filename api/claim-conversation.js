@@ -9,6 +9,22 @@ import { PERMISSIONS } from "../src/lib/permissions.js";
 // assigned_user_id/assigned_at, same authorization shape as
 // api/human-reply.js: only actor_user_id is trusted from the request,
 // client_id/role/permission are always re-derived server-side.
+//
+// Stage 7B: the actual claim + its conversation_events "accepted" row are
+// written together, in one transaction, by the
+// apply_conversation_lifecycle_action(...) Postgres function (see
+// supabase/migrations/20260820_conversation_lifecycle_action_rpc.sql) —
+// this endpoint no longer does two separate writes. That function is NOT
+// an authorization layer itself (its EXECUTE grant is service_role-only,
+// enforced at the database level, not just by convention); every
+// authorization check below is unchanged and still runs here, before the
+// function is ever called.
+async function resolveAssignedUserName(supabase, userId) {
+  if (!userId) return null;
+  const { data } = await supabase.from("users").select("id, name").eq("id", userId).maybeSingle();
+  return data || null;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ success: false, message: "Method not allowed" });
@@ -39,56 +55,64 @@ export default async function handler(req, res) {
     return res.status(403).json({ success: false, message: "Forbidden" });
   }
 
-  // Atomic claim — a single conditional UPDATE is the entire race-condition
-  // fix. Postgres row-locks the target row on the first UPDATE to reach it;
-  // a second concurrent UPDATE against the same row blocks until the first
-  // commits, then re-evaluates its own WHERE clause against the now-updated
-  // row. Since assigned_user_id is no longer null at that point, the WHERE
-  // clause no longer matches and the second UPDATE affects zero rows — no
+  // Atomic claim — the WHERE-equivalent condition inside the RPC
+  // (conversation_status = 'waiting_human' AND assigned_user_id IS NULL)
+  // is byte-for-byte the same one this endpoint used to run directly.
+  // Postgres row-locks the target row on the first UPDATE to reach it; a
+  // second concurrent call blocks until the first commits, then
+  // re-evaluates against the now-updated row and no longer matches — no
   // separate SELECT-then-UPDATE, no advisory lock, no retry loop needed.
   // Scoped to this actor's own client_id (re-derived above, never trusted
-  // from the request body) for multi-tenant isolation, and to
-  // conversation_status = 'waiting_human' so a conversation that was closed
-  // or reopened in the meantime can't be claimed out from under that change.
-  const { data: claimed, error: claimError } = await supabase
-    .from("conversation_state")
-    .update({ assigned_user_id: actor.user.id, assigned_at: new Date().toISOString() })
-    .eq("client_id", actor.membership.client_id)
-    .eq("conversation_id", conversation_id)
-    .eq("conversation_status", "waiting_human")
-    .is("assigned_user_id", null)
-    .select("conversation_id, conversation_status, assigned_user_id, assigned_at, assigned_user:assigned_user_id(id, name)")
-    .maybeSingle();
+  // from the request body) for multi-tenant isolation.
+  const { data: rows, error: rpcError } = await supabase.rpc("apply_conversation_lifecycle_action", {
+    p_client_id: actor.membership.client_id,
+    p_conversation_id: conversation_id,
+    p_actor_user_id: actor.user.id,
+    p_action: "accept",
+  });
 
-  if (claimError) {
+  if (rpcError) {
     return res.status(500).json({ success: false, message: "فشل استلام المحادثة" });
   }
 
-  if (claimed) {
-    return res.status(200).json({ success: true, claimed: true, assignment: claimed });
-  }
+  const result = rows?.[0];
 
-  // Lost the race (or the conversation is no longer waiting_human, or
-  // doesn't belong to this client) — look up its current state, scoped to
-  // the same client, so the UI can show a clean "already claimed" message
-  // with the actual current owner's name instead of a generic failure.
-  const { data: current, error: currentError } = await supabase
-    .from("conversation_state")
-    .select("conversation_id, conversation_status, assigned_user_id, assigned_user:assigned_user_id(id, name)")
-    .eq("client_id", actor.membership.client_id)
-    .eq("conversation_id", conversation_id)
-    .maybeSingle();
-
-  if (currentError || !current) {
+  if (!result || result.outcome === "not_found") {
     return res.status(404).json({ success: false, claimed: false, message: "المحادثة غير موجودة ضمن هذا الحساب" });
   }
 
-  return res.status(409).json({
-    success: false,
-    claimed: false,
-    message: current.assigned_user_id
-      ? "تم استلام هذه المحادثة بالفعل من قبل موظف آخر"
-      : "لم تعد هذه المحادثة بانتظار موظف",
-    assignment: current,
+  if (result.outcome === "conflict") {
+    // Lost the race (or the conversation is no longer waiting_human) —
+    // return the actual current owner so the UI can show a clean
+    // "already claimed" message instead of a generic failure.
+    const assignedUser = await resolveAssignedUserName(supabase, result.assigned_user_id);
+    return res.status(409).json({
+      success: false,
+      claimed: false,
+      message: result.assigned_user_id
+        ? "تم استلام هذه المحادثة بالفعل من قبل موظف آخر"
+        : "لم تعد هذه المحادثة بانتظار موظف",
+      assignment: {
+        conversation_id: result.conversation_id,
+        conversation_status: result.conversation_status,
+        assigned_user_id: result.assigned_user_id,
+        assigned_user: assignedUser,
+      },
+    });
+  }
+
+  // outcome === "ok" — claimed, and the matching conversation_events
+  // "accepted" row was already inserted in the same transaction.
+  const assignedUser = await resolveAssignedUserName(supabase, result.assigned_user_id);
+  return res.status(200).json({
+    success: true,
+    claimed: true,
+    assignment: {
+      conversation_id: result.conversation_id,
+      conversation_status: result.conversation_status,
+      assigned_user_id: result.assigned_user_id,
+      assigned_at: result.assigned_at,
+      assigned_user: assignedUser,
+    },
   });
 }
