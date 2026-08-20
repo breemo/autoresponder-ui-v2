@@ -10,6 +10,22 @@
          its own compensating padding for this. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Auto Responder App</title>
+
+    <!-- Stage B — PWA foundation. The manifest <link> itself is injected
+         automatically at build time by vite-plugin-pwa (see vite.config.js)
+         — it is intentionally NOT hand-written here, so it can never drift
+         out of sync with the generated manifest.webmanifest. Everything
+         below is what that plugin does NOT handle for you: the favicon
+         (unrelated to the PWA manifest) and the iOS-specific tags Safari
+         still requires for standalone/home-screen behavior even with a
+         spec-compliant manifest present. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#4f46e5" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Jawab AI" />
   </head>
   <body>
     <div id="root"></div>

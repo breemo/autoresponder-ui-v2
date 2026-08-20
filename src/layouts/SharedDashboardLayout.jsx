@@ -192,7 +192,17 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
           mobileNavOpen ? "translate-x-0" : isRtl ? "translate-x-full" : "-translate-x-full"
         }`}
       >
-        <div className="flex h-20 items-center gap-3 border-b border-slate-800 px-5">
+        {/* Stage B (standalone/PWA): min-h-20 (was a fixed h-20) +
+            explicit pt/pb (was implicit via items-center centering alone)
+            so this top-of-drawer bar can grow instead of clip when
+            display:standalone puts it under a notch/status bar. pt-1.125rem
+            + pb-1.125rem reproduces the exact original centering of the
+            44px (h-11) brand mark within an 80px (h-20) box at zero inset
+            — i.e. no visual change anywhere this inset is 0, which is
+            everywhere except a notched device running installed/standalone
+            (see index.html's viewport-fit=cover and vite.config.js's PWA
+            manifest, display: "standalone"). */}
+        <div className="flex min-h-20 items-center gap-3 border-b border-slate-800 px-5 pb-[1.125rem] pt-[max(1.125rem,env(safe-area-inset-top,0px))]">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-indigo-600 shadow-lg shadow-indigo-950/30">
             <ChatBubbleLeftRightIcon className="h-6 w-6 text-white" />
           </div>
@@ -267,7 +277,14 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
 
       <div className={`xl:ps-72 ${fullHeight ? "flex h-full flex-col" : ""}`}>
         <header className="sticky top-0 z-30 shrink-0 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl">
-          <div className="flex min-h-20 items-center justify-between gap-4 px-5 py-4 md:px-8">
+          {/* Stage B (standalone/PWA): pb-4 + a safe-area-aware pt (was
+              plain py-4) — this sticky header sits at the very top of the
+              page, so in display:standalone on a notched device it's the
+              one most likely to render under a status bar. max(1rem, ...)
+              keeps the original 1rem/py-4 spacing wherever the inset is 0
+              (everywhere non-standalone, including every desktop/tablet/
+              mobile-browser-tab case this app already runs in). */}
+          <div className="flex min-h-20 items-center justify-between gap-4 px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top,0px))] md:px-8">
             <div className="flex min-w-0 items-center gap-3">
               {/* Mobile/tablet nav trigger — hidden at xl+ where the
                   sidebar is already always visible (see the aside above
