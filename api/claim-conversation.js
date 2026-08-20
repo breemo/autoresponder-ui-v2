@@ -72,6 +72,20 @@ export default async function handler(req, res) {
   });
 
   if (rpcError) {
+    // Diagnostic only — the browser still only ever sees the same safe,
+    // generic message it always did; the actual Postgres error (e.g.
+    // "permission denied for function ..." if the server is running on
+    // the anon key instead of service_role — see supabaseServer.js — or
+    // any other RPC-level failure) is logged server-side only, never sent
+    // to the client.
+    console.error("apply_conversation_lifecycle_action RPC failed (action=accept):", {
+      code: rpcError.code,
+      message: rpcError.message,
+      details: rpcError.details,
+      hint: rpcError.hint,
+      conversation_id,
+      client_id: actor.membership.client_id,
+    });
     return res.status(500).json({ success: false, message: "فشل استلام المحادثة" });
   }
 

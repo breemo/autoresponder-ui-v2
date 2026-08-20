@@ -108,6 +108,16 @@ export default async function handler(req, res) {
     });
 
     if (rpcError) {
+      // Diagnostic only — see the identical note in
+      // api/claim-conversation.js. Browser response unchanged.
+      console.error(`apply_conversation_lifecycle_action RPC failed (action=${rpcAction}):`, {
+        code: rpcError.code,
+        message: rpcError.message,
+        details: rpcError.details,
+        hint: rpcError.hint,
+        conversation_id,
+        client_id: actor.membership.client_id,
+      });
       return res.status(500).json({ success: false, message: "فشل في تحديث حالة المحادثة" });
     }
 
