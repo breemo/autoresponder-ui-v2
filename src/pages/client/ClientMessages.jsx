@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowLeftIcon, PhotoIcon, DocumentIcon, MicrophoneIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { ArrowLeftIcon, PhotoIcon, DocumentIcon, MicrophoneIcon, XMarkIcon, InformationCircleIcon } from "@heroicons/react/24/outline";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
 import ChannelIcon from "../../lib/channelIcons.jsx";
@@ -247,6 +247,361 @@ function StatCard({ label, value, hint, icon, tone = "indigo" }) {
   );
 }
 
+// Conversation Card V1 — lifecycle/context summary + internal notes, shown
+// beside the chat (desktop) or as a drawer (tablet/mobile, see the
+// `variant`/`open`/`onClose` props). Entirely self-contained: fetches its
+// own data from /api/conversation-card + /api/conversation-notes whenever
+// `conversationId` changes, independent of the conversations list state
+// ClientMessages itself already holds (that list only carries the small
+// subset of fields needed for badges — this card needs the fuller
+// lifecycle/notes detail those two endpoints alone provide). Conversation
+// Type/category is deliberately absent — out of scope for V1, deferred to
+// the future Conversation Session Model redesign.
+function ConversationCard({ conversationId, actorUserId, variant, open, onClose }) {
+  const { t } = useTranslation();
+
+  const [card, setCard] = useState(null);
+  const [cardLoading, setCardLoading] = useState(false);
+  const [cardError, setCardError] = useState("");
+
+  const [notes, setNotes] = useState([]);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [notesError, setNotesError] = useState("");
+
+  const [noteDraft, setNoteDraft] = useState("");
+  const [addingNote, setAddingNote] = useState(false);
+
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const [editingBody, setEditingBody] = useState("");
+  const [savingNoteId, setSavingNoteId] = useState(null);
+  const [deletingNoteId, setDeletingNoteId] = useState(null);
+
+  useEffect(() => {
+    if (!conversationId || !actorUserId) {
+      setCard(null);
+      setNotes([]);
+      return;
+    }
+
+    let cancelled = false;
+    setCard(null);
+    setCardError("");
+    setCardLoading(true);
+    setNotes([]);
+    setNotesError("");
+    setNotesLoading(true);
+    setNoteDraft("");
+    setEditingNoteId(null);
+
+    const qs = `actor_user_id=${encodeURIComponent(actorUserId)}&conversation_id=${encodeURIComponent(conversationId)}`;
+
+    fetch(`/api/conversation-card?${qs}`)
+      .then((res) => res.json().catch(() => ({})))
+      .then((data) => {
+        if (cancelled) return;
+        if (!data?.success) throw new Error(data?.message || t("conversationCard.loadFailed"));
+        setCard(data);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error(err);
+        setCardError(err.message || t("conversationCard.loadFailed"));
+      })
+      .finally(() => {
+        if (!cancelled) setCardLoading(false);
+      });
+
+    fetch(`/api/conversation-notes?${qs}`)
+      .then((res) => res.json().catch(() => ({})))
+      .then((data) => {
+        if (cancelled) return;
+        if (!data?.success) throw new Error(data?.message || t("conversationCard.notesLoadFailed"));
+        setNotes(data.notes || []);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error(err);
+        setNotesError(err.message || t("conversationCard.notesLoadFailed"));
+      })
+      .finally(() => {
+        if (!cancelled) setNotesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, actorUserId]);
+
+  async function handleAddNote() {
+    const body = noteDraft.trim();
+    if (!body || addingNote) return;
+
+    setAddingNote(true);
+    setNotesError("");
+    try {
+      const response = await fetch("/api/conversation-notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "add", actor_user_id: actorUserId, conversation_id: conversationId, body }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.success) throw new Error(data?.message || t("conversationCard.noteAddFailed"));
+      setNotes((prev) => [data.note, ...prev]);
+      setNoteDraft("");
+    } catch (err) {
+      console.error(err);
+      setNotesError(err.message || t("conversationCard.noteAddFailed"));
+    } finally {
+      setAddingNote(false);
+    }
+  }
+
+  function startEditNote(note) {
+    setEditingNoteId(note.id);
+    setEditingBody(note.body);
+  }
+
+  function cancelEditNote() {
+    setEditingNoteId(null);
+    setEditingBody("");
+  }
+
+  async function saveEditNote(noteId) {
+    const body = editingBody.trim();
+    if (!body || savingNoteId) return;
+
+    setSavingNoteId(noteId);
+    setNotesError("");
+    try {
+      const response = await fetch("/api/conversation-notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "edit", actor_user_id: actorUserId, note_id: noteId, body }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.success) throw new Error(data?.message || t("conversationCard.noteEditFailed"));
+      setNotes((prev) => prev.map((n) => (n.id === noteId ? data.note : n)));
+      cancelEditNote();
+    } catch (err) {
+      console.error(err);
+      setNotesError(err.message || t("conversationCard.noteEditFailed"));
+    } finally {
+      setSavingNoteId(null);
+    }
+  }
+
+  async function deleteNote(noteId) {
+    if (deletingNoteId || !window.confirm(t("conversationCard.confirmDeleteNote"))) return;
+
+    setDeletingNoteId(noteId);
+    setNotesError("");
+    try {
+      const response = await fetch("/api/conversation-notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", actor_user_id: actorUserId, note_id: noteId }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.success) throw new Error(data?.message || t("conversationCard.noteDeleteFailed"));
+      setNotes((prev) => prev.filter((n) => n.id !== noteId));
+    } catch (err) {
+      console.error(err);
+      setNotesError(err.message || t("conversationCard.noteDeleteFailed"));
+    } finally {
+      setDeletingNoteId(null);
+    }
+  }
+
+  function timelineEventLabel(event) {
+    const actor = event.actor_user?.name || t("roles.agent");
+    const target = event.target_user?.name || t("roles.agent");
+    const translated = t(`conversationCard.event.${event.event_type}`, { actor, target, defaultValue: "" });
+    return translated || event.event_type;
+  }
+
+  const conv = card?.conversation || null;
+  const lastEmployee = card?.last_employee || null;
+  const timeline = card?.timeline || [];
+
+  const content = (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-100 p-3">
+        <h2 className="font-bold text-slate-950">{t("conversationCard.title")}</h2>
+        {variant === "drawer" && (
+          <button type="button" onClick={onClose} aria-label={t("conversationCard.closePanel")} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100">
+            <XMarkIcon className="h-5 w-5" />
+          </button>
+        )}
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+        {cardLoading && <p className="text-xs text-slate-400">{t("common.loading")}</p>}
+        {cardError && <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{cardError}</p>}
+
+        {conv && (
+          <div className="space-y-4">
+            <section>
+              <h3 className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{t("conversationCard.sectionConversation")}</h3>
+              <div className="mt-1.5 space-y-1 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">{t("conversationCard.status")}</span>
+                  <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${statusStyles[conv.conversation_status] || "bg-slate-100 text-slate-600 border-slate-200"}`}>{conv.conversation_status || "active"}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">{t("conversationCard.lastActivity")}</span>
+                  <span className="font-semibold text-slate-700">{relativeTime(conv.updated_at, t)}</span>
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <h3 className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{t("conversationCard.sectionAssignment")}</h3>
+              <div className="mt-1.5 space-y-1 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">{t("conversationCard.systemSuggested")}</span>
+                  <span className="font-semibold text-slate-700">{conv.system_assigned_user?.name || "—"}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">{t("conversationCard.acceptedAssigned")}</span>
+                  <span className="font-semibold text-slate-700">
+                    {conv.assigned_user_id ? (conv.assigned_user_id === actorUserId ? t("common.you") : conv.assigned_user?.name || t("roles.agent")) : t("messagesPage.unassigned")}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">{t("conversationCard.lastEmployee")}</span>
+                  <span className="text-end font-semibold text-slate-700">
+                    {lastEmployee ? (lastEmployee.user?.id === actorUserId ? t("common.you") : lastEmployee.user?.name || t("roles.agent")) : "—"}
+                    {lastEmployee && lastEmployee.source !== "event" && (
+                      <span className="block text-[10px] font-normal text-slate-400">{t("conversationCard.lastEmployeeApproximate")}</span>
+                    )}
+                  </span>
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <h3 className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{t("conversationCard.sectionLifecycle")}</h3>
+              <div className="mt-1.5 space-y-1 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">{t("conversationCard.solvedBy")}</span>
+                  <span className="font-semibold text-slate-700">{conv.solved_by_user?.name ? `${conv.solved_by_user.name} · ${relativeTime(conv.solved_at, t)}` : "—"}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">{t("conversationCard.reopenedBy")}</span>
+                  <span className="font-semibold text-slate-700">{conv.reopened_by_user?.name ? `${conv.reopened_by_user.name} · ${relativeTime(conv.reopened_at, t)}` : "—"}</span>
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <h3 className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{t("conversationCard.sectionTimeline")}</h3>
+              {timeline.length === 0 ? (
+                <p className="mt-1.5 text-xs text-slate-400">{t("conversationCard.noEvents")}</p>
+              ) : (
+                <ul className="mt-1.5 space-y-2">
+                  {timeline.map((event) => (
+                    <li key={event.id} className="rounded-lg border border-slate-100 bg-slate-50/60 px-2.5 py-1.5 text-xs">
+                      <p className="font-semibold text-slate-700">{timelineEventLabel(event)}</p>
+                      <p className="mt-0.5 text-[11px] text-slate-400">{relativeTime(event.created_at, t)}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
+        )}
+
+        <section className="mt-4 border-t border-slate-100 pt-3">
+          <h3 className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{t("conversationCard.sectionNotes")}</h3>
+          <p className="mt-1 text-[11px] text-slate-400">{t("conversationCard.notesHint")}</p>
+
+          {notesError && <p className="mt-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{notesError}</p>}
+
+          <div className="mt-2 space-y-2">
+            <textarea
+              value={noteDraft}
+              onChange={(e) => setNoteDraft(e.target.value)}
+              placeholder={t("conversationCard.noteAddPlaceholder")}
+              rows={2}
+              className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50"
+            />
+            <button
+              type="button"
+              onClick={handleAddNote}
+              disabled={!noteDraft.trim() || addingNote}
+              className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50"
+            >
+              {addingNote ? t("conversationCard.adding") : t("conversationCard.addNote")}
+            </button>
+          </div>
+
+          {notesLoading ? (
+            <p className="mt-3 text-xs text-slate-400">{t("common.loading")}</p>
+          ) : notes.length === 0 ? (
+            <p className="mt-3 text-xs text-slate-400">{t("conversationCard.noNotes")}</p>
+          ) : (
+            <ul className="mt-3 space-y-2">
+              {notes.map((note) => (
+                <li key={note.id} className="rounded-xl border border-slate-100 bg-white p-2.5 text-sm shadow-sm">
+                  {editingNoteId === note.id ? (
+                    <div className="space-y-2">
+                      <textarea
+                        value={editingBody}
+                        onChange={(e) => setEditingBody(e.target.value)}
+                        rows={2}
+                        className="w-full resize-none rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50"
+                      />
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => saveEditNote(note.id)} disabled={!editingBody.trim() || savingNoteId === note.id} className="rounded-lg bg-indigo-600 px-2.5 py-1 text-[11px] font-bold text-white disabled:opacity-50">
+                          {savingNoteId === note.id ? t("conversationCard.saving") : t("conversationCard.save")}
+                        </button>
+                        <button type="button" onClick={cancelEditNote} className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50">
+                          {t("conversationCard.cancel")}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="whitespace-pre-wrap text-slate-700">{note.body}</p>
+                      <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-slate-400">
+                        <span>
+                          {note.author?.name || t("roles.agent")} · {relativeTime(note.created_at, t)}
+                          {note.updated_at && ` · ${t("conversationCard.editedSuffix")}`}
+                        </span>
+                        {note.author_user_id === actorUserId && (
+                          <span className="flex shrink-0 gap-2">
+                            <button type="button" onClick={() => startEditNote(note)} className="font-bold text-indigo-600 hover:underline">
+                              {t("conversationCard.edit")}
+                            </button>
+                            <button type="button" onClick={() => deleteNote(note.id)} disabled={deletingNoteId === note.id} className="font-bold text-red-600 hover:underline disabled:opacity-50">
+                              {t("conversationCard.delete")}
+                            </button>
+                          </span>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+
+  if (variant === "drawer") {
+    return (
+      <div className={`fixed inset-0 z-40 2xl:hidden ${open ? "flex" : "hidden"}`}>
+        <div className="absolute inset-0 bg-slate-900/30" onClick={onClose} />
+        <div className="relative ms-auto flex h-full w-full max-w-sm flex-col bg-white shadow-xl">{content}</div>
+      </div>
+    );
+  }
+
+  return content;
+}
+
 export default function ClientMessages() {
   const { user } = useAuth();
   const { t, i18n } = useTranslation();
@@ -270,6 +625,13 @@ export default function ClientMessages() {
   // places it's ever set. Ignored entirely at md+ (see those same render
   // classes), where both panes are always visible regardless of this value.
   const [mobileInboxView, setMobileInboxView] = useState("list");
+
+  // Conversation Card V1 — below the 2xl breakpoint the card is a
+  // drawer/sheet rather than a persistent pane (see the grid/aside render
+  // below); this only controls whether that drawer is open. At 2xl+ the
+  // card is always visible as its own grid column and this is ignored
+  // (the info button that toggles it is itself hidden at 2xl+).
+  const [cardOpen, setCardOpen] = useState(false);
 
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -980,6 +1342,7 @@ export default function ClientMessages() {
     setDraft("");
     setSendError("");
     setAttachment(null);
+    setCardOpen(false);
 
     if (selectedConversationId) {
       fetchConversationMessages(selectedConversationId);
@@ -1048,7 +1411,7 @@ export default function ClientMessages() {
 
       {error && <div className="shrink-0 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>}
 
-      {/* Three-tier responsive Inbox, coordinated with
+      {/* Four-tier responsive Inbox, coordinated with
           SharedDashboardLayout's sidebar breakpoint (also moved to xl —
           see that file):
             - Below md (mobile): single stacked column. mobileInboxView
@@ -1057,17 +1420,26 @@ export default function ClientMessages() {
               content is loaded" on every viewport) toggles which of the
               two panes is visible — a classic responsive master/detail
               pattern, with the back button below returning to the list.
+              Conversation Card is a drawer here (see cardOpen below), never
+              a permanent third pane — it would leave no room for the chat.
             - md to xl (tablet): both panes visible side by side
               (md:grid-cols-[...]) at a slightly narrower list column, while
               the dashboard sidebar is still an off-canvas drawer (< xl), so
               the Inbox gets the full width instead of losing ~288px to a
               persistent sidebar it doesn't have room for. mobileInboxView
               is ignored here — the md:flex on the aside/section below
-              always wins.
-            - xl+ (desktop): both panes visible at the original list width,
-              alongside the now-persistent sidebar. mobileInboxView ignored
-              here too, same as tablet. */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[380px_minmax(0,1fr)]">
+              always wins. Conversation Card is still a drawer here too.
+            - xl (desktop, narrower): both panes visible at the original list
+              width, alongside the now-persistent sidebar. Conversation Card
+              is still a drawer — sidebar + list + chat + a fourth persistent
+              column would be too cramped at this width.
+            - 2xl+ (desktop, wide): a fourth grid column appears
+              (2xl:grid-cols-[...]) for the Conversation Card as a permanent
+              pane — Sidebar | Conversation List | Chat | Conversation Card,
+              per the approved design. The drawer/info-button variant is
+              hidden here (2xl:hidden on both) since the card is already
+              always visible. */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[380px_minmax(0,1fr)] 2xl:grid-cols-[380px_minmax(0,1fr)_320px]">
         <aside className={`${mobileInboxView === "chat" ? "hidden md:flex" : "flex"} h-full min-h-0 flex-col border-e border-slate-100 bg-slate-50/50`}>
           <div className="shrink-0 border-b border-slate-100 p-3">
             <div className="mb-2 flex items-center justify-between gap-3">
@@ -1292,6 +1664,21 @@ export default function ClientMessages() {
                     {conversationStatus === "closed" && (
                       <button onClick={reopenConversation} disabled={updatingStatus} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">{t("messagesPage.reopenConversation")}</button>
                     )}
+                    {/* Conversation Card V1 — opens the same card as the
+                        persistent 2xl+ panel, as a drawer/sheet. Hidden at
+                        2xl+ since the panel is already always visible there
+                        (see the grid comment above). Available regardless
+                        of conversationStatus, unlike the action buttons
+                        above — the card's lifecycle/notes context is useful
+                        even for a closed/active conversation. */}
+                    <button
+                      type="button"
+                      onClick={() => setCardOpen(true)}
+                      aria-label={t("conversationCard.openButton")}
+                      className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-600 shadow-sm hover:bg-slate-50 2xl:hidden"
+                    >
+                      <InformationCircleIcon className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
 
@@ -1469,7 +1856,25 @@ export default function ClientMessages() {
             </>
           )}
         </section>
+
+        {/* Conversation Card V1 — persistent 4th column, 2xl+ only (see the
+            grid comment above). Always rendered as its own grid track so
+            the column width stays reserved even with no conversation
+            selected; the empty-state message below matches the chat pane's
+            own "select a conversation" placeholder. The drawer variant
+            below (< 2xl) is the same component, just mounted differently. */}
+        <aside className="hidden h-full min-h-0 flex-col border-s border-slate-100 bg-slate-50/50 2xl:flex">
+          {selectedConversation ? (
+            <ConversationCard conversationId={selectedConversation.conversation_id} actorUserId={user?.id} variant="panel" />
+          ) : (
+            <div className="flex flex-1 items-center justify-center p-4 text-center text-sm text-slate-400">{t("messagesPage.selectConversationPrompt")}</div>
+          )}
+        </aside>
       </div>
+
+      {selectedConversation && (
+        <ConversationCard conversationId={selectedConversation.conversation_id} actorUserId={user?.id} variant="drawer" open={cardOpen} onClose={() => setCardOpen(false)} />
+      )}
     </div>
   );
 }
