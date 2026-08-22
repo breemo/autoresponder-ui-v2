@@ -92,7 +92,7 @@ const statusStyles = {
 // historical/null message_type (see the isMedia guard at the call site) —
 // those keep rendering exactly as before, unchanged.
 //
-// If Storage isn't configured/created yet (see api/media-read-url.js —
+// If Storage isn't configured/created yet (see api/media.js (action: "sign_read") —
 // this is the expected state right now, since Task 1 explicitly does not
 // create the bucket), the fetch below resolves to success:false and this
 // simply shows the existing "unavailable" placeholder — it never throws or
@@ -100,7 +100,7 @@ const statusStyles = {
 function MediaAttachment({ msg, mediaControl, isInbound, conversationId, actorUserId, t }) {
   const [status, setStatus] = useState("idle"); // idle | loading | ready | error
   // Distinguishes "Storage isn't set up yet" (the expected state right now
-  // — see api/media-read-url.js's STORAGE_NOT_CONFIGURED/STORAGE_UNAVAILABLE
+  // — see api/media.js (action: "sign_read")'s STORAGE_NOT_CONFIGURED/STORAGE_UNAVAILABLE
   // codes) from any other failure, so the placeholder can say so instead of
   // a generic "failed to load" that would be misleading before Storage
   // exists at all.
@@ -121,10 +121,11 @@ function MediaAttachment({ msg, mediaControl, isInbound, conversationId, actorUs
     setStatus("loading");
     setStorageUnavailable(false);
     try {
-      const response = await fetch("/api/media-read-url", {
+      const response = await fetch("/api/media", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          action: "sign_read",
           conversation_id: conversationId,
           actor_user_id: actorUserId,
           media_path: msg.media_path,
@@ -447,9 +448,9 @@ function ConversationCard({ conversationId, actorUserId, variant, open, onClose 
                   <span className="text-slate-500">{t("conversationCard.status")}</span>
                   <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${statusStyles[conv.conversation_status] || "bg-slate-100 text-slate-600 border-slate-200"}`}>{conv.conversation_status || "active"}</span>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-500">{t("conversationCard.lastActivity")}</span>
-                  <span className="font-semibold text-slate-700">{relativeTime(conv.updated_at, t)}</span>
+                <div className="flex items-start justify-between gap-2">
+                  <span className="shrink-0 text-slate-500">{t("conversationCard.lastActivity")}</span>
+                  <span className="min-w-0 flex-1 break-words text-end font-semibold text-slate-700">{relativeTime(conv.updated_at, t)}</span>
                 </div>
               </div>
             </section>
@@ -457,19 +458,19 @@ function ConversationCard({ conversationId, actorUserId, variant, open, onClose 
             <section>
               <h3 className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{t("conversationCard.sectionAssignment")}</h3>
               <div className="mt-1.5 space-y-1 text-sm">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-500">{t("conversationCard.systemSuggested")}</span>
-                  <span className="font-semibold text-slate-700">{conv.system_assigned_user?.name || "—"}</span>
+                <div className="flex items-start justify-between gap-2">
+                  <span className="shrink-0 text-slate-500">{t("conversationCard.systemSuggested")}</span>
+                  <span className="min-w-0 flex-1 break-words text-end font-semibold text-slate-700">{conv.system_assigned_user?.name || "—"}</span>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-500">{t("conversationCard.acceptedAssigned")}</span>
-                  <span className="font-semibold text-slate-700">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="shrink-0 text-slate-500">{t("conversationCard.acceptedAssigned")}</span>
+                  <span className="min-w-0 flex-1 break-words text-end font-semibold text-slate-700">
                     {conv.assigned_user_id ? (conv.assigned_user_id === actorUserId ? t("common.you") : conv.assigned_user?.name || t("roles.agent")) : t("messagesPage.unassigned")}
                   </span>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-500">{t("conversationCard.lastEmployee")}</span>
-                  <span className="text-end font-semibold text-slate-700">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="shrink-0 text-slate-500">{t("conversationCard.lastEmployee")}</span>
+                  <span className="min-w-0 flex-1 break-words text-end font-semibold text-slate-700">
                     {lastEmployee ? (lastEmployee.user?.id === actorUserId ? t("common.you") : lastEmployee.user?.name || t("roles.agent")) : "—"}
                     {lastEmployee && lastEmployee.source !== "event" && (
                       <span className="block text-[10px] font-normal text-slate-400">{t("conversationCard.lastEmployeeApproximate")}</span>
@@ -482,13 +483,13 @@ function ConversationCard({ conversationId, actorUserId, variant, open, onClose 
             <section>
               <h3 className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{t("conversationCard.sectionLifecycle")}</h3>
               <div className="mt-1.5 space-y-1 text-sm">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-500">{t("conversationCard.solvedBy")}</span>
-                  <span className="font-semibold text-slate-700">{conv.solved_by_user?.name ? `${conv.solved_by_user.name} · ${relativeTime(conv.solved_at, t)}` : "—"}</span>
+                <div className="flex items-start justify-between gap-2">
+                  <span className="shrink-0 text-slate-500">{t("conversationCard.solvedBy")}</span>
+                  <span className="min-w-0 flex-1 break-words text-end font-semibold text-slate-700">{conv.solved_by_user?.name ? `${conv.solved_by_user.name} · ${relativeTime(conv.solved_at, t)}` : "—"}</span>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-500">{t("conversationCard.reopenedBy")}</span>
-                  <span className="font-semibold text-slate-700">{conv.reopened_by_user?.name ? `${conv.reopened_by_user.name} · ${relativeTime(conv.reopened_at, t)}` : "—"}</span>
+                <div className="flex items-start justify-between gap-2">
+                  <span className="shrink-0 text-slate-500">{t("conversationCard.reopenedBy")}</span>
+                  <span className="min-w-0 flex-1 break-words text-end font-semibold text-slate-700">{conv.reopened_by_user?.name ? `${conv.reopened_by_user.name} · ${relativeTime(conv.reopened_at, t)}` : "—"}</span>
                 </div>
               </div>
             </section>
@@ -592,7 +593,7 @@ function ConversationCard({ conversationId, actorUserId, variant, open, onClose 
 
   if (variant === "drawer") {
     return (
-      <div className={`fixed inset-0 z-40 2xl:hidden ${open ? "flex" : "hidden"}`}>
+      <div className={`fixed inset-0 z-40 xl:hidden ${open ? "flex" : "hidden"}`}>
         <div className="absolute inset-0 bg-slate-900/30" onClick={onClose} />
         <div className="relative ms-auto flex h-full w-full max-w-sm flex-col bg-white shadow-xl">{content}</div>
       </div>
@@ -866,14 +867,14 @@ export default function ClientMessages() {
   }
 
   // Shared status-update helper. Delegates to the server-authorized
-  // /api/conversation-status endpoint rather than writing conversation_state
+  // /api/conversation-lifecycle endpoint rather than writing conversation_state
   // directly from the browser — this used to be a direct Supabase write
   // with no actor/permission/ownership check at all, which meant a
   // non-assigned teammate could bypass the UI's disabled Close button
   // entirely by calling Supabase from devtools. The server now re-derives
   // client_id/permission and, for `close`, verifies the actor is the
   // conversation's assigned employee whenever it's already waiting_human
-  // (see api/conversation-status.js). `currentStep`/`preserveStep`/
+  // (see api/conversation-lifecycle.js). `currentStep`/`preserveStep`/
   // `clearAssignment` only shape the *local* optimistic patch to match what
   // the server is known to have done for each action — they don't control
   // server behavior.
@@ -884,7 +885,7 @@ export default function ClientMessages() {
       setUpdatingStatus(true);
       setError("");
 
-      const response = await fetch("/api/conversation-status", {
+      const response = await fetch("/api/conversation-lifecycle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, conversation_id: selectedConversationId, actor_user_id: user?.id }),
@@ -920,7 +921,7 @@ export default function ClientMessages() {
   // Explicit close: conversation_status = closed, current_step = done.
   // Assignment (if any) is deliberately preserved — see applyStatusChange.
   // Server-enforced: blocked unless the actor is the assigned employee, if
-  // the conversation is already waiting_human (see api/conversation-status.js).
+  // the conversation is already waiting_human (see api/conversation-lifecycle.js).
   function closeConversation() {
     return applyStatusChange("close", "closed", { currentStep: "done" });
   }
@@ -945,7 +946,7 @@ export default function ClientMessages() {
   }
 
   // Explicit claim ("استلام المحادثة"): delegates the actual assignment to
-  // /api/claim-conversation, which performs a single conditional UPDATE
+  // /api/conversation-lifecycle (action: "claim"), which performs a single conditional UPDATE
   // (... WHERE assigned_user_id IS NULL) so only one concurrent caller can
   // ever win — see that file for the full race-condition explanation. This
   // handler never assumes it won; it always reconciles local state with
@@ -957,10 +958,10 @@ export default function ClientMessages() {
     setError("");
 
     try {
-      const response = await fetch("/api/claim-conversation", {
+      const response = await fetch("/api/conversation-lifecycle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation_id: conversationId, actor_user_id: user?.id }),
+        body: JSON.stringify({ action: "claim", conversation_id: conversationId, actor_user_id: user?.id }),
       });
 
       const data = await response.json().catch(() => ({}));
@@ -1066,7 +1067,7 @@ export default function ClientMessages() {
   }
 
   // Uploads the selected attachment directly to Supabase Storage via a
-  // short-lived signed URL minted server-side (api/media-upload-url.js —
+  // short-lived signed URL minted server-side (api/media.js, action: "sign_upload" —
   // this function never touches the service-role key or any Storage admin
   // credential itself). Called from sendHumanReply only when the user
   // presses Send (never on file selection), so choosing then removing an
@@ -1078,10 +1079,11 @@ export default function ClientMessages() {
   async function uploadAttachmentToStorage(conversationId, pendingAttachment) {
     const { file, type } = pendingAttachment;
 
-    const urlResponse = await fetch("/api/media-upload-url", {
+    const urlResponse = await fetch("/api/media", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        action: "sign_upload",
         conversation_id: conversationId,
         actor_user_id: user?.id,
         message_type: type,
@@ -1379,7 +1381,7 @@ export default function ClientMessages() {
   const conversationStatus = selectedConversation?.conversation_status || "active";
 
   // Human Takeover ownership (display/UX layer only — the authoritative
-  // check is server-side in api/human-reply.js and api/conversation-status.js).
+  // check is server-side in api/human-reply.js and api/conversation-lifecycle.js).
   // A conversation not in the human queue has no owner concept and is
   // always controllable, matching pre-existing behavior. Once
   // waiting_human, only the assigned employee may reply/close — and if
@@ -1411,9 +1413,9 @@ export default function ClientMessages() {
 
       {error && <div className="shrink-0 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>}
 
-      {/* Four-tier responsive Inbox, coordinated with
-          SharedDashboardLayout's sidebar breakpoint (also moved to xl —
-          see that file):
+      {/* Three-tier responsive Inbox, coordinated with
+          SharedDashboardLayout's sidebar breakpoint (also xl — see that
+          file):
             - Below md (mobile): single stacked column. mobileInboxView
               (see its declaration above — deliberately NOT
               selectedConversationId, which stays "which conversation's
@@ -1429,17 +1431,20 @@ export default function ClientMessages() {
               persistent sidebar it doesn't have room for. mobileInboxView
               is ignored here — the md:flex on the aside/section below
               always wins. Conversation Card is still a drawer here too.
-            - xl (desktop, narrower): both panes visible at the original list
-              width, alongside the now-persistent sidebar. Conversation Card
-              is still a drawer — sidebar + list + chat + a fourth persistent
-              column would be too cramped at this width.
-            - 2xl+ (desktop, wide): a fourth grid column appears
-              (2xl:grid-cols-[...]) for the Conversation Card as a permanent
-              pane — Sidebar | Conversation List | Chat | Conversation Card,
-              per the approved design. The drawer/info-button variant is
-              hidden here (2xl:hidden on both) since the card is already
-              always visible. */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[380px_minmax(0,1fr)] 2xl:grid-cols-[380px_minmax(0,1fr)_320px]">
+            - xl+ (desktop): a third grid column appears (xl:grid-cols-[...])
+              for the Conversation Card as a permanent ~300px pane —
+              Sidebar | Conversation List | Chat | Conversation Card, per
+              the approved design. This is the same breakpoint the
+              dashboard sidebar itself becomes persistent at, so both
+              appear together. The drawer/info-button variant is hidden
+              here (xl:hidden on both) since the card is already always
+              visible. List narrowed to 320px and card to 300px (down
+              from an initial 380px/320px) specifically to give the Chat
+              column (minmax(0,1fr), gets whatever's left) more breathing
+              room at a real ~1360px desktop viewport — it already
+              scrolls/wraps its own content, never forces the row
+              wider. */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_300px]">
         <aside className={`${mobileInboxView === "chat" ? "hidden md:flex" : "flex"} h-full min-h-0 flex-col border-e border-slate-100 bg-slate-50/50`}>
           <div className="shrink-0 border-b border-slate-100 p-3">
             <div className="mb-2 flex items-center justify-between gap-3">
@@ -1665,8 +1670,8 @@ export default function ClientMessages() {
                       <button onClick={reopenConversation} disabled={updatingStatus} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">{t("messagesPage.reopenConversation")}</button>
                     )}
                     {/* Conversation Card V1 — opens the same card as the
-                        persistent 2xl+ panel, as a drawer/sheet. Hidden at
-                        2xl+ since the panel is already always visible there
+                        persistent xl+ panel, as a drawer/sheet. Hidden at
+                        xl+ since the panel is already always visible there
                         (see the grid comment above). Available regardless
                         of conversationStatus, unlike the action buttons
                         above — the card's lifecycle/notes context is useful
@@ -1675,7 +1680,7 @@ export default function ClientMessages() {
                       type="button"
                       onClick={() => setCardOpen(true)}
                       aria-label={t("conversationCard.openButton")}
-                      className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-600 shadow-sm hover:bg-slate-50 2xl:hidden"
+                      className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-600 shadow-sm hover:bg-slate-50 xl:hidden"
                     >
                       <InformationCircleIcon className="h-4 w-4" />
                     </button>
@@ -1857,13 +1862,13 @@ export default function ClientMessages() {
           )}
         </section>
 
-        {/* Conversation Card V1 — persistent 4th column, 2xl+ only (see the
+        {/* Conversation Card V1 — persistent 3rd column, xl+ only (see the
             grid comment above). Always rendered as its own grid track so
             the column width stays reserved even with no conversation
             selected; the empty-state message below matches the chat pane's
             own "select a conversation" placeholder. The drawer variant
-            below (< 2xl) is the same component, just mounted differently. */}
-        <aside className="hidden h-full min-h-0 flex-col border-s border-slate-100 bg-slate-50/50 2xl:flex">
+            below (< xl) is the same component, just mounted differently. */}
+        <aside className="hidden h-full min-h-0 flex-col border-s border-slate-100 bg-slate-50/50 xl:flex">
           {selectedConversation ? (
             <ConversationCard conversationId={selectedConversation.conversation_id} actorUserId={user?.id} variant="panel" />
           ) : (
