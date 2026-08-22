@@ -334,7 +334,7 @@ export default function ClientMessages() {
       const [{ data: stateRows, error: stateError }, { data: messageRows, error: messageError }, { data: leadRows, error: leadError }] = await Promise.all([
         supabase
           .from("conversation_state")
-          .select("*, assigned_user:assigned_user_id(id, name)")
+          .select("*, assigned_user:assigned_user_id(id, name), system_assigned_user:system_assigned_user_id(id, name)")
           .eq("client_id", clientId)
           .order("updated_at", { ascending: false }),
         supabase
@@ -382,6 +382,11 @@ export default function ClientMessages() {
             assigned_user_id: state?.assigned_user_id || null,
             assigned_at: state?.assigned_at || null,
             assigned_user: state?.assigned_user || null,
+            // Smart Assignment V1 — a RECOMMENDATION, never ownership; see
+            // the badge rendered below (deliberately distinct from the
+            // assigned_user "claimed by" badge above).
+            system_assigned_user_id: state?.system_assigned_user_id || null,
+            system_assigned_user: state?.system_assigned_user || null,
             updated_at: state?.updated_at || msg.created_at,
             last_message: getMessageText(msg) || "",
             last_message_at: msg.created_at,
@@ -1142,6 +1147,33 @@ export default function ClientMessages() {
                               {t("messagesPage.claimedByPrefix", { name: conv.assigned_user?.name || t("roles.agent") })}
                             </span>
                           )}
+                          {/* Smart Assignment V1 — a system RECOMMENDATION,
+                              shown only while still unclaimed AND still
+                              waiting_human. Deliberately a different color
+                              (indigo, not emerald) from the "claimed by"
+                              badge above so it never reads as final
+                              ownership. Falls back to a neutral "Unassigned"
+                              label when there is no recommendation either.
+                              Gated on conversation_status too (not just
+                              assigned_user_id) because neither solve nor
+                              reopen clears system_assigned_user_id — an
+                              active/closed/reopened conversation can still
+                              carry a stale recommendation from a previous
+                              waiting_human cycle that must not be shown
+                              here. */}
+                          {conv.conversation_status === "waiting_human" && !conv.assigned_user_id && (
+                            conv.system_assigned_user_id ? (
+                              <span className="rounded-full border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-600">
+                                {conv.system_assigned_user_id === user?.id
+                                  ? t("messagesPage.systemSuggestedYou")
+                                  : t("messagesPage.systemSuggestedPrefix", { name: conv.system_assigned_user?.name || t("roles.agent") })}
+                              </span>
+                            ) : (
+                              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-bold text-slate-500">
+                                {t("messagesPage.unassigned")}
+                              </span>
+                            )
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1209,6 +1241,27 @@ export default function ClientMessages() {
                     {conversationStatus === "waiting_human" && !selectedConversation.assigned_user_id && (
                       <>
                         <span className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">{t("common.waitingHuman")}</span>
+                        {/* Smart Assignment V1 — a system RECOMMENDATION,
+                            not ownership: deliberately a different color
+                            from the "claimed by" pill below (and from
+                            the amber "waiting" badge above), and the Take
+                            Conversation button right after it stays fully
+                            enabled/available regardless of who this
+                            suggests — any eligible employee can still
+                            accept first. Falls back to a neutral
+                            "Unassigned" label when there is no
+                            recommendation either. */}
+                        {selectedConversation.system_assigned_user_id ? (
+                          <span className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-600">
+                            {selectedConversation.system_assigned_user_id === user?.id
+                              ? t("messagesPage.systemSuggestedYou")
+                              : t("messagesPage.systemSuggestedPrefix", { name: selectedConversation.system_assigned_user?.name || t("roles.agent") })}
+                          </span>
+                        ) : (
+                          <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-500">
+                            {t("messagesPage.unassigned")}
+                          </span>
+                        )}
                         <button
                           onClick={() => claimConversation(selectedConversation.conversation_id)}
                           disabled={claimingId === selectedConversation.conversation_id}
