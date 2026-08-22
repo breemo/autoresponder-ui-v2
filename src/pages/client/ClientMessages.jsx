@@ -250,7 +250,7 @@ function StatCard({ label, value, hint, icon, tone = "indigo" }) {
 // Conversation Card V1 — lifecycle/context summary + internal notes, shown
 // beside the chat (desktop) or as a drawer (tablet/mobile, see the
 // `variant`/`open`/`onClose` props). Entirely self-contained: fetches its
-// own data from /api/conversation-card + /api/conversation-notes whenever
+// own data from /api/conversation (details + ?resource=notes) whenever
 // `conversationId` changes, independent of the conversations list state
 // ClientMessages itself already holds (that list only carries the small
 // subset of fields needed for badges — this card needs the fuller
@@ -295,7 +295,7 @@ function ConversationCard({ conversationId, actorUserId, variant, open, onClose 
 
     const qs = `actor_user_id=${encodeURIComponent(actorUserId)}&conversation_id=${encodeURIComponent(conversationId)}`;
 
-    fetch(`/api/conversation-card?${qs}`)
+    fetch(`/api/conversation?${qs}`)
       .then((res) => res.json().catch(() => ({})))
       .then((data) => {
         if (cancelled) return;
@@ -311,7 +311,7 @@ function ConversationCard({ conversationId, actorUserId, variant, open, onClose 
         if (!cancelled) setCardLoading(false);
       });
 
-    fetch(`/api/conversation-notes?${qs}`)
+    fetch(`/api/conversation?resource=notes&${qs}`)
       .then((res) => res.json().catch(() => ({})))
       .then((data) => {
         if (cancelled) return;
@@ -339,10 +339,10 @@ function ConversationCard({ conversationId, actorUserId, variant, open, onClose 
     setAddingNote(true);
     setNotesError("");
     try {
-      const response = await fetch("/api/conversation-notes", {
+      const response = await fetch("/api/conversation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "add", actor_user_id: actorUserId, conversation_id: conversationId, body }),
+        body: JSON.stringify({ action: "add_note", actor_user_id: actorUserId, conversation_id: conversationId, body }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data?.success) throw new Error(data?.message || t("conversationCard.noteAddFailed"));
@@ -373,10 +373,10 @@ function ConversationCard({ conversationId, actorUserId, variant, open, onClose 
     setSavingNoteId(noteId);
     setNotesError("");
     try {
-      const response = await fetch("/api/conversation-notes", {
+      const response = await fetch("/api/conversation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "edit", actor_user_id: actorUserId, note_id: noteId, body }),
+        body: JSON.stringify({ action: "edit_note", actor_user_id: actorUserId, note_id: noteId, body }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data?.success) throw new Error(data?.message || t("conversationCard.noteEditFailed"));
@@ -396,10 +396,10 @@ function ConversationCard({ conversationId, actorUserId, variant, open, onClose 
     setDeletingNoteId(noteId);
     setNotesError("");
     try {
-      const response = await fetch("/api/conversation-notes", {
+      const response = await fetch("/api/conversation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", actor_user_id: actorUserId, note_id: noteId }),
+        body: JSON.stringify({ action: "delete_note", actor_user_id: actorUserId, note_id: noteId }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data?.success) throw new Error(data?.message || t("conversationCard.noteDeleteFailed"));
