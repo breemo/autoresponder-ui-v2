@@ -613,6 +613,11 @@ export default function ClientMessages() {
   const [selectedConversationId, setSelectedConversationId] = useState(null);
   const [conversationMessages, setConversationMessages] = useState([]);
   const [selectedLead, setSelectedLead] = useState(null);
+  // True only when this client has more than one distinct WhatsApp
+  // channel_key among its current conversations — see fetchConversations.
+  // Drives the small "WhatsApp: <number/instance name>" identifier so a
+  // single-WhatsApp-number client's UI stays exactly as it looks today.
+  const [multipleWhatsappNumbers, setMultipleWhatsappNumbers] = useState(false);
 
   // Below md, which single Inbox pane is showing — "list" or "chat" —
   // deliberately kept separate from selectedConversationId (which is only
@@ -687,6 +692,24 @@ export default function ClientMessages() {
     };
   }, [attachment]);
 
+  // Conversation Model Redesign — Client Portal read-model migration.
+  // `conversations` (not legacy `conversation_state`) is now the source of
+  // truth for every conversation ROW: conversations are listed and keyed
+  // by their own `id`, never grouped/deduplicated by sender_id. This is
+  // what makes two conversations with the same sender_id but different
+  // channel_identity_id (e.g. the same customer messaging two different
+  // WhatsApp numbers) correctly appear as two independent entries with
+  // their own real status/assignment, instead of one silently overwriting
+  // the other's lifecycle fields the way conversation_state's
+  // UNIQUE (client_id, sender_id) row used to (see the Conversation State
+  // Dependency Audit). `contact_channel_identities` is resolved per
+  // conversation (via channel_identity_id) purely for its identity fields
+  // (sender_id/platform/channel_key) — it is never used as a grouping key
+  // either. `client_whatsapp` is resolved additionally, per WhatsApp
+  // conversation, so the Portal can show which business WhatsApp
+  // number/instance actually received it. `messages`/`leads` stay
+  // enrichment-only (last message preview, counts, lead name) exactly as
+  // before — their queries and grouping-by-conversation_id are unchanged.
   async function fetchConversations() {
     if (!clientId) return;
 
@@ -694,12 +717,31 @@ export default function ClientMessages() {
       setLoadingConversations(true);
       setError("");
 
-      const [{ data: stateRows, error: stateError }, { data: messageRows, error: messageError }, { data: leadRows, error: leadError }] = await Promise.all([
+      const [
+        { data: conversationRows, error: conversationError },
+        { data: channelIdentityRows, error: channelIdentityError },
+        { data: whatsappRows, error: whatsappError },
+        { data: messageRows, error: messageError },
+        { data: leadRows, error: leadError },
+      ] = await Promise.all([
         supabase
-          .from("conversation_state")
-          .select("*, assigned_user:assigned_user_id(id, name), system_assigned_user:system_assigned_user_id(id, name)")
+          .from("conversations")
+          .select(
+            "id, client_id, contact_id, channel_identity_id, platform, conversation_status, current_step, " +
+              "assigned_user_id, assigned_at, assigned_user:assigned_user_id(id, name), " +
+              "system_assigned_user_id, system_assigned_at, system_assigned_user:system_assigned_user_id(id, name), " +
+              "solved_by, solved_at, reopened_by, reopened_at, last_message_at, created_at, updated_at"
+          )
           .eq("client_id", clientId)
-          .order("updated_at", { ascending: false }),
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("contact_channel_identities")
+          .select("id, sender_id, platform, channel_key")
+          .eq("client_id", clientId),
+        supabase
+          .from("client_whatsapp")
+          .select("channel_key, display_name, phone")
+          .eq("client_id", clientId),
         supabase
           .from("messages")
           .select("id, client_id, conversation_id, message, created_at, direction, channel, sender, is_read")
@@ -712,13 +754,21 @@ export default function ClientMessages() {
           .order("created_at", { ascending: false }),
       ]);
 
-      if (stateError) throw stateError;
+      if (conversationError) throw conversationError;
+      if (channelIdentityError) throw channelIdentityError;
+      if (whatsappError) throw whatsappError;
       if (messageError) throw messageError;
       if (leadError) throw leadError;
 
-      const stateMap = new Map();
-      for (const state of stateRows || []) {
-        if (state.conversation_id) stateMap.set(state.conversation_id, state);
+      const channelIdentityMap = new Map();
+      for (const identity of channelIdentityRows || []) channelIdentityMap.set(identity.id, identity);
+
+      // channel_key is only meaningful for WhatsApp today (see the Stage A/B
+      // architecture reports) — keyed by channel_key, not sender, so two
+      // numbers never collide here.
+      const whatsappByChannelKey = new Map();
+      for (const wa of whatsappRows || []) {
+        if (wa.channel_key) whatsappByChannelKey.set(wa.channel_key, wa);
       }
 
       const leadMap = new Map();
@@ -726,70 +776,106 @@ export default function ClientMessages() {
         if (lead.conversation_id && !leadMap.has(lead.conversation_id)) leadMap.set(lead.conversation_id, lead);
       }
 
-      const conversationMap = new Map();
+      // Enrichment only: last message preview/time/direction + counts, per
+      // conversation_id. messageRows is already newest-first, so the first
+      // occurrence seen per conversation_id is the latest message —
+      // unchanged from the previous implementation's ordering assumption.
+      const messageAggByConversation = new Map();
       for (const msg of messageRows || []) {
         if (!msg.conversation_id) continue;
-        const state = stateMap.get(msg.conversation_id);
-        const lead = leadMap.get(msg.conversation_id);
-        const existing = conversationMap.get(msg.conversation_id);
-
+        const existing = messageAggByConversation.get(msg.conversation_id);
         if (!existing) {
-          conversationMap.set(msg.conversation_id, {
-            conversation_id: msg.conversation_id,
-            client_id: clientId,
-            sender_id: state?.sender_id || msg.sender || "",
-            platform: state?.platform || msg.channel || "",
-            channel: msg.channel || state?.platform || "",
-            conversation_status: state?.conversation_status || "active",
-            current_step: state?.current_step || null,
-            assigned_user_id: state?.assigned_user_id || null,
-            assigned_at: state?.assigned_at || null,
-            assigned_user: state?.assigned_user || null,
-            // Smart Assignment V1 — a RECOMMENDATION, never ownership; see
-            // the badge rendered below (deliberately distinct from the
-            // assigned_user "claimed by" badge above).
-            system_assigned_user_id: state?.system_assigned_user_id || null,
-            system_assigned_user: state?.system_assigned_user || null,
-            updated_at: state?.updated_at || msg.created_at,
-            last_message: getMessageText(msg) || "",
-            last_message_at: msg.created_at,
-            sender: lead?.name || msg.sender || state?.sender_id || "",
-            last_direction: msg.direction || "",
-            lead_name: lead?.name || null,
-            lead_phone: lead?.phone || null,
-            has_lead: !!lead,
-            messages_count: 1,
-            unread_count: msg.is_read === false ? 1 : 0,
+          messageAggByConversation.set(msg.conversation_id, {
+            count: 1,
+            unread: msg.is_read === false ? 1 : 0,
+            lastMessage: getMessageText(msg) || "",
+            lastAt: msg.created_at,
+            lastDirection: msg.direction || "",
+            fallbackSender: msg.sender || "",
           });
         } else {
-          existing.messages_count += 1;
-          if (msg.is_read === false) existing.unread_count += 1;
+          existing.count += 1;
+          if (msg.is_read === false) existing.unread += 1;
         }
       }
 
-      for (const state of stateRows || []) {
-        if (!state.conversation_id || conversationMap.has(state.conversation_id)) continue;
-        const lead = leadMap.get(state.conversation_id);
-        conversationMap.set(state.conversation_id, {
-          ...state,
-          last_message: "",
-          last_message_at: state.updated_at,
-          channel: state.platform || "",
-          sender: lead?.name || state.sender_id || "",
-          last_direction: "",
+      // Primary loop: one entry per `conversations` row, keyed by its own
+      // id — CRITICAL: never grouped or deduplicated by sender_id. Two rows
+      // sharing a sender_id but with different channel_identity_id remain
+      // two separate entries here, each with its own real status/assignment
+      // straight from its own row.
+      const merged = (conversationRows || []).map((row) => {
+        const channelIdentity = channelIdentityMap.get(row.channel_identity_id) || null;
+        const lead = leadMap.get(row.id);
+        const agg = messageAggByConversation.get(row.id);
+        const platform = row.platform || channelIdentity?.platform || "";
+        const senderId = channelIdentity?.sender_id || agg?.fallbackSender || "";
+        const whatsappInstance =
+          platform.toLowerCase() === "whatsapp" && channelIdentity?.channel_key
+            ? whatsappByChannelKey.get(channelIdentity.channel_key) || null
+            : null;
+
+        return {
+          conversation_id: row.id,
+          client_id: row.client_id,
+          contact_id: row.contact_id,
+          channel_identity_id: row.channel_identity_id,
+          sender_id: senderId,
+          channel_key: channelIdentity?.channel_key || null,
+          platform,
+          channel: platform,
+          conversation_status: row.conversation_status || "active",
+          current_step: row.current_step || null,
+          assigned_user_id: row.assigned_user_id || null,
+          assigned_at: row.assigned_at || null,
+          assigned_user: row.assigned_user || null,
+          // Smart Assignment V1 — a RECOMMENDATION, never ownership; see
+          // the badge rendered below (deliberately distinct from the
+          // assigned_user "claimed by" badge above).
+          system_assigned_user_id: row.system_assigned_user_id || null,
+          system_assigned_at: row.system_assigned_at || null,
+          system_assigned_user: row.system_assigned_user || null,
+          solved_by: row.solved_by || null,
+          solved_at: row.solved_at || null,
+          reopened_by: row.reopened_by || null,
+          reopened_at: row.reopened_at || null,
+          created_at: row.created_at,
+          // conversations.updated_at is a real column but last_message_at
+          // is currently never written by the resolver (see the Stage B
+          // report) — the message-derived timestamp below stays the
+          // reliable "how recent" signal, exactly like before.
+          updated_at: row.updated_at || row.created_at,
+          last_message: agg?.lastMessage || "",
+          last_message_at: agg?.lastAt || row.last_message_at || row.created_at,
+          last_direction: agg?.lastDirection || "",
+          sender: lead?.name || senderId || agg?.fallbackSender || "",
           lead_name: lead?.name || null,
           lead_phone: lead?.phone || null,
           has_lead: !!lead,
-          messages_count: 0,
-          unread_count: 0,
-        });
-      }
+          messages_count: agg?.count || 0,
+          unread_count: agg?.unread || 0,
+          // Only populated for WhatsApp conversations with a resolvable
+          // channel_key -- null otherwise, so non-WhatsApp channels and
+          // single-number clients render exactly as before.
+          whatsapp_instance: whatsappInstance
+            ? { display_name: whatsappInstance.display_name || null, phone: whatsappInstance.phone || null }
+            : null,
+        };
+      });
 
-      const merged = Array.from(conversationMap.values()).sort((a, b) => {
+      merged.sort((a, b) => {
         const aTime = new Date(a.last_message_at || a.updated_at || 0).getTime();
         const bTime = new Date(b.last_message_at || b.updated_at || 0).getTime();
         return bTime - aTime;
       });
+
+      // Small identifier only appears once it's actually needed to
+      // disambiguate — a client with a single WhatsApp number keeps
+      // exactly today's appearance.
+      const distinctWhatsappChannelKeys = new Set(
+        merged.filter((c) => c.platform?.toLowerCase() === "whatsapp" && c.channel_key).map((c) => c.channel_key)
+      );
+      setMultipleWhatsappNumbers(distinctWhatsappChannelKeys.size > 1);
 
       setConversations(merged);
       // Auto-selecting the first conversation here is safe on every
@@ -1514,6 +1600,18 @@ export default function ClientMessages() {
                         <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{conv.last_message || t("messagesPage.noMessageYet")}</p>
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                           <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${platformClass}`}>{conv.channel || conv.platform || t("messagesPage.unknownChannel")}</span>
+                          {/* Only shown once a client actually has more than
+                              one WhatsApp number connected -- see
+                              multipleWhatsappNumbers in fetchConversations.
+                              Plain literal label (not a translation key):
+                              this is a small, additive identifier, not new
+                              page copy, and keeps this change scoped to
+                              this one file. */}
+                          {multipleWhatsappNumbers && conv.platform?.toLowerCase() === "whatsapp" && conv.whatsapp_instance && (
+                            <span className="rounded-full border border-teal-100 bg-teal-50 px-2 py-0.5 text-[11px] font-bold text-teal-700">
+                              WhatsApp: {conv.whatsapp_instance.display_name || conv.whatsapp_instance.phone}
+                            </span>
+                          )}
                           <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${statusClass}`}>{conv.conversation_status || "active"}</span>
                           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">{t("messagesPage.messagesCountSuffix", { count: conv.messages_count })}</span>
                           {conv.unread_count > 0 && (
@@ -1601,6 +1699,11 @@ export default function ClientMessages() {
                       <h2 className="truncate text-base font-bold text-slate-950">{selectedLead?.name || selectedConversation.lead_name || selectedConversation.sender || selectedConversation.sender_id || t("common.noName")}</h2>
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                         <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">{selectedConversation.channel || selectedConversation.platform || t("messagesPage.unknownChannel")}</span>
+                        {multipleWhatsappNumbers && selectedConversation.platform?.toLowerCase() === "whatsapp" && selectedConversation.whatsapp_instance && (
+                          <span className="rounded-full border border-teal-100 bg-teal-50 px-3 py-1 text-xs font-bold text-teal-700">
+                            WhatsApp: {selectedConversation.whatsapp_instance.display_name || selectedConversation.whatsapp_instance.phone}
+                          </span>
+                        )}
                         <span className={`rounded-full border px-3 py-1 text-xs font-bold ${statusStyles[selectedConversation.conversation_status] || "bg-slate-100 text-slate-600 border-slate-200"}`}>{selectedConversation.conversation_status || "active"}</span>
                         <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-600">{t("messagesPage.messagesCountSuffix", { count: conversationMessages.length })}</span>
                       </div>
