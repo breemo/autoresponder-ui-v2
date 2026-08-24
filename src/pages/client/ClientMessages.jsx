@@ -692,182 +692,37 @@ export default function ClientMessages() {
     };
   }, [attachment]);
 
-  // Conversation Model Redesign — Client Portal read-model migration.
-  // `conversations` (not legacy `conversation_state`) is now the source of
-  // truth for every conversation ROW: conversations are listed and keyed
-  // by their own `id`, never grouped/deduplicated by sender_id. This is
-  // what makes two conversations with the same sender_id but different
-  // channel_identity_id (e.g. the same customer messaging two different
-  // WhatsApp numbers) correctly appear as two independent entries with
-  // their own real status/assignment, instead of one silently overwriting
-  // the other's lifecycle fields the way conversation_state's
-  // UNIQUE (client_id, sender_id) row used to (see the Conversation State
-  // Dependency Audit). `contact_channel_identities` is resolved per
-  // conversation (via channel_identity_id) purely for its identity fields
-  // (sender_id/platform/channel_key) — it is never used as a grouping key
-  // either. `client_whatsapp` is resolved additionally, per WhatsApp
-  // conversation, so the Portal can show which business WhatsApp
-  // number/instance actually received it. `messages`/`leads` stay
-  // enrichment-only (last message preview, counts, lead name) exactly as
-  // before — their queries and grouping-by-conversation_id are unchanged.
+  // Conversation Model Redesign — Client Portal read-model migration,
+  // server-side read path. contacts/contact_channel_identities/
+  // conversations have RLS enabled with zero browser policies (this app
+  // has no Supabase Auth session, so the anon-keyed browser client can
+  // never read them directly — this is intentional, not a bug to route
+  // around client-side). This function no longer queries conversations,
+  // contact_channel_identities, or client_whatsapp directly from the
+  // browser at all: /api/conversations performs the exact same merge
+  // (conversations as the source of truth, one entry per conversation
+  // id, never grouped/deduplicated by sender_id — see that file for the
+  // full rationale) server-side on the service-role client, scoped to
+  // the authenticated actor's own membership via actor_user_id (never a
+  // client_id trusted from the browser), and returns the already-merged
+  // shape below unchanged. messages/leads/Storage and every other query
+  // in this file are untouched — only this list-loading query moved
+  // server-side.
   async function fetchConversations() {
-    if (!clientId) return;
+    if (!clientId || !user?.id) return;
 
     try {
       setLoadingConversations(true);
       setError("");
 
-      const [
-        { data: conversationRows, error: conversationError },
-        { data: channelIdentityRows, error: channelIdentityError },
-        { data: whatsappRows, error: whatsappError },
-        { data: messageRows, error: messageError },
-        { data: leadRows, error: leadError },
-      ] = await Promise.all([
-        supabase
-          .from("conversations")
-          .select(
-            "id, client_id, contact_id, channel_identity_id, platform, conversation_status, current_step, " +
-              "assigned_user_id, assigned_at, assigned_user:assigned_user_id(id, name), " +
-              "system_assigned_user_id, system_assigned_at, system_assigned_user:system_assigned_user_id(id, name), " +
-              "solved_by, solved_at, reopened_by, reopened_at, last_message_at, created_at, updated_at"
-          )
-          .eq("client_id", clientId)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("contact_channel_identities")
-          .select("id, sender_id, platform, channel_key")
-          .eq("client_id", clientId),
-        supabase
-          .from("client_whatsapp")
-          .select("channel_key, display_name, phone")
-          .eq("client_id", clientId),
-        supabase
-          .from("messages")
-          .select("id, client_id, conversation_id, message, created_at, direction, channel, sender, is_read")
-          .eq("client_id", clientId)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("leads")
-          .select("conversation_id, name, phone, created_at")
-          .eq("client_id", clientId)
-          .order("created_at", { ascending: false }),
-      ]);
+      const response = await fetch(`/api/conversations?actor_user_id=${encodeURIComponent(user.id)}`);
+      const data = await response.json().catch(() => ({}));
 
-      if (conversationError) throw conversationError;
-      if (channelIdentityError) throw channelIdentityError;
-      if (whatsappError) throw whatsappError;
-      if (messageError) throw messageError;
-      if (leadError) throw leadError;
-
-      const channelIdentityMap = new Map();
-      for (const identity of channelIdentityRows || []) channelIdentityMap.set(identity.id, identity);
-
-      // channel_key is only meaningful for WhatsApp today (see the Stage A/B
-      // architecture reports) — keyed by channel_key, not sender, so two
-      // numbers never collide here.
-      const whatsappByChannelKey = new Map();
-      for (const wa of whatsappRows || []) {
-        if (wa.channel_key) whatsappByChannelKey.set(wa.channel_key, wa);
+      if (!response.ok || data?.success === false) {
+        throw new Error(data?.message || t("messagesPage.errorFetchConversations"));
       }
 
-      const leadMap = new Map();
-      for (const lead of leadRows || []) {
-        if (lead.conversation_id && !leadMap.has(lead.conversation_id)) leadMap.set(lead.conversation_id, lead);
-      }
-
-      // Enrichment only: last message preview/time/direction + counts, per
-      // conversation_id. messageRows is already newest-first, so the first
-      // occurrence seen per conversation_id is the latest message —
-      // unchanged from the previous implementation's ordering assumption.
-      const messageAggByConversation = new Map();
-      for (const msg of messageRows || []) {
-        if (!msg.conversation_id) continue;
-        const existing = messageAggByConversation.get(msg.conversation_id);
-        if (!existing) {
-          messageAggByConversation.set(msg.conversation_id, {
-            count: 1,
-            unread: msg.is_read === false ? 1 : 0,
-            lastMessage: getMessageText(msg) || "",
-            lastAt: msg.created_at,
-            lastDirection: msg.direction || "",
-            fallbackSender: msg.sender || "",
-          });
-        } else {
-          existing.count += 1;
-          if (msg.is_read === false) existing.unread += 1;
-        }
-      }
-
-      // Primary loop: one entry per `conversations` row, keyed by its own
-      // id — CRITICAL: never grouped or deduplicated by sender_id. Two rows
-      // sharing a sender_id but with different channel_identity_id remain
-      // two separate entries here, each with its own real status/assignment
-      // straight from its own row.
-      const merged = (conversationRows || []).map((row) => {
-        const channelIdentity = channelIdentityMap.get(row.channel_identity_id) || null;
-        const lead = leadMap.get(row.id);
-        const agg = messageAggByConversation.get(row.id);
-        const platform = row.platform || channelIdentity?.platform || "";
-        const senderId = channelIdentity?.sender_id || agg?.fallbackSender || "";
-        const whatsappInstance =
-          platform.toLowerCase() === "whatsapp" && channelIdentity?.channel_key
-            ? whatsappByChannelKey.get(channelIdentity.channel_key) || null
-            : null;
-
-        return {
-          conversation_id: row.id,
-          client_id: row.client_id,
-          contact_id: row.contact_id,
-          channel_identity_id: row.channel_identity_id,
-          sender_id: senderId,
-          channel_key: channelIdentity?.channel_key || null,
-          platform,
-          channel: platform,
-          conversation_status: row.conversation_status || "active",
-          current_step: row.current_step || null,
-          assigned_user_id: row.assigned_user_id || null,
-          assigned_at: row.assigned_at || null,
-          assigned_user: row.assigned_user || null,
-          // Smart Assignment V1 — a RECOMMENDATION, never ownership; see
-          // the badge rendered below (deliberately distinct from the
-          // assigned_user "claimed by" badge above).
-          system_assigned_user_id: row.system_assigned_user_id || null,
-          system_assigned_at: row.system_assigned_at || null,
-          system_assigned_user: row.system_assigned_user || null,
-          solved_by: row.solved_by || null,
-          solved_at: row.solved_at || null,
-          reopened_by: row.reopened_by || null,
-          reopened_at: row.reopened_at || null,
-          created_at: row.created_at,
-          // conversations.updated_at is a real column but last_message_at
-          // is currently never written by the resolver (see the Stage B
-          // report) — the message-derived timestamp below stays the
-          // reliable "how recent" signal, exactly like before.
-          updated_at: row.updated_at || row.created_at,
-          last_message: agg?.lastMessage || "",
-          last_message_at: agg?.lastAt || row.last_message_at || row.created_at,
-          last_direction: agg?.lastDirection || "",
-          sender: lead?.name || senderId || agg?.fallbackSender || "",
-          lead_name: lead?.name || null,
-          lead_phone: lead?.phone || null,
-          has_lead: !!lead,
-          messages_count: agg?.count || 0,
-          unread_count: agg?.unread || 0,
-          // Only populated for WhatsApp conversations with a resolvable
-          // channel_key -- null otherwise, so non-WhatsApp channels and
-          // single-number clients render exactly as before.
-          whatsapp_instance: whatsappInstance
-            ? { display_name: whatsappInstance.display_name || null, phone: whatsappInstance.phone || null }
-            : null,
-        };
-      });
-
-      merged.sort((a, b) => {
-        const aTime = new Date(a.last_message_at || a.updated_at || 0).getTime();
-        const bTime = new Date(b.last_message_at || b.updated_at || 0).getTime();
-        return bTime - aTime;
-      });
+      const merged = data.conversations || [];
 
       // Small identifier only appears once it's actually needed to
       // disambiguate — a client with a single WhatsApp number keeps
