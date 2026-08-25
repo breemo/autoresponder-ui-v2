@@ -867,14 +867,20 @@ export default function ClientMessages() {
     return applyStatusChange("close", "closed", { currentStep: "done" });
   }
 
-  // Explicit reopen/reset to normal AI flow: conversation_status = active,
-  // current_step = null, and any existing claim is cleared — a conversation
-  // handed back to AI has no human owner until taken over again. Only ever
-  // called from a closed conversation (see the button below), which has no
-  // owner-concept, so this stays open to any Inbox-eligible teammate,
-  // matching pre-existing behavior.
+  // Explicit reopen: conversation_status = waiting_human (Human Mode),
+  // current_step = null, and any existing claim is cleared — a manually
+  // reopened conversation stays in Human Mode (automation remains blocked
+  // by the existing waiting_human guard) and returns to an unclaimed
+  // queue rather than auto-assigning whoever clicked Reopen; an explicit
+  // Claim is still required, matching every other escalation path. Only
+  // ever called from a closed conversation (see the button below), which
+  // has no owner-concept, so this stays open to any Inbox-eligible
+  // teammate, matching pre-existing behavior. See
+  // apply_conversation_lifecycle_action's 'reopen' action (Conversation
+  // Lifecycle V2 manual-reopen fix) for the authoritative server-side
+  // behavior this patch mirrors.
   function reopenConversation() {
-    return applyStatusChange("reopen", "active", { currentStep: null, clearAssignment: true });
+    return applyStatusChange("reopen", "waiting_human", { currentStep: null, clearAssignment: true });
   }
 
   // Explicit human takeover: conversation_status = waiting_human only.
