@@ -618,6 +618,7 @@
     "noMessagesForConversation": "No messages in this conversation.",
     "mustClaimFirst": "You must claim the conversation first",
     "claimedByNotice": "This conversation is claimed by {{name}}",
+    "conversationClosedNotice": "This conversation is closed. Reopen it to send a message.",
     "mediaComingSoon": "{{label}} — coming soon",
     "mediaImage": "Image",
     "mediaDocument": "File",

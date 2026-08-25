@@ -618,6 +618,7 @@
     "noMessagesForConversation": "لا توجد رسائل لهذه المحادثة.",
     "mustClaimFirst": "يجب استلام المحادثة أولاً",
     "claimedByNotice": "هذه المحادثة مستلمة بواسطة {{name}}",
+    "conversationClosedNotice": "هذه المحادثة مغلقة. أعد فتحها لإرسال رسالة.",
     "mediaComingSoon": "{{label}} — قريباً",
     "mediaImage": "صورة",
     "mediaDocument": "ملف",

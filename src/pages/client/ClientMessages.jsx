@@ -816,10 +816,10 @@ export default function ClientMessages() {
   // client_id/permission and, for `close`, verifies the actor is the
   // conversation's assigned employee whenever it's already waiting_human
   // (see api/conversation-lifecycle.js). `currentStep`/`preserveStep`/
-  // `clearAssignment` only shape the *local* optimistic patch to match what
-  // the server is known to have done for each action — they don't control
-  // server behavior.
-  async function applyStatusChange(action, newStatus, { currentStep = null, preserveStep = false, clearAssignment = false } = {}) {
+  // `clearAssignment`/`assignToActor` only shape the *local* optimistic
+  // patch to match what the server is known to have done for each action
+  // — they don't control server behavior.
+  async function applyStatusChange(action, newStatus, { currentStep = null, preserveStep = false, clearAssignment = false, assignToActor = false } = {}) {
     if (!selectedConversationId || !clientId) return;
 
     try {
@@ -843,11 +843,30 @@ export default function ClientMessages() {
         payload.assigned_user_id = null;
         payload.assigned_at = null;
       }
+      // Manual Reopen only: the employee performing the action becomes
+      // both the current designated employee and the actual owner
+      // immediately — there is no Smart Assignment step and no separate
+      // Claim in this scenario (see reopenConversation below and
+      // apply_conversation_lifecycle_action's 'reopen' action, which the
+      // server has already applied identically before this response
+      // returns).
+      if (assignToActor) {
+        const nowIso = new Date().toISOString();
+        payload.assigned_user_id = user?.id || null;
+        payload.assigned_at = nowIso;
+        payload.system_assigned_user_id = user?.id || null;
+        payload.system_assigned_at = nowIso;
+      }
 
       setConversations((prev) =>
         prev.map((conv) =>
           conv.conversation_id === selectedConversationId
-            ? { ...conv, ...payload, assigned_user: clearAssignment ? null : conv.assigned_user }
+            ? {
+                ...conv,
+                ...payload,
+                assigned_user: clearAssignment ? null : assignToActor ? { id: user?.id, name: user?.name } : conv.assigned_user,
+                system_assigned_user: assignToActor ? { id: user?.id, name: user?.name } : conv.system_assigned_user,
+              }
             : conv
         )
       );
@@ -868,19 +887,17 @@ export default function ClientMessages() {
   }
 
   // Explicit reopen: conversation_status = waiting_human (Human Mode),
-  // current_step = null, and any existing claim is cleared — a manually
-  // reopened conversation stays in Human Mode (automation remains blocked
-  // by the existing waiting_human guard) and returns to an unclaimed
-  // queue rather than auto-assigning whoever clicked Reopen; an explicit
-  // Claim is still required, matching every other escalation path. Only
-  // ever called from a closed conversation (see the button below), which
-  // has no owner-concept, so this stays open to any Inbox-eligible
-  // teammate, matching pre-existing behavior. See
-  // apply_conversation_lifecycle_action's 'reopen' action (Conversation
-  // Lifecycle V2 manual-reopen fix) for the authoritative server-side
-  // behavior this patch mirrors.
+  // current_step = null. Clicking Reopen itself means "I am reopening and
+  // taking this conversation" — there is no Smart Assignment step and no
+  // separate Claim afterward; the employee performing Reopen becomes both
+  // system_assigned_user_id and assigned_user_id immediately (assignToActor),
+  // matching apply_conversation_lifecycle_action's 'reopen' action exactly.
+  // Automation stays blocked (still waiting_human, unaffected by who owns
+  // it). Only ever called from a closed conversation (see the button
+  // below), which has no owner-concept yet, so this stays open to any
+  // Inbox-eligible teammate — whoever clicks it becomes the owner.
   function reopenConversation() {
-    return applyStatusChange("reopen", "waiting_human", { currentStep: null, clearAssignment: true });
+    return applyStatusChange("reopen", "waiting_human", { currentStep: null, assignToActor: true });
   }
 
   // Explicit human takeover: conversation_status = waiting_human only.
@@ -1334,10 +1351,14 @@ export default function ClientMessages() {
   // waiting_human, only the assigned employee may reply/close — and if
   // nobody has claimed it yet (assigned_user_id null), that correctly
   // evaluates to "not me" for everyone, blocking the composer/Close button
-  // until someone claims it.
+  // until someone claims it. A closed conversation is always read-only for
+  // everyone, regardless of who was assigned before it closed — Reopen
+  // (not Send) is the only available action until an employee explicitly
+  // reopens it.
   const isWaitingHuman = conversationStatus === "waiting_human";
+  const isClosedConversation = conversationStatus === "closed";
   const isOwnedByMe = !!selectedConversation?.assigned_user_id && selectedConversation.assigned_user_id === user?.id;
-  const canControlConversation = !isWaitingHuman || isOwnedByMe;
+  const canControlConversation = !isClosedConversation && (!isWaitingHuman || isOwnedByMe);
 
   // Media & Attachment Support — see SUPPORTED_MEDIA_CHANNEL_VALUES in
   // src/lib/mediaMessages.js for exactly which channel values this allows
@@ -1719,9 +1740,11 @@ export default function ClientMessages() {
 
                 {!canControlConversation && (
                   <div className="mb-2 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
-                    {selectedConversation.assigned_user_id
-                      ? t("messagesPage.claimedByNotice", { name: selectedConversation.assigned_user?.name || t("roles.agent") })
-                      : t("messagesPage.mustClaimFirst")}
+                    {isClosedConversation
+                      ? t("messagesPage.conversationClosedNotice")
+                      : selectedConversation.assigned_user_id
+                        ? t("messagesPage.claimedByNotice", { name: selectedConversation.assigned_user?.name || t("roles.agent") })
+                        : t("messagesPage.mustClaimFirst")}
                   </div>
                 )}
 
