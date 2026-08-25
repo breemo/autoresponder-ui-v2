@@ -14,21 +14,24 @@ import { PERMISSIONS } from "../src/lib/permissions.js";
 // messages/leads.
 //
 // Assignment fields (system_assigned_user_id/assigned_user_id and their
-// _at timestamps) are a deliberate, documented exception to "conversations
-// is the source of truth" above: apply_conversation_lifecycle_action
-// (Smart Assignment's 'system_assign' and Claim's 'accept') currently only
-// writes conversation_state — conversations.system_assigned_user_id/
-// assigned_user_id are never written by anything today, so reading them
-// from `conversations` here would always render as unassigned regardless
-// of real DB state. This is a known gap already scoped for a future
-// Assignment/Lifecycle V2 migration (writing conversations directly); until
-// that lands, these four fields specifically are read from
-// conversation_state instead (matched by its own conversation_id column —
-// the same lookup api/conversation.js's Conversation Card and
-// api/conversation-lifecycle.js's Claim already use), while every other
-// field on this response keeps coming from `conversations` unchanged. This
-// does not change what Smart Assignment/Claim write, or the meaning of
-// either field — only which table this one endpoint reads them from.
+// _at timestamps): as of the Conversation Lifecycle V2 migration
+// (supabase/migrations/20260825_conversation_lifecycle_v2.sql),
+// apply_conversation_lifecycle_action writes these authoritatively onto
+// `conversations` itself, with conversation_state kept as a temporary
+// compatibility dual-write only — so `conversations` is now preferred
+// FIRST for these four fields. conversation_state remains a fallback
+// (matched by its own conversation_id column — the same lookup
+// api/conversation.js's Conversation Card and
+// api/conversation-lifecycle.js's Claim already use) purely for
+// transitional safety: until that migration has actually been executed
+// against live Supabase, `conversations`' columns stay null and this
+// endpoint keeps working exactly as it did under the prior temporary
+// patch. Once the migration is confirmed live and conversations is
+// reliably populated, this fallback becomes dead weight that can be
+// removed — left in deliberately for now rather than assuming migration
+// timing. This does not change what Smart Assignment/Claim write, or the
+// meaning of either field — only which table this one endpoint prefers
+// reading them from.
 //
 // Shape: GET /api/conversations?actor_user_id=<id>
 //   -> { success: true, conversations: [...] }
@@ -221,16 +224,15 @@ export default async function handler(req, res) {
           ? whatsappByChannelKey.get(channelIdentity.channel_key) || null
           : null;
 
-      // See the module comment: conversation_state's snapshot (when a
-      // matching row exists) is authoritative for these four fields today,
-      // since it's the only place Smart Assignment/Claim actually write to
-      // — `row`'s own (always-null today) columns are only a fallback so
-      // this keeps working unchanged once a future fix writes them here.
+      // See the module comment: `conversations` (`row`) is now the
+      // authoritative source for these four fields — conversation_state's
+      // snapshot is only a fallback for as long as the Lifecycle V2
+      // migration hasn't actually been run against live Supabase yet.
       const stateAssignment = assignmentByConversationId.get(row.id) || null;
-      const systemAssignedUserId = stateAssignment?.system_assigned_user_id ?? row.system_assigned_user_id ?? null;
-      const systemAssignedAt = stateAssignment?.system_assigned_at ?? row.system_assigned_at ?? null;
-      const assignedUserId = stateAssignment?.assigned_user_id ?? row.assigned_user_id ?? null;
-      const assignedAt = stateAssignment?.assigned_at ?? row.assigned_at ?? null;
+      const systemAssignedUserId = row.system_assigned_user_id ?? stateAssignment?.system_assigned_user_id ?? null;
+      const systemAssignedAt = row.system_assigned_at ?? stateAssignment?.system_assigned_at ?? null;
+      const assignedUserId = row.assigned_user_id ?? stateAssignment?.assigned_user_id ?? null;
+      const assignedAt = row.assigned_at ?? stateAssignment?.assigned_at ?? null;
 
       return {
         conversation_id: row.id,
