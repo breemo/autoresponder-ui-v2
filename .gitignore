@@ -1,6 +1,17 @@
 # Dependencies
 node_modules/
 
+# This project's package manager is pnpm (see package.json's
+# "packageManager" field and vercel.json's explicit pnpm installCommand/
+# buildCommand) — pnpm-lock.yaml is the one lockfile Vercel's deploy
+# actually reads and enforces via --frozen-lockfile. package-lock.json is
+# an npm-generated artifact that can get created by accident if a local
+# `npm install`/`npm ci` is ever run in this repo (as happened once,
+# fixed in fix(build): sync dependency lockfile for vercel) — ignored so
+# it can never again drift out of sync with package.json unnoticed and
+# get committed alongside a real dependency change.
+package-lock.json
+
 # Environment variables
 .env
 .env.*
