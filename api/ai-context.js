@@ -1,5 +1,6 @@
 import { getSupabaseServerClient } from "./_lib/supabaseServer.js";
 import { resolveAiContext } from "./_lib/aiContext.js";
+import { buildPromptMessages } from "./_lib/promptBuilder.js";
 
 // AI Engine V1 — Phase 3: authoritative AI Context endpoint.
 //
@@ -14,19 +15,32 @@ import { resolveAiContext } from "./_lib/aiContext.js";
 // client_id is checked against the conversation's own row, not used to
 // select data directly).
 //
-// This endpoint does NOT build or return OpenAI prompt messages — that
-// is api/_lib/promptBuilder.js's job, kept as a separate, DB-query-free
-// module per the Phase 3 spec (§10: "must NOT perform DB queries
-// itself"). Wiring prompt-building into this endpoint's response, or
-// into the actual OpenAI call, is a workflow-cutover-phase decision, not
-// made here.
+// Workflow Cutover — Step 1: this endpoint now ALSO returns the
+// already-built OpenAI chat messages (system + history + current user),
+// produced by api/_lib/promptBuilder.js's buildPromptMessages() — the
+// same pure, DB-query-free module used everywhere else. resolveAiContext()
+// itself is untouched; buildPromptMessages() is called once, here, on its
+// already-resolved `context`, so n8n (or any future caller) never needs
+// to duplicate prompt-building logic — it just sends `messages` straight
+// to the OpenAI chat-completions call.
 //
 // Shape:
 //   POST /api/ai-context
 //   headers: { "x-ai-context-secret": <AI_CONTEXT_SECRET> }
 //   body: { conversation_id, client_id, current_message_text }
-//   -> { success: true, context: {...} }  (see api/_lib/aiContext.js for
-//      the exact normalized shape)
+//   -> { success: true, context: {...}, messages: [...] }
+//      (see api/_lib/aiContext.js for the exact normalized `context`
+//      shape, and api/_lib/promptBuilder.js for the exact `messages`
+//      shape — [system, ...history, current user])
+
+// Pure — no DB/network involved, so it's directly unit-testable
+// (api/_lib/__tests__/aiContextResponse.test.js) without a real Supabase
+// client. Kept as a named export purely so the handler's exact response
+// shape can be verified without going through getSupabaseServerClient()'s
+// real-credentials requirement.
+export function buildAiContextResponse(context) {
+  return { success: true, context, messages: buildPromptMessages(context) };
+}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -59,7 +73,7 @@ export default async function handler(req, res) {
       // are deliberately not distinguished in the response body).
       return res.status(result.status).json({ success: false, message: result.message, code: result.code });
     }
-    return res.status(200).json({ success: true, context: result.context });
+    return res.status(200).json(buildAiContextResponse(result.context));
   } catch (error) {
     console.error("ai-context: failed to resolve context:", { code: error?.code, message: error?.message });
     return res.status(500).json({ success: false, message: "Failed to resolve AI context" });
