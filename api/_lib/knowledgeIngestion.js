@@ -15,7 +15,20 @@
 // replaceChunks — the only function that ever deletes old chunks — is
 // called strictly AFTER extraction, chunking, AND embedding have all
 // already succeeded, never before.
-import pdfParse from "pdf-parse";
+// PDF extraction via unpdf (not pdf-parse — pdf-parse's own lib code does
+// `require(`./pdf.js/${options.version}/build/pdf.js`)`, a dynamic
+// template-literal require over 4 fully vendored pdf.js copies (~27MB)
+// that Vercel's serverless function bundler cannot statically trace,
+// causing it to conservatively include all of them and bloat
+// api/knowledge-documents.js's deployment package. unpdf ships a single
+// serverless-optimized pdf.js build (~2MB), resolved via one static,
+// literal `import('unpdf/pdfjs')` specifier — no canvas dependency is
+// pulled in unless a canvas resolver is explicitly passed, which it never
+// is here. Pinned to 1.7.0 (not latest 1.8.x) because 1.8.0+ declares
+// "engines": { "node": ">=22" }, a constraint this project does not
+// otherwise require; 1.7.0 has no engines field and includes the same
+// Node-polyfill handling for older Node versions.
+import { getDocumentProxy, extractText as extractPdfText } from "unpdf";
 import mammoth from "mammoth";
 import { KNOWLEDGE_BUCKET } from "../../src/lib/knowledgeDocuments.js";
 import { embedTexts } from "./openaiEmbeddings.js";
@@ -158,7 +171,8 @@ export async function extractText(buffer, mimeType) {
     let text = "";
 
     if (mimeType === "application/pdf") {
-      const result = await pdfParse(buffer);
+      const pdf = await getDocumentProxy(new Uint8Array(buffer));
+      const result = await extractPdfText(pdf, { mergePages: true });
       text = result?.text || "";
     } else if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
       const result = await mammoth.extractRawText({ buffer });

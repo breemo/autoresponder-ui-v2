@@ -80,7 +80,56 @@ test("csv: header-only input produces empty text", () => {
   assert.equal(csvToText(""), "");
 });
 
+// --- extractText: PDF fixture -------------------------------------------
+//
+// Builds a minimal, syntactically valid single-page PDF with a real text
+// layer entirely in-memory (no network, no fixture file) — offsets are
+// computed from the actual assembled string lengths rather than
+// hand-counted, so the fixture stays correct if the content ever changes.
+// This exercises the real unpdf (pdf.js) parser end-to-end, network-free.
+function buildMinimalPdf(text) {
+  const escaped = text.replace(/([()\\])/g, "\\$1");
+  const contentStream = `BT /F1 24 Tf 20 100 Td (${escaped}) Tj ET`;
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 4 0 R >> >> /MediaBox [0 0 300 144] /Contents 5 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Length ${contentStream.length} >>\nstream\n${contentStream}\nendstream`,
+  ];
+
+  let pdf = "%PDF-1.4\n";
+  const offsets = [];
+  objects.forEach((body, i) => {
+    offsets.push(pdf.length);
+    pdf += `${i + 1} 0 obj\n${body}\nendobj\n`;
+  });
+
+  const xrefStart = pdf.length;
+  let xref = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  offsets.forEach((offset) => {
+    xref += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  });
+  pdf += xref;
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+
+  return Buffer.from(pdf, "latin1");
+}
+
 // --- extractText ---------------------------------------------------------
+
+test("extractText: PDF text layer is extracted via unpdf", async () => {
+  const pdfBuffer = buildMinimalPdf("Hello, World!");
+  const result = await extractText(pdfBuffer, "application/pdf");
+  assert.equal(result.ok, true);
+  assert.match(result.text, /Hello, World!/);
+});
+
+test("extractText: corrupt/invalid PDF bytes are rejected as extraction_failed, never faked", async () => {
+  const result = await extractText(Buffer.from("this is not a real pdf file"), "application/pdf");
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "extraction_failed");
+});
 
 test("extractText: plain text is decoded directly", async () => {
   const result = await extractText(Buffer.from("Hello, this is our menu.", "utf-8"), "text/plain");

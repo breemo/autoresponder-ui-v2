@@ -13,12 +13,12 @@
     "@supabase/supabase-js": "^2.81.1",
     "i18next": "^26.3.6",
     "mammoth": "^1.12.1",
-    "pdf-parse": "^1.1.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-i18next": "^17.0.11",
     "react-router-dom": "^6.26.0",
-    "recharts": "^3.4.1"
+    "recharts": "^3.4.1",
+    "unpdf": "1.7.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",
