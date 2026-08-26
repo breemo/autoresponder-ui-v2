@@ -1,6 +1,6 @@
-import { getSupabaseServerClient } from "./_lib/supabaseServer.js";
-import { resolveActingMembership, actorHasPermission } from "./_lib/clientAuthz.js";
-import { PERMISSIONS } from "../src/lib/permissions.js";
+import { getSupabaseServerClient } from "./supabaseServer.js";
+import { resolveActingMembership, actorHasPermission } from "./clientAuthz.js";
+import { PERMISSIONS } from "../../src/lib/permissions.js";
 
 // Client Conversations (Inbox) list — server-side read model, Conversation
 // Model V2. Stage A's contacts/contact_channel_identities/conversations
@@ -21,8 +21,8 @@ import { PERMISSIONS } from "../src/lib/permissions.js";
 // compatibility dual-write only — so `conversations` is now preferred
 // FIRST for these four fields. conversation_state remains a fallback
 // (matched by its own conversation_id column — the same lookup
-// api/conversation.js's Conversation Card and
-// api/conversation-lifecycle.js's Claim already use) purely for
+// api/conversation.js's Conversation Card and this file's former
+// api/conversation-lifecycle.js Claim already use) purely for
 // transitional safety: until that migration has actually been executed
 // against live Supabase, `conversations`' columns stay null and this
 // endpoint keeps working exactly as it did under the prior temporary
@@ -33,7 +33,16 @@ import { PERMISSIONS } from "../src/lib/permissions.js";
 // meaning of either field — only which table this one endpoint prefers
 // reading them from.
 //
-// Shape: GET /api/conversations?actor_user_id=<id>
+// Vercel Hobby Function-count consolidation: this file was formerly the
+// top-level api/conversations.js. Behavior, response shape, and every
+// authorization/security check below are unchanged — only its file
+// location and export name moved, so it can be dispatched from
+// api/conversation.js (GET ?resource=list) instead of being its own
+// deployed Vercel Function (see the deployment-failure inspection
+// report). ClientMessages.jsx was updated to call the new URL; nothing
+// else changed.
+//
+// Shape: GET /api/conversation?resource=list&actor_user_id=<id>
 //   -> { success: true, conversations: [...] }
 //
 // Authorization: identical convention to every other endpoint in this
@@ -69,7 +78,7 @@ function getMessageText(msg = {}) {
   );
 }
 
-export default async function handler(req, res) {
+export async function handleConversationsList(req, res) {
   if (req.method !== "GET") {
     return res.status(405).json({ success: false, message: "Method not allowed" });
   }
@@ -148,7 +157,8 @@ export default async function handler(req, res) {
 
     // Keyed by conversation_state.conversation_id (its own current-context
     // snapshot column, not its primary key) — the same lookup shape
-    // api/conversation.js / api/conversation-lifecycle.js already use.
+    // api/conversation.js / the former api/conversation-lifecycle.js
+    // already use.
     const assignmentByConversationId = new Map();
     for (const row of conversationStateRows || []) {
       if (row.conversation_id) assignmentByConversationId.set(row.conversation_id, row);

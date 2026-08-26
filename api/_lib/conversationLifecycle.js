@@ -1,34 +1,38 @@
-import { getSupabaseServerClient } from "./_lib/supabaseServer.js";
-import { resolveActingMembership, actorHasPermission } from "./_lib/clientAuthz.js";
-import { PERMISSIONS } from "../src/lib/permissions.js";
+import { getSupabaseServerClient } from "./supabaseServer.js";
+import { resolveActingMembership, actorHasPermission } from "./clientAuthz.js";
+import { PERMISSIONS } from "../../src/lib/permissions.js";
 
-// API consolidation: this single domain endpoint replaces the former
+// API consolidation: this file replaces the former top-level
+// api/conversation-lifecycle.js, which itself already replaced the former
 // api/claim-conversation.js ("claim" action) and api/conversation-status.js
 // ("close"/"reopen"/"takeover" actions). Behavior, validation order,
 // response shapes, RPC usage, and every authorization/security check are
-// preserved exactly from both -- each action is still handled by its own
-// self-contained function (own field validation -> own
+// preserved exactly from all three -- each action is still handled by its
+// own self-contained function (own field validation -> own
 // getSupabaseServerClient() call -> own actor resolution -> own business
-// logic, in the same order as the original file), only the routing/file
-// layer is new. Only "claim" is special-cased at the top level; everything
-// else (including an unrecognized action) is routed to
-// handleStatusChange(), which performs the exact same conversation_id-then-
-// action-vocabulary validation order api/conversation-status.js always did
-// -- so a request with both a missing conversation_id AND an invalid
-// action still gets the same "conversation_id is required" message it
-// always did, not a reordered "Unknown action".
+// logic, in the same order as the original files), only the routing/file
+// layer is new (now dispatched from api/conversation.js's POST action
+// switch instead of being its own deployed Vercel Function — see the
+// deployment-failure inspection report). Only "claim" is special-cased at
+// the top level; everything else (including an unrecognized action) is
+// routed to handleStatusChange(), which performs the exact same
+// conversation_id-then-action-vocabulary validation order
+// api/conversation-status.js always did -- so a request with both a
+// missing conversation_id AND an invalid action still gets the same
+// "conversation_id is required" message it always did, not a reordered
+// "Unknown action".
 //
 // The apply_conversation_lifecycle_action(...) RPC (see
 // supabase/migrations/20260820_conversation_lifecycle_action_rpc.sql) is
-// untouched -- this file only calls it exactly as both original files did;
+// untouched -- this file only calls it exactly as the original files did;
 // it is NOT an authorization layer itself (EXECUTE is service_role-only),
 // so every authorization/ownership check below is unchanged and still runs
 // before the RPC is ever called.
 //
-// Shape:
-//   POST /api/conversation-lifecycle { action: "claim", conversation_id, actor_user_id }
+// Shape (dispatched from api/conversation.js, same public URL):
+//   POST /api/conversation { action: "claim", conversation_id, actor_user_id }
 //     -> former api/claim-conversation.js
-//   POST /api/conversation-lifecycle { action: "close" | "reopen" | "takeover", conversation_id, actor_user_id }
+//   POST /api/conversation { action: "close" | "reopen" | "takeover", conversation_id, actor_user_id }
 //     -> former api/conversation-status.js
 
 async function resolveAssignedUserName(supabase, userId) {
@@ -281,7 +285,7 @@ async function handleStatusChange(req, res, action) {
   return res.status(200).json({ success: true, conversation_id, ...payload });
 }
 
-export default async function handler(req, res) {
+export async function handleConversationLifecycle(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ success: false, message: "Method not allowed" });
   }

@@ -1,8 +1,16 @@
-import { getSupabaseServerClient } from "./_lib/supabaseServer.js";
-import { resolveActingMembership, actorHasPermission } from "./_lib/clientAuthz.js";
-import { PERMISSIONS } from "../src/lib/permissions.js";
+import { getSupabaseServerClient } from "./supabaseServer.js";
+import { resolveActingMembership, actorHasPermission } from "./clientAuthz.js";
+import { PERMISSIONS } from "../../src/lib/permissions.js";
 
 // AI Engine V1 — Phase 2: client_ai_behavior CRUD.
+//
+// Vercel Hobby Function-count consolidation: this file was formerly the
+// top-level api/client-ai-behavior.js, dispatched from
+// api/client-router.js (?resource=ai-behavior) instead of being its own
+// deployed Vercel Function — see the deployment-failure inspection
+// report. Behavior, auth, and response shapes below are completely
+// unchanged; AdminClientSettings.jsx was updated to call the new URL,
+// nothing else changed.
 //
 // client_ai_behavior has RLS enabled with zero policies (Phase 1) — the
 // browser's anon-keyed Supabase client cannot read or write it at all, by
@@ -47,11 +55,11 @@ import { PERMISSIONS } from "../src/lib/permissions.js";
 // invented defaults" rule.
 //
 // Shape:
-//   GET  /api/client-ai-behavior?actor_user_id=&client_id=   (client_id
-//        required only when the actor is an admin; ignored for a client
-//        actor, whose own client_id is always used instead)
+//   GET  /api/client-router?resource=ai-behavior&actor_user_id=&client_id=
+//        (client_id required only when the actor is an admin; ignored for
+//        a client actor, whose own client_id is always used instead)
 //     -> { success: true, behavior: {...}|null, can_edit: boolean }
-//   POST /api/client-ai-behavior
+//   POST /api/client-router?resource=ai-behavior
 //     { actor_user_id, client_id? (admin only),
 //       personality?, reply_tone?, default_language?, forbidden_rules?,
 //       special_instructions?, booking_instructions?,
@@ -295,7 +303,7 @@ async function handleSave(req, res, supabase) {
   }
 }
 
-export default async function handler(req, res) {
+export async function handleClientAiBehavior(req, res) {
   let supabase;
   try {
     supabase = getSupabaseServerClient();

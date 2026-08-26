@@ -207,7 +207,7 @@ function getUsageStatus(percent, t) {
 // AI Engine V1 — Phase 2. The ai_auto_reply feature's entire drawer body:
 // personality/reply_tone/default_language/special_instructions/
 // booking_instructions/escalation_instructions/forbidden_rules, bound to
-// public.client_ai_behavior (via /api/client-ai-behavior), NOT to
+// public.client_ai_behavior (via /api/client-router?resource=ai-behavior), NOT to
 // client_feature_integrations.config — deliberately no business-fact
 // field (business_name/description/phone/working_hours) is rendered here
 // at all; those live only in Account Settings now (ClientSettings.jsx).
@@ -444,7 +444,7 @@ export default function AdminClientSettings({ clientIdOverride }) {
   // AI Engine V1 — Phase 2. ai_auto_reply's drawer content is entirely
   // separate from the generic client_feature_integrations.config field
   // loop below (see openFeatureDrawer/handleSaveFeature) — it reads/
-  // writes public.client_ai_behavior via /api/client-ai-behavior instead.
+  // writes public.client_ai_behavior via /api/client-router?resource=ai-behavior instead.
   // newForbiddenRule is the draft text for the "add rule" input in the
   // Forbidden Rules list editor.
   const EMPTY_AI_BEHAVIOR_FORM = {
@@ -637,7 +637,7 @@ console.log("activeSub", activeSub);
       setNewForbiddenRule("");
       try {
         const response = await fetch(
-          `/api/client-ai-behavior?actor_user_id=${encodeURIComponent(user?.id || "")}&client_id=${encodeURIComponent(effectiveClientId)}`
+          `/api/client-router?resource=ai-behavior&actor_user_id=${encodeURIComponent(user?.id || "")}&client_id=${encodeURIComponent(effectiveClientId)}`
         );
         const data = await response.json().catch(() => ({}));
         if (!response.ok || data?.success === false) {
@@ -711,7 +711,7 @@ console.log("activeSub", activeSub);
     setMsg("");
 
     try {
-      const response = await fetch("/api/client-ai-behavior", {
+      const response = await fetch("/api/client-router?resource=ai-behavior", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

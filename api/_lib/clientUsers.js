@@ -1,13 +1,20 @@
 import crypto from "node:crypto";
-import { getSupabaseServerClient } from "./_lib/supabaseServer.js";
+import { getSupabaseServerClient } from "./supabaseServer.js";
 import {
   resolveActingMembership,
   actorHasPermission,
   countOtherActiveOwners,
-} from "./_lib/clientAuthz.js";
-import { PERMISSIONS, ROLES, computeOverridesDiff, resolvePermissions } from "../src/lib/permissions.js";
+} from "./clientAuthz.js";
+import { PERMISSIONS, ROLES, computeOverridesDiff, resolvePermissions } from "../../src/lib/permissions.js";
 
 // Client Team Management API.
+//
+// Vercel Hobby Function-count consolidation: this file was formerly the
+// top-level api/client-users.js, dispatched from api/client-router.js
+// (?resource=users) instead of being its own deployed Vercel Function —
+// see the deployment-failure inspection report. Behavior, auth, and
+// response shapes below are completely unchanged; ClientTeam.jsx was
+// updated to call the new URL, nothing else changed.
 //
 // Security model: every request carries `actor_user_id` (the logged-in
 // caller's users.id). Nothing else about the caller — role, client_id,
@@ -88,7 +95,7 @@ async function isLastActiveOwner(supabase, clientId, target) {
   return otherOwners === 0;
 }
 
-export default async function handler(req, res) {
+export async function handleClientUsers(req, res) {
   let supabase;
   try {
     supabase = getSupabaseServerClient();

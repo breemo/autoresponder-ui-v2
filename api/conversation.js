@@ -1,6 +1,9 @@
 import { getSupabaseServerClient } from "./_lib/supabaseServer.js";
 import { resolveActingMembership, actorHasPermission } from "./_lib/clientAuthz.js";
 import { PERMISSIONS } from "../src/lib/permissions.js";
+import { handleConversationsList } from "./_lib/conversationsList.js";
+import { handleConversationLifecycle } from "./_lib/conversationLifecycle.js";
+import { handleHumanReply } from "./_lib/humanReply.js";
 
 // Conversation Card V1 — API consolidation Merge #1: this single domain
 // endpoint replaces the former api/conversation-card.js (read-only
@@ -12,17 +15,41 @@ import { PERMISSIONS } from "../src/lib/permissions.js";
 // Type/category is still deliberately absent -- out of scope for V1,
 // deferred to the future Conversation Session Model redesign.
 //
+// API consolidation Merge #2 (Hobby Function-count fix, this pass): the
+// former top-level api/conversations.js, api/conversation-lifecycle.js,
+// and api/human-reply.js are now dispatched from here too — see
+// api/_lib/conversationsList.js, api/_lib/conversationLifecycle.js, and
+// api/_lib/humanReply.js. Each is dispatched BEFORE this file's own
+// supabase-client creation and SUPABASE_SERVICE_ROLE_KEY guard below, so
+// none of the three gains a new precondition it didn't have as its own
+// top-level function — every one of them still creates its own supabase
+// client and runs its own auth exactly as before. Only the routing/file
+// layer and public URL changed; ClientMessages.jsx was updated to call
+// this endpoint instead. api/smart-assign-conversation.js was deliberately
+// NOT folded in here despite also being "conversation domain" — it is
+// invoked by an external Supabase Database Webhook (not this app's
+// frontend), configured outside this repo, with its own distinct
+// shared-secret trust model; consolidating it would risk silently breaking
+// a caller this repo cannot see or update. See the deployment-failure
+// inspection report for the full rationale.
+//
 // Shape:
 //   GET  /api/conversation?actor_user_id=&conversation_id=
 //     -> lifecycle/context details + timeline (former conversation-card.js)
 //   GET  /api/conversation?resource=notes&actor_user_id=&conversation_id=
 //     -> list notes (former conversation-notes.js GET)
+//   GET  /api/conversation?resource=list&actor_user_id=
+//     -> conversation list (former top-level api/conversations.js)
 //   POST /api/conversation
 //     { action: "add_note" | "edit_note" | "delete_note", actor_user_id,
 //       conversation_id?, note_id?, body? }
 //     (former conversation-notes.js POST actions "add"/"edit"/"delete",
 //     renamed to *_note so this file's action vocabulary stays unambiguous
 //     as more actions are added to this domain endpoint later)
+//   POST /api/conversation { action: "claim" | "close" | "reopen" | "takeover", ... }
+//     -> former top-level api/conversation-lifecycle.js
+//   POST /api/conversation { action: "human_reply", conversation_id, message, actor_user_id, ... }
+//     -> former top-level api/human-reply.js
 //
 // "Last employee" and the timeline both read conversation_events, which
 // only exists from Stage 7B onward -- any conversation whose lifecycle
@@ -389,7 +416,30 @@ async function handleEditOrDeleteNote(req, res, supabase, action) {
   return res.status(200).json({ success: true, note: serializeNote(data) });
 }
 
+const LIFECYCLE_ACTIONS = new Set(["claim", "close", "reopen", "takeover"]);
+
+// Pure, synchronous routing decision — extracted from handler() below so
+// it's unit-testable (api/_lib/__tests__/conversationRouting.test.js)
+// without needing a real Supabase client. Every request that doesn't
+// match one of the delegated sub-domains routes to "self" — this file's
+// own pre-existing card/notes logic — exactly as before this merge.
+export function resolveConversationRoute(req) {
+  if (req.method === "GET" && req.query?.resource === "list") return "list";
+  if (req.method === "POST" && LIFECYCLE_ACTIONS.has(req.body?.action)) return "lifecycle";
+  if (req.method === "POST" && req.body?.action === "human_reply") return "human_reply";
+  return "self";
+}
+
 export default async function handler(req, res) {
+  // Delegated sub-domains (Merge #2) — dispatched first, before this
+  // file's own supabase client / service-role guard below, so each keeps
+  // exactly the preconditions it had as its own top-level function. See
+  // the module comment above.
+  const route = resolveConversationRoute(req);
+  if (route === "list") return handleConversationsList(req, res);
+  if (route === "lifecycle") return handleConversationLifecycle(req, res);
+  if (route === "human_reply") return handleHumanReply(req, res);
+
   let supabase;
   try {
     supabase = getSupabaseServerClient();

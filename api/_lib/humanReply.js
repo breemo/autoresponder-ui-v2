@@ -1,6 +1,6 @@
-import { getSupabaseServerClient } from "./_lib/supabaseServer.js";
-import { resolveActingMembership, actorHasPermission } from "./_lib/clientAuthz.js";
-import { PERMISSIONS } from "../src/lib/permissions.js";
+import { getSupabaseServerClient } from "./supabaseServer.js";
+import { resolveActingMembership, actorHasPermission } from "./clientAuthz.js";
+import { PERMISSIONS } from "../../src/lib/permissions.js";
 import {
   MESSAGE_TYPES,
   MEDIA_MESSAGE_TYPES,
@@ -8,10 +8,18 @@ import {
   SIGNED_READ_URL_TTL_SECONDS,
   validateMediaMeta,
   mediaPathBelongsToConversation,
-} from "../src/lib/mediaMessages.js";
+} from "../../src/lib/mediaMessages.js";
 
 const SETTING_KEY = "human_reply_webhook_url";
 
+// Vercel Hobby Function-count consolidation: this file was formerly the
+// top-level api/human-reply.js, dispatched from api/conversation.js's POST
+// action switch (action: "human_reply") instead of being its own deployed
+// Vercel Function — see the deployment-failure inspection report.
+// Behavior, validation, and every authorization/security check below are
+// completely unchanged; ClientMessages.jsx was updated to call the new URL
+// and include the "human_reply" action field, nothing else changed.
+//
 // Thin proxy to the n8n Human Reply workflow, following the same
 // fetch-and-relay shape as api/create-whatsapp-instance.js. n8n resolves
 // client/channel/integration from conversation_id and owns both channel
@@ -32,7 +40,7 @@ const SETTING_KEY = "human_reply_webhook_url";
 // authorization and multi-tenant isolation, not runtime service
 // entitlement. See supabase/migrations/20260814_client_subscription_status_view.sql
 // for the (UI-only) subscription status read-model this app still owns.
-export default async function handler(req, res) {
+export async function handleHumanReply(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ success: false, message: "Method not allowed" });
   }

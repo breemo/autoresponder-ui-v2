@@ -650,7 +650,8 @@ export default function ClientMessages() {
   const [status, setStatus] = useState("all");
   const [leadsOnly, setLeadsOnly] = useState(false);
 
-  // Reply composer (Phase 2B): sends via /api/human-reply, never inserts
+  // Reply composer (Phase 2B): sends via /api/conversation (action:
+  // "human_reply"), never inserts
   // into Supabase directly and never touches conversation_status/current_step.
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -699,7 +700,7 @@ export default function ClientMessages() {
   // never read them directly — this is intentional, not a bug to route
   // around client-side). This function no longer queries conversations,
   // contact_channel_identities, or client_whatsapp directly from the
-  // browser at all: /api/conversations performs the exact same merge
+  // browser at all: /api/conversation?resource=list performs the exact same merge
   // (conversations as the source of truth, one entry per conversation
   // id, never grouped/deduplicated by sender_id — see that file for the
   // full rationale) server-side on the service-role client, scoped to
@@ -715,7 +716,7 @@ export default function ClientMessages() {
       setLoadingConversations(true);
       setError("");
 
-      const response = await fetch(`/api/conversations?actor_user_id=${encodeURIComponent(user.id)}`);
+      const response = await fetch(`/api/conversation?resource=list&actor_user_id=${encodeURIComponent(user.id)}`);
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok || data?.success === false) {
@@ -808,14 +809,14 @@ export default function ClientMessages() {
   }
 
   // Shared status-update helper. Delegates to the server-authorized
-  // /api/conversation-lifecycle endpoint rather than writing conversation_state
+  // /api/conversation endpoint rather than writing conversation_state
   // directly from the browser — this used to be a direct Supabase write
   // with no actor/permission/ownership check at all, which meant a
   // non-assigned teammate could bypass the UI's disabled Close button
   // entirely by calling Supabase from devtools. The server now re-derives
   // client_id/permission and, for `close`, verifies the actor is the
   // conversation's assigned employee whenever it's already waiting_human
-  // (see api/conversation-lifecycle.js). `currentStep`/`preserveStep`/
+  // (see api/_lib/conversationLifecycle.js). `currentStep`/`preserveStep`/
   // `clearAssignment`/`assignToActor` only shape the *local* optimistic
   // patch to match what the server is known to have done for each action
   // — they don't control server behavior.
@@ -826,7 +827,7 @@ export default function ClientMessages() {
       setUpdatingStatus(true);
       setError("");
 
-      const response = await fetch("/api/conversation-lifecycle", {
+      const response = await fetch("/api/conversation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, conversation_id: selectedConversationId, actor_user_id: user?.id }),
@@ -881,7 +882,7 @@ export default function ClientMessages() {
   // Explicit close: conversation_status = closed, current_step = done.
   // Assignment (if any) is deliberately preserved — see applyStatusChange.
   // Server-enforced: blocked unless the actor is the assigned employee, if
-  // the conversation is already waiting_human (see api/conversation-lifecycle.js).
+  // the conversation is already waiting_human (see api/_lib/conversationLifecycle.js).
   function closeConversation() {
     return applyStatusChange("close", "closed", { currentStep: "done" });
   }
@@ -910,7 +911,7 @@ export default function ClientMessages() {
   }
 
   // Explicit claim ("استلام المحادثة"): delegates the actual assignment to
-  // /api/conversation-lifecycle (action: "claim"), which performs a single conditional UPDATE
+  // /api/conversation (action: "claim"), which performs a single conditional UPDATE
   // (... WHERE assigned_user_id IS NULL) so only one concurrent caller can
   // ever win — see that file for the full race-condition explanation. This
   // handler never assumes it won; it always reconciles local state with
@@ -922,7 +923,7 @@ export default function ClientMessages() {
     setError("");
 
     try {
-      const response = await fetch("/api/conversation-lifecycle", {
+      const response = await fetch("/api/conversation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "claim", conversation_id: conversationId, actor_user_id: user?.id }),
@@ -1037,7 +1038,7 @@ export default function ClientMessages() {
   // presses Send (never on file selection), so choosing then removing an
   // attachment never leaves an orphaned object in Storage.
   //
-  // Returns the attachment metadata api/human-reply.js's media payload
+  // Returns the attachment metadata api/_lib/humanReply.js's media payload
   // needs (media_path/media_mime_type/media_file_name/media_size_bytes —
   // same names as the messages table's media_* columns).
   async function uploadAttachmentToStorage(conversationId, pendingAttachment) {
@@ -1086,11 +1087,11 @@ export default function ClientMessages() {
     if ((!trimmed && !attachment) || !selectedConversationId || sendingRef.current) return;
     // Mirrors the composer's own disabled state (see canControlConversation)
     // — belt-and-suspenders against any path that could still call this
-    // directly. The server (api/human-reply.js) is the authoritative check.
+    // directly. The server (api/_lib/humanReply.js) is the authoritative check.
     if (!canControlConversation) return;
     // Belt-and-suspenders mirror of the media controls' own disabled state
     // (canSendMedia — WhatsApp/Evolution only). The attachment can only be
-    // selected via those controls, but api/human-reply.js is the actual
+    // selected via those controls, but api/_lib/humanReply.js is the actual
     // authoritative gate for Facebook/Telegram/unknown channels.
     if (attachment && !canSendMedia) {
       setSendError(t("messagesPage.mediaSendingUnavailable"));
@@ -1107,7 +1108,7 @@ export default function ClientMessages() {
 
     try {
       // Upload-on-send only (never on selection) — see
-      // uploadAttachmentToStorage. If /api/human-reply then fails, the
+      // uploadAttachmentToStorage. If /api/conversation (human_reply) then fails, the
       // uploaded object is not deleted: this app has no client-safe delete
       // permission against the private chat-media bucket (only signed
       // upload/read URLs are ever minted, both scoped and short-lived), and
@@ -1115,10 +1116,11 @@ export default function ClientMessages() {
       // orphan in this failure case — documented, not silently hidden.
       const media = pendingAttachment ? await uploadAttachmentToStorage(conversationId, pendingAttachment) : null;
 
-      const response = await fetch("/api/human-reply", {
+      const response = await fetch("/api/conversation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          action: "human_reply",
           conversation_id: conversationId,
           message: trimmed,
           actor_user_id: user?.id,
@@ -1345,7 +1347,7 @@ export default function ClientMessages() {
   const conversationStatus = selectedConversation?.conversation_status || "active";
 
   // Human Takeover ownership (display/UX layer only — the authoritative
-  // check is server-side in api/human-reply.js and api/conversation-lifecycle.js).
+  // check is server-side in api/_lib/humanReply.js and api/_lib/conversationLifecycle.js).
   // A conversation not in the human queue has no owner concept and is
   // always controllable, matching pre-existing behavior. Once
   // waiting_human, only the assigned employee may reply/close — and if

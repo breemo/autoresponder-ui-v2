@@ -26,7 +26,7 @@ function formatDate(value, lang) {
 }
 
 async function callTeamAction(action, actorUserId, payload = {}, t) {
-  const response = await fetch("/api/client-users", {
+  const response = await fetch("/api/client-router?resource=users", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action, actor_user_id: actorUserId, ...payload }),
@@ -96,7 +96,7 @@ export default function ClientTeam() {
     setError("");
 
     try {
-      const response = await fetch(`/api/client-users?actor_user_id=${encodeURIComponent(user.id)}`);
+      const response = await fetch(`/api/client-router?resource=users&actor_user_id=${encodeURIComponent(user.id)}`);
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok || data?.success === false) {
