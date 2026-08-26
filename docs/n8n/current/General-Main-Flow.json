@@ -1,0 +1,2463 @@
+{
+  "name": "AutoResponder_Final",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "inbound/:platform/:channelKey",
+        "options": {}
+      },
+      "id": "6348db56-bad5-4115-b5b8-8253090bc767",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -3088,
+        128
+      ],
+      "webhookId": "751ecf29-1acd-43b7-8c80-bd8f9929f656"
+    },
+    {
+      "parameters": {
+        "url": "={{\n  $node[\"Config\"].json[\"SUPABASE_URL\"] +\n  \"/rest/v1/client_feature_integrations\" +\n  \"?select=id,client_id,feature_id,is_active,config,features!inner(slug),clients(welcome_message,default_reply,closing_message)\" +\n  \"&\" +\n  (\n    $node[\"Code in JavaScript1\"].json[\"platform\"] === \"facebook\"\n      ? \"config->>pageId=eq.\"\n      : \"config->>channelKey=eq.\"\n  ) +\n  encodeURIComponent($node[\"Code in JavaScript1\"].json[\"channelKey\"]) +\n  \"&features.slug=eq.\" +\n  encodeURIComponent($node[\"Code in JavaScript1\"].json[\"platform\"]) +\n  \"&limit=1\"\n}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a872462d-9fa6-4032-906c-e366eb8331b1",
+      "name": "client_feature",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2256,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"]}}/rest/v1/messages\n\n",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  \"client_id\": $items(\"client_feature\", 0, 0)[0].json.client_id,\n  \"channel\": $items(\"Code in JavaScript1\", 0, 0)[0].json.platform,\n  \"sender\": $items(\"Code in JavaScript1\", 0, 0)[0].json.sender_id,\n  \"message\": $items(\"Code in JavaScript1\", 0, 0)[0].json.text,\n  \"direction\": \"inbound\",\n\"conversation_id\": $node[\"prepare_conversation\"].json[\"conversation_id\"]\n}\n}}",
+        "options": {}
+      },
+      "id": "741aabeb-767a-4b35-a903-4bde4c81ddec",
+      "name": "insert message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2672,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"]}}/rest/v1/auto_replies?select=id,client_id,trigger_text,reply_text,is_active&client_id=eq.{{$items(\"client_feature\", 0, 0)[0].json.client_id}}&is_active=eq.true",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7b16245c-4fde-4048-b4fd-1d940431b8d8",
+      "name": "auto_replies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1712,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "0539a740-36a9-4662-958e-e7d962ae8ad7",
+              "leftValue": "={{$node[\"state_payload\"].json[\"platform\"]}}",
+              "rightValue": "=telegram",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "04e9528c-5eb3-4a19-8c25-43e2acc2e4de",
+      "name": "IF Telegram",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        640,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{\"https://api.telegram.org/bot\" + $items(\"state_payload\", 0, 0)[0].json.config[\"Bot Token\"] + \"/sendMessage\"}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{$items('state_payload', 0, 0)[0].json.sender_id}}"
+            },
+            {
+              "name": "text",
+              "value": "={{$items('state_payload', 0, 0)[0].json.reply}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7dc03f95-4370-4cfd-8c15-91035ece6a03",
+      "name": "send auto reply Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        128
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"]}}/rest/v1/messages\n\n",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"client_id\": \"{{$node[\"state_payload\"].json[\"client_id\"]}}\",\n  \"channel\": \"{{$node[\"state_payload\"].json[\"platform\"]}}\",\n  \"sender\": \"{{$node[\"state_payload\"].json[\"sender_id\"]}}\",\n  \"message\": \"{{$node[\"state_payload\"].json[\"reply\"].replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"').replace(/\\n/g, '\\\\n')}}\",\n  \"direction\": \"outbound\",\n\"reply_source\": \"{{$node[\"state_payload\"].json[\"reply_source\"]}}\",\n\"conversation_id\": \"{{$node[\"state_payload\"].json[\"conversation_id\"]}}\"\n}",
+        "options": {}
+      },
+      "id": "b25eeb0c-da2e-4528-8548-ba4e65581676",
+      "name": "insert auto reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1376,
+        320
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v18.0/me/messages?access_token={{$node[\"client_feature\"].json[\"config\"][\"Page Access Token\"]}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "recipient.id",
+              "value": "={{$node[\"state_payload\"].json[\"sender_id\"]}}"
+            },
+            {
+              "name": "message.text",
+              "value": "={{$node[\"state_payload\"].json[\"message\"][\"text\"]}}"
+            },
+            {
+              "name": "message.quick_replies",
+              "value": "={{$node[\"state_payload\"].json[\"message\"][\"quick_replies\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "16336c93-3f7f-47fb-a14b-92a5c68004d9",
+      "name": "send auto reply Facebook Graph API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        496
+      ],
+      "executeOnce": false,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const platform = String($json.params?.platform || \"\").toLowerCase();\nconst channelKey = String($json.params?.channelKey || \"\");\n\nlet text = \"\";\nlet sender_id = \"\";\nlet quick_reply_payload = null;\nlet is_echo = false;\n\nif (platform === \"telegram\") {\n  text = $json.body?.message?.text || \"\";\n  sender_id = String($json.body?.message?.chat?.id || \"\");\n}\n\nif (platform === \"facebook\") {\n  const entry = $json.body?.entry?.[0];\n  const fbMessage = entry?.messaging?.[0];\n\n  const pageId = String(entry?.id || \"\");\n  const senderId = String(fbMessage?.sender?.id || \"\");\n  const recipientId = String(fbMessage?.recipient?.id || \"\");\n\n  is_echo = fbMessage?.message?.is_echo === true;\n\n  // أي رسالة طالعة من الصفحة / الموظف: تجاهلها\n  if (is_echo || senderId === pageId || senderId === channelKey) {\n    return [];\n  }\n\n  text = fbMessage?.message?.text || \"\";\n  sender_id = senderId;\n  quick_reply_payload = fbMessage?.message?.quick_reply?.payload || null;\n}\n\nreturn {\n  platform,\n  channelKey,\n  text,\n  sender_id,\n  quick_reply_payload,\n  is_echo,\n  raw_body: $json.body || $json\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2592,
+        128
+      ],
+      "id": "0b193b7b-7cbf-4033-9aed-1b29b22b5acf",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst integration = $items(\"client_feature\", 0, 0)[0].json;\nconst prep = $items(\"prepare_conversation\", 0, 0)[0].json;\n\nconst replies = $input.all().map(item => item.json);\n//const text = String(base.text || \"\").toLowerCase().trim();\nconst text = String(base.quick_reply_payload || base.text || \"\").toLowerCase().trim();\n\nconst clients = integration.clients || integration.client || {};\n\nconst welcomeMessage =\n  prep.welcome_message ||\n  clients.welcome_message ||\n  null;\n\n// 1) Welcome message always has priority\nif (prep.is_new_conversation === true && welcomeMessage) {\n  return [\n    {\n      json: {\n        platform: prep.platform,\n        channelKey: prep.channelKey,\n        text: prep.text,\n        sender_id: prep.sender_id,\n        client_id: prep.client_id,\n        config: prep.config || {},\n        reply_text: welcomeMessage,\n        matched: true,\n        is_welcome: true,\n        is_closing: false,\n        next_step: null,\n        current_step: null,\n        conversation_status: \"active\",\n        conversation_id: prep.conversation_id\n      }\n    }\n  ];\n}\n\n// 2) Auto replies only\nlet match = null;\n\nfor (const r of replies) {\n  const trigger = String(r.trigger_text || \"\").toLowerCase().trim();\n  if (trigger && text.includes(trigger)) {\n    match = r.reply_text;\n    break;\n  }\n}\n\nreturn [\n  {\n    json: {\n      platform: base.platform,\n      channelKey: base.channelKey,\n      text: base.text,\n      sender_id: base.sender_id,\n      client_id: integration.client_id,\n      config: integration.config || {},\n      reply_text: match,\n      matched: !!match,\n      is_welcome: false,\n      is_closing: false,\n      next_step: null,\n      current_step: prep.current_step || null,\n      conversation_status: prep.conversation_status || \"active\",\n      conversation_id: prep.conversation_id\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1536,
+        512
+      ],
+      "id": "798d33ec-c6cf-4639-8e3a-134a861c4b5b",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"SUPABASE_URL\": \"https://rdfqdkzcudcqjattpmpt.supabase.co\",\n  \"SUPABASE_KEY\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJkZnFka3pjdWRjcWphdHRwbXB0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI4OTk0NTUsImV4cCI6MjA3ODQ3NTQ1NX0.o18a417R13oStclFA2smM-6jQ7799H7RcxmhZA6xX74\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -2416,
+        128
+      ],
+      "id": "77f2d285-cce5-4e06-b4eb-b322a3e48822",
+      "name": "Config"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{'https://n8n-production-fcd4.up.railway.app/webhook/751ecf29-1acd-43b7-8c80-bd8f9929f656/inbound/facebook/' + $json.body.entry[0].messaging[0].recipient.id}}\n\n\n",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json.body}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1792,
+        -288
+      ],
+      "id": "f8303ac8-46cb-46a0-8931-e8fdbf145ae2",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "facebook-verify",
+        "options": {
+          "responseCode": {
+            "values": {}
+          }
+        }
+      },
+      "id": "7821a034-7391-4877-b016-74870aa5277e",
+      "name": "facebook-webhook (POST)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -2400,
+        -368
+      ],
+      "webhookId": "751ecf29-1acd-43b7-8c80-bd8f9929f656"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{$json.query[\"hub.challenge\"]}}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -1776,
+        -96
+      ],
+      "id": "957278d1-51db-41ad-8309-c80870646375",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "path": "facebook-verify",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -2096,
+        -96
+      ],
+      "id": "4a702fe8-f2d7-416f-804d-e063557cd831",
+      "name": "Webhook GET",
+      "webhookId": "8c121907-6dbc-4fc7-81dd-a9456890557e"
+    },
+    {
+      "parameters": {
+        "url": "={{\n  $node[\"Config\"].json[\"SUPABASE_URL\"] +\n  \"/rest/v1/client_feature_integrations?select=id,client_id,feature_id,is_active,config,features!inner(slug)\" +\n  \"&client_id=eq.\" + $node[\"client_feature\"].json[\"client_id\"] +\n  \"&features.slug=eq.ai_auto_reply\" +\n  \"&is_active=eq.true\" +\n  \"&limit=1\"\n}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e4bd593c-bc86-42a2-abd3-1ae65860e26f",
+      "name": "plan_supports_ai check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -416,
+        1120
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "2d22e717-9448-425e-b31a-2d4e7518ebdd",
+              "leftValue": "={{\n  $node[\"client_feature\"].json?.config?.reply_mode?.toLowerCase() === \"ai\"\n  &&\n  $node[\"client_feature\"].json?.is_active === true\n}}",
+              "rightValue": "ai",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": "={{ false }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -640,
+        1136
+      ],
+      "id": "5c8d7aef-6837-4017-84b7-183a8da42405",
+      "name": "If reply_mode = ai"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "2d22e717-9448-425e-b31a-2d4e7518ebdd",
+              "leftValue": "={{ !!$json.id }}",
+              "rightValue": "undefined",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "6c126811-b4e0-48ce-a15b-d00acef61aa7",
+              "leftValue": "={{$node[\"get_active_subscription\"].json.ai_replies_used}}",
+              "rightValue": "={{$node[\"get_active_subscription\"].json.plans.ai_replies_limit}}",
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -176,
+        1168
+      ],
+      "id": "2cc0d2e9-ccc5-4407-8986-19d8a5f54136",
+      "name": "If plan_supports_ai"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://jawabai.vercel.app/api/ai-context",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  \"conversation_id\": $node[\"prepare_conversation\"].json[\"conversation_id\"],\n  \"client_id\": $node[\"prepare_conversation\"].json[\"client_id\"],\n  \"current_message_text\": $node[\"Code in JavaScript1\"].json[\"text\"]\n}\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -16,
+        832
+      ],
+      "id": "63dc7f86-4222-4fef-8d0f-3c6bfd53c0f8",
+      "name": "call_ai_context",
+      "notes": "AI Engine V1 cutover: calls the shared /api/ai-context endpoint (context + server-built OpenAI messages, replacing the legacy in-workflow prompt). Credential: 'AI Context Secret' (Header Auth) — the id below is a PLACEHOLDER, not a real n8n-issued id. After import, open this node and re-select the 'AI Context Secret' credential from the dropdown before activating the workflow.",
+      "notesInFlow": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_AI_CONTEXT_SECRET_CREDENTIAL_ID",
+          "name": "AI Context Secret"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.openai.com/v1/chat/completions",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  \"model\": \"gpt-4o-mini\",\n  \"messages\": $node[\"call_ai_context\"].json[\"messages\"]\n}\n}}",
+        "options": {},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "3038c417-5d46-4280-bacf-f7141a854970",
+      "name": "openai_reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        800,
+        832
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_OPENAI_API_CREDENTIAL_ID",
+          "name": "OpenAI API"
+        }
+      },
+      "notes": "Uses the 'OpenAI API' credential (Header Auth: Authorization: Bearer <key>) instead of a hardcoded key — the id below is a PLACEHOLDER, not a real n8n-issued id. After import, open this node and re-select the 'OpenAI API' credential from the dropdown before activating the workflow.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst integration = $items(\"client_feature\", 0, 0)[0].json;\n\nlet aiRaw =\n  $json.choices?.[0]?.message?.content ||\n  '{\"reply\":\"عذرًا، لم أتمكن من إنشاء رد الآن.\",\"intent\":\"unknown\"}';\n\nlet parsed;\n\ntry {\n  parsed = JSON.parse(aiRaw);\n} catch (e) {\n  parsed = {\n    reply: aiRaw,\n    intent: \"unknown\"\n  };\n}\n\nconst intent = parsed.intent || \"unknown\";\n\nlet replyText = parsed.reply || \"عذرًا، لم أتمكن من إنشاء رد الآن.\";\n\n// لا نخلي AI يطلب الاسم والرقم. normalize_reply هو المسؤول.\nif (intent === \"order\") {\n  replyText = \"ممتاز 👌 خلينا نبدأ الطلب.\";\n}\n\nif (intent === \"human_request\") {\n  replyText = \"تمام، رح أحوّل طلبك للفريق المختص.\";\n}\n\nreturn [\n  {\n    json: {\n      platform: base.platform,\n      channelKey: base.channelKey,\n      text: base.text,\n      sender_id: base.sender_id,\n      client_id: integration.client_id,\n      config: integration.config || {},\n      reply: replyText,\n      intent: intent\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        832
+      ],
+      "id": "472d5015-fb0b-40e3-9b7c-c17c3bf2181b",
+      "name": "extract_ai_reply",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst integration = $items(\"client_feature\", 0, 0)[0].json;\n\nconst stateItems = $items(\"get_conversation_state\", 0, 0) || [];\nconst state = stateItems.length > 0 ? stateItems[0].json : null;\n\nconst prep = $items(\"prepare_conversation\", 0, 0)[0].json;\nconst text = (prep.text || \"\").trim();\nconst currentStep = prep.current_step || state?.current_step || null;\nconst conversationStatus = prep.conversation_status || state?.conversation_status || null;\n\nfunction normalizeDigits(str) {\n  return String(str || \"\")\n    .replace(/[٠-٩]/g, d => \"٠١٢٣٤٥٦٧٨٩\".indexOf(d))\n    .replace(/[۰-۹]/g, d => \"۰۱۲۳۴۵۶۷۸۹\".indexOf(d));\n}\n\nconst normalizedText = normalizeDigits(text);\n\nconst hasPhoneLikeText = /\\+?\\d[\\d\\s-]{7,}/.test(normalizedText);\nconst hasOnlyNameLikeText = /^[\\p{L}\\s]{2,}$/u.test(text);\n\n// 1) إذا كنا بمرحلة انتظار بيانات التواصل\nif (currentStep === \"waiting_for_contact\") {\n  return [\n    {\n      json: {\n        platform: base.platform,\n        channelKey: base.channelKey,\n        text: base.text,\n        sender_id: base.sender_id,\n        client_id: integration.client_id,\n        config: integration.config || {},\n        intent: \"handle_contact\",\n        message_action: \"handle_contact\",\n        reply_text: null\n      }\n    }\n  ];\n}\n\n// 2) إذا تم التقاط lead مسبقًا، وأرسل المستخدم اسم/رقم إضافي\nif (conversationStatus === \"lead_captured\" && (hasPhoneLikeText || hasOnlyNameLikeText)) {\n  return [\n    {\n      json: {\n        platform: base.platform,\n        channelKey: base.channelKey,\n        text: base.text,\n        sender_id: base.sender_id,\n        client_id: integration.client_id,\n        config: integration.config || {},\n        intent: \"ignore_extra_contact\",\n        message_action: \"ignore_extra_contact\",\n        reply_text: \"تم استلام بياناتك مسبقاً ✅\"\n      }\n    }\n  ];\n}\n\n// 3) كلمات إنهاء المحادثة\nconst endWords = [\n  \"شكرا\",\n  \"شكراً\",\n  \"يسلمو\",\n  \"يعطيك العافية\",\n  \"تمام\",\n  \"خلص\",\n  \"خلص شكرا\",\n  \"اوك شكرا\",\n  \"ممتاز شكرا\"\n];\n\nconst isEndConversation = endWords.some(word => text.includes(word));\n\nif (isEndConversation) {\n  return [\n    {\n      json: {\n        platform: base.platform,\n        channelKey: base.channelKey,\n        text: base.text,\n        sender_id: base.sender_id,\n        client_id: integration.client_id,\n        config: integration.config || {},\n        intent: \"closing\",\n        message_action: \"end_conversation\",\n        reply_text: \"أهلاً وسهلاً 🙏 إذا احتجت أي شيء أنا موجود.\"\n      }\n    }\n  ];\n}\n\n// 4) الوضع الطبيعي\nreturn [\n  {\n    json: {\n      platform: base.platform,\n      channelKey: base.channelKey,\n      text: base.text,\n      sender_id: base.sender_id,\n      client_id: integration.client_id,\n      config: integration.config || {},\n      intent: null,\n      message_action: \"continue\",\n      reply_text: \"\"\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1728,
+        1120
+      ],
+      "id": "52bfd377-692b-4404-8874-d4980ee31889",
+      "name": "message_decision"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"] + \"/rest/v1/conversation_state?on_conflict=client_id,conversation_id\"}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "=client_id",
+              "value": "={{$node[\"state_payload\"].json[\"client_id\"]}}"
+            },
+            {
+              "name": "sender_id",
+              "value": "={{$node[\"state_payload\"].json[\"sender_id\"]}}"
+            },
+            {
+              "name": "platform",
+              "value": "={{$node[\"state_payload\"].json[\"platform\"]}}"
+            },
+            {
+              "name": "conversation_id",
+              "value": "={{$node[\"state_payload\"].json[\"conversation_id\"]}}"
+            },
+            {
+              "name": "current_step",
+              "value": "={{$node[\"state_payload\"].json[\"current_step\"]}}"
+            },
+            {
+              "name": "updated_at",
+              "value": "={{$now}}"
+            },
+            {
+              "name": "conversation_status",
+              "value": "={{$node[\"state_payload\"].json[\"conversation_status\"] || \"active\"}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7e82f9da-3476-4f27-802c-684a530cf702",
+      "name": "upsert_conversation_state",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        304,
+        352
+      ],
+      "alwaysOutputData": true,
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst integration = $items(\"client_feature\", 0, 0)[0].json;\n\n// Supabase RPC may arrive from the HTTP Request node either as\n// a returned object or as a one-row array depending on n8n handling.\nconst resolverItem = $items(\"resolve_conversation_v2\", 0, 0)[0]?.json;\n\nconst resolver = Array.isArray(resolverItem)\n  ? resolverItem[0]\n  : resolverItem;\n\nif (!resolver) {\n  throw new Error(\"Conversation Resolver returned no result\");\n}\n\nif (!resolver.conversation_id) {\n  throw new Error(\"Conversation Resolver returned no conversation_id\");\n}\n\nconst quickPayload = base.quick_reply_payload || null;\n\n// Welcome is deliberately based on a NEW CHANNEL/ACCOUNT IDENTITY,\n// NOT on whether a new conversation/session was created.\nconst shouldSendWelcome = resolver.is_new_channel_identity === true;\n\nreturn [\n  {\n    json: {\n      // Channel / sender\n      platform: base.platform,\n      channelKey: base.channelKey,\n      text: base.text,\n      sender_id: base.sender_id,\n      quick_reply_payload: quickPayload,\n\n      // Client / integration\n      client_id: integration.client_id,\n      config: integration.config || {},\n\n      // Conversation Model V2\n      contact_id: resolver.contact_id,\n      channel_identity_id: resolver.channel_identity_id,\n      conversation_id: resolver.conversation_id,\n\n      conversation_status: resolver.conversation_status || \"active\",\n      current_step: resolver.current_step || null,\n\n      // Resolver metadata\n      resolution: resolver.resolution || null,\n      resolver_event_type: resolver.event_type || null,\n\n      is_new_contact: resolver.is_new_contact === true,\n      is_new_channel_identity:\n        resolver.is_new_channel_identity === true,\n      is_new_conversation:\n        resolver.is_new_conversation === true,\n\n      // Welcome is independent from new-session creation.\n      should_send_welcome: shouldSendWelcome,\n\n      welcome_message:\n        integration.welcome_message ||\n        integration.client?.welcome_message ||\n        integration.clients?.welcome_message ||\n        null,\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2880,
+        368
+      ],
+      "id": "d64e1ce9-f5f3-4b49-a80d-2775183b7473",
+      "name": "prepare_conversation"
+    },
+    {
+      "parameters": {
+        "jsCode": "const prep = $items(\"prepare_conversation\", 0, 0)[0].json;\nconst norm = $json;\n\n// أهم سطر 👇\nconst config = norm.config || prep.config || {};\n\nreturn [\n  {\n    json: {\n      ...norm,\n      config: config, // 👈 هذا الحل\n      client_id: prep.client_id,\n      sender_id: prep.sender_id,\n      platform: prep.platform,\n      conversation_id: prep.conversation_id,\n      conversation_status: norm.conversation_status || \"active\",\n      current_step: norm.current_step || null,\n      reply_from: prep.reply_from || norm.reply_from,\n          \n    from_norm: norm.reply_from,\n    from_prep: prep.reply_from,\n    selected: prep.reply_from || norm.reply_from\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        688
+      ],
+      "id": "6a3e75a1-97b4-454f-8671-10086ec1afb6",
+      "name": "merge_for_state",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"]}}/rest/v1/leads\n\n",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"client_id\": \"{{$node[\"normalize_reply\"].json[\"client_id\"]}}\",\n  \"sender_id\": \"{{$node[\"normalize_reply\"].json[\"sender_id\"]}}\",\n  \"name\": {{$json.lead_name ? JSON.stringify($json.lead_name) : null}},\n  \"phone\": {{$json.lead_phone ? JSON.stringify($json.lead_phone) : null}},\n  \"conversation_id\": \"{{$node[\"normalize_reply\"].json[\"conversation_id\"]}}\"\n}\n\n",
+        "options": {}
+      },
+      "id": "19c703dc-8e94-458d-b41d-ed999d616173",
+      "name": "insert_lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1568,
+        912
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b3d5d719-2195-495a-bea1-d4f5d5ddae0d",
+              "leftValue": "={{ $node[\"prepare_conversation\"].json[\"current_step\"] === \"waiting_for_contact\" && !!$json.lead_name && !!$json.lead_phone }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1344,
+        848
+      ],
+      "id": "06ef51b4-5528-42a4-9af9-65b8b1375018",
+      "name": "If lead",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "jsCode": " \nconst base = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst integration = $items(\"client_feature\", 0, 0)[0].json;\nconst prep = $items(\"prepare_conversation\", 0, 0)[0].json;\n\nreturn [\n  {\n    json: {\n      platform: $json.platform || base.platform,\n      channelKey: $json.channelKey || base.channelKey,\n      text: $json.text || base.text,\n      sender_id: $json.sender_id || base.sender_id,\n      client_id: $json.client_id || integration.client_id,\n      config: $json.config || integration.config || {},\n      reply: $json.reply_text,\n      next_step: $json.next_step ?? null,\n      current_step: $json.current_step ?? prep.current_step ?? null,\n      conversation_status: $json.conversation_status || \"active\",\n      conversation_id: $json.conversation_id || prep.conversation_id,\n      lead_name: $json.lead_name || null,\n      lead_phone: $json.lead_phone || null,\n      reply_source: \"auto\"\n    }\n  }\n];\n\n\n\n// const base = $items(\"Code in JavaScript1\", 0, 0)[0].json;\n// const integration = $items(\"client_feature\", 0, 0)[0].json;\n// const prep = $items(\"prepare_conversation\", 0, 0)[0].json;\n\n// return [\n//   {\n//     json: {\n//       platform: base.platform,\n//       channelKey: base.channelKey,\n//       text: base.text,\n//       sender_id: base.sender_id,\n//       client_id: integration.client_id,\n//       config: integration.config || {},\n//       reply_text: $json.reply_text,\n//       next_step: null,\n//       current_step: prep.current_step || null,\n//       conversation_status: \"active\",\n//       conversation_id: prep.conversation_id\n//     }\n//   }\n// ];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -944,
+        592
+      ],
+      "id": "6981f781-986c-4964-998f-f1004cbe5a7e",
+      "name": "auto-normalize"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst integration = $items(\"client_feature\", 0, 0)[0].json;\nconst prep = $items(\"prepare_conversation\", 0, 0)[0].json;\nconst clients = integration.clients || integration.client || {};\n\nlet decision = null;\ntry {\n  decision = $node[\"message_decision\"].json;\n} catch (e) {\n  decision = null;\n}\n\nconst conversationId = prep.conversation_id;\nconst currentStep = prep.current_step || null;\nconst currentStatus = prep.conversation_status || \"active\";\nconst intent = $json.intent || decision?.intent || null;\nconst quickPayload = base.quick_reply_payload || null;\n\nconst hasContactAlready =\n  currentStatus === \"lead_captured\" ||\n  currentStep === \"contact_captured\";\n\nfunction normalizeDigits(str) {\n  return String(str || \"\")\n    .replace(/[٠-٩]/g, d => \"٠١٢٣٤٥٦٧٨٩\".indexOf(d))\n    .replace(/[۰-۹]/g, d => \"۰۱۲۳۴۵۶۷۸۹\".indexOf(d));\n}\n\nfunction aiReplyAsksForContact(reply) {\n  const r = String(reply || \"\").toLowerCase();\n  return (\n    r.includes(\"اسمك\") ||\n    r.includes(\"رقمك\") ||\n    r.includes(\"رقم الهاتف\") ||\n    r.includes(\"للتواصل\") ||\n    r.includes(\"phone\") ||\n    r.includes(\"name\")\n  );\n}\n\nfunction safeAiReply(fallback) {\n  const aiReply = $json.reply || decision?.reply || \"\";\n  if (!aiReply || aiReplyAsksForContact(aiReply)) return fallback;\n  return aiReply;\n}\n\nfunction buildReply({\n  reply,\n  next_step = null,\n  current_step = currentStep,\n  conversation_status = currentStatus,\n  quick_replies = null,\n  lead_name = null,\n  lead_phone = null,\n  reply_source = \"system\",\n}) {\n  return [{\n    json: {\n      platform: base.platform,\n      channelKey: base.channelKey,\n      text: base.text,\n      sender_id: base.sender_id,\n      client_id: integration.client_id,\n      config: integration.config || {},\n      reply,\n      next_step,\n      current_step,\n      conversation_status,\n      conversation_id: conversationId,\n      quick_replies,\n      lead_name,\n      lead_phone,\n      reply_source,\n    }\n  }];\n}\n\n// متابعة المحادثة السابقة\nif (quickPayload === \"CONTINUE_PREVIOUS\") {\n  return buildReply({\n    reply: \"تمام 👍 كمل رسالتك\",\n    current_step: \"contact_captured\",\n    conversation_status: \"active\",\n    reply_source: \"quick_reply\",\n  });\n}\n\n// بدء محادثة جديدة\nif (quickPayload === \"START_NEW\") {\n  return buildReply({\n    reply: prep.welcome_message || \"مرحباً 👋 كيف يمكنني مساعدتك؟\",\n    current_step: null,\n    conversation_status: \"active\",\n    reply_source: \"quick_reply\",\n  });\n}\n\n// سؤال إعادة فتح محادثة مغلقة حديثاً\nif (currentStep === \"reopen_confirm\") {\n  return buildReply({\n    reply: \"هل تريد متابعة المحادثة السابقة أم بدء محادثة جديدة؟\",\n    current_step: \"reopen_confirm\",\n    conversation_status: \"active\",\n    quick_replies: [\n      { content_type: \"text\", title: \"متابعة السابقة\", payload: \"CONTINUE_PREVIOUS\" },\n      { content_type: \"text\", title: \"محادثة جديدة\", payload: \"START_NEW\" }\n    ],\n    reply_source: \"system\",\n  });\n}\n\nif (quickPayload === \"CLOSE_CONVERSATION\") {\n  return buildReply({\n    reply: \"سعدنا بخدمتك 🙏 في أي وقت تحتاجنا نحن جاهزون\",\n    current_step: \"done\",\n    conversation_status: \"closed\",\n    reply_source: \"quick_reply\",\n  });\n}\n\nif (quickPayload === \"CONTINUE_CONVERSATION\") {\n  return buildReply({\n    reply: \"تمام 👍 كمل رسالتك\",\n    current_step: \"contact_captured\",\n    conversation_status: currentStatus,\n    reply_source: \"quick_reply\",\n  });\n}\n\nconst textLower = String(base.text || \"\").toLowerCase().trim();\nconst isThankYou =\n  textLower.includes(\"شكرا\") ||\n  textLower.includes(\"شكراً\") ||\n  textLower.includes(\"يسلمو\") ||\n  textLower.includes(\"يعطيك العافية\");\n\nif (\n  [\"waiting_human\", \"lead_captured\"].includes(currentStatus) &&\n  currentStep === \"contact_captured\" &&\n  isThankYou\n) {\n  return buildReply({\n    reply: \"هل تمت مساعدتك من طرفنا؟ 🙏\",\n    current_step: \"closing_confirm\",\n    conversation_status: currentStatus,\n    quick_replies: [\n      { content_type: \"text\", title: \"نعم\", payload: \"CLOSE_CONVERSATION\" },\n      { content_type: \"text\", title: \"كمل المحادثة\", payload: \"CONTINUE_CONVERSATION\" }\n    ],\n    reply_source: \"system\",\n  });\n}\n\nif (currentStep === \"waiting_for_contact\") {\n  const text = (base.text || \"\").trim();\n  const normalizedText = normalizeDigits(text);\n  const phoneMatch = normalizedText.match(/\\+?\\d[\\d\\s-]{7,}/);\n  const phone = phoneMatch ? phoneMatch[0].replace(/[\\s-]/g, \"\") : null;\n\n  const leadName = normalizedText\n    .replace(/\\+?\\d[\\d\\s-]{7,}/g, \"\")\n    .replace(/[-+]/g, \"\")\n    .trim();\n\n  const isHumanFlow = currentStatus === \"waiting_human\";\n  const keepStatus = isHumanFlow ? \"waiting_human\" : \"active\";\n\n  if (!leadName && !phone) {\n    return buildReply({\n      reply: \"يرجى إرسال الاسم ورقم الهاتف للتواصل 🙏\",\n      next_step: \"waiting_for_contact\",\n      current_step: \"waiting_for_contact\",\n      conversation_status: keepStatus,\n      reply_source: \"system\",\n    });\n  }\n\n  if (leadName && !phone) {\n    return buildReply({\n      reply: \"الرقم غير صحيح ❌ يرجى إرسال رقم هاتف صحيح\",\n      next_step: \"waiting_for_contact\",\n      current_step: \"waiting_for_contact\",\n      conversation_status: keepStatus,\n      lead_name: leadName,\n      reply_source: \"system\",\n    });\n  }\n\n  if (!leadName && phone) {\n    return buildReply({\n      reply: \"يرجى إرسال الاسم أيضًا 🙏\",\n      next_step: \"waiting_for_contact\",\n      current_step: \"waiting_for_contact\",\n      conversation_status: keepStatus,\n      lead_phone: phone,\n      reply_source: \"system\",\n    });\n  }\n\n  return buildReply({\n    reply: isHumanFlow\n      ? \"تم استلام بياناتك ✅ سيتم التواصل معك قريباً\"\n      : \"تم استلام بياناتك ✅ سيتم المتابعة معك قريباً\",\n    current_step: \"contact_captured\",\n    conversation_status: isHumanFlow ? \"waiting_human\" : \"lead_captured\",\n    lead_name: leadName,\n    lead_phone: phone,\n    reply_source: \"system\",\n  });\n}\n\nif (intent === \"human_request\") {\n  if (hasContactAlready) {\n    return buildReply({\n      reply: \"تمام، رح أحوّل طلبك للفريق المختص وبتواصلوا معك بأقرب فرصة 🙏\",\n      current_step: \"contact_captured\",\n      conversation_status: \"waiting_human\",\n      reply_source: \"ai\",\n    });\n  }\n\n  return buildReply({\n    reply: \"تمام، رح أحوّل طلبك للفريق المختص وبتواصلوا معك بأقرب فرصة 🙏\\nممكن تترك اسمك ورقمك عشان يسهل التواصل معك؟\",\n    next_step: \"waiting_for_contact\",\n    current_step: \"waiting_for_contact\",\n    conversation_status: \"waiting_human\",\n    reply_source: \"ai\",\n  });\n}\n\nif (intent === \"order\") {\n  if (hasContactAlready) {\n    return buildReply({\n      reply: \"تمام، تم استلام طلبك ✅ سيتم المتابعة معك قريباً\",\n      current_step: \"contact_captured\",\n      conversation_status: currentStatus === \"waiting_human\" ? \"waiting_human\" : \"lead_captured\",\n      reply_source: \"ai\",\n    });\n  }\n\n  return buildReply({\n    reply: \"ممتاز 👌 خلينا نبدأ الطلب 🙏 ممكن تبعتلي اسمك ورقمك للتواصل؟\",\n    next_step: \"waiting_for_contact\",\n    current_step: \"waiting_for_contact\",\n    conversation_status: \"active\",\n    reply_source: \"ai\",\n  });\n}\n\nlet replyText = safeAiReply(\n  clients.default_reply ||\n  integration.default_reply ||\n  \"شكراً لتواصلك معنا 🙏 سيتم الرد عليك بأقرب وقت ممكن\"\n);\n\nreturn buildReply({\n  reply: replyText,\n  current_step: currentStep,\n  conversation_status: currentStatus,\n  reply_source: $json.reply ? \"ai\" : \"system\",\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1104,
+        832
+      ],
+      "id": "c47b344e-efe0-42b2-8e66-84b9964aa6a4",
+      "name": "normalize_reply",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f28ce580-2323-46ff-8293-cd0c472ba3c3",
+              "leftValue": "={{ $json.matched}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1184,
+        736
+      ],
+      "id": "ee80fb84-23d2-48cb-9e6f-6fb7d0fe65ac",
+      "name": "If have auto reply"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst integration = $items(\"client_feature\", 0, 0)[0].json;\nconst prep = $items(\"prepare_conversation\", 0, 0)[0].json;\n\nconst clients = integration.clients || integration.client || {};\n\nconst defaultReply =\n  clients.default_reply ||\n  integration.default_reply ||\n  \"شكراً لتواصلك معنا 🙏 سيتم الرد عليك بأقرب وقت ممكن\";\n\nreturn [\n  {\n    json: {\n      platform: base.platform,\n      channelKey: base.channelKey,\n      text: base.text,\n      sender_id: base.sender_id,\n      client_id: integration.client_id,\n      config: integration.config || {},\n      reply: defaultReply,\n      next_step: null,\n      current_step: null,\n      conversation_status: \"active\",\n      conversation_id: prep.conversation_id,\n      reply_source: \"system\"\n    }\n  }\n];\n\n\n\n\n\n// const base = $items(\"Code in JavaScript1\", 0, 0)[0].json;\n// const integration = $items(\"client_feature\", 0, 0)[0].json;\n// const prep = $items(\"prepare_conversation\", 0, 0)[0].json;\n\n// const text = String(base.text || \"\").toLowerCase().trim();\n\n// const endWords = [\n//   \"شكرا\",\n//   \"شكراً\",\n//   \"يسلمو\",\n//   \"يعطيك العافية\",\n//   \"تمام\",\n//   \"خلص\",\n//   \"خلص شكرا\",\n//   \"تمام شكرا\",\n//   \"اوك شكرا\"\n// ];\n\n// const isClosing = endWords.some(word => text.includes(word));\n\n// const welcomeMessage =\n//   prep.welcome_message ||\n//   \"أهلاً وسهلاً بك 👋 كيف يمكننا مساعدتك؟\";\n\n// const defaultReply =\n//   integration.default_reply ||\n//   integration.client?.default_reply ||\n//   integration.clients?.default_reply ||\n//   \"شكراً لتواصلك معنا 🙏 سيتم الرد عليك بأقرب وقت ممكن\";\n\n// const closingMessage =\n//   integration.closing_message ||\n//   integration.client?.closing_message ||\n//   integration.clients?.closing_message ||\n//   \"أهلاً وسهلاً 🙏 إذا احتجت أي شيء أنا موجود.\";\n\n// let replyText = defaultReply;\n\n// if (prep.is_new_conversation && prep.welcome_message) {\n//   replyText = welcomeMessage;\n// } else if (isClosing) {\n//   replyText = closingMessage;\n// }\n\n// return [\n//   {\n//     json: {\n//       platform: base.platform,\n//       channelKey: base.channelKey,\n//       text: base.text,\n//       sender_id: base.sender_id,\n//       client_id: integration.client_id,\n//       config: integration.config || {},\n\n//       reply_text: replyText,\n//       conversation_status: isClosing ? \"closed\" : \"active\",\n      \n//       next_step: null,\n//       current_step: null,\n//       conversation_id: prep.conversation_id\n//     }\n//   }\n// ];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -944,
+        1152
+      ],
+      "id": "9c8e112a-0dc5-48db-98b2-c089ef2cafd8",
+      "name": "default normalize"
+    },
+    {
+      "parameters": {
+        "jsCode": "const norm = $items(\"normalize_reply\", 0, 0)[0].json;\n\nreturn [\n  {\n    json: {\n      ...norm\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1776,
+        912
+      ],
+      "id": "56115766-92a1-4731-b2fe-eab084c42ee0",
+      "name": "restore_reply_after_lead",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "4184187e-9109-4c2d-994a-ee97f1477407",
+              "leftValue": "={{\n(() => {\n  // Human Mode hard stop: once waiting_human (or closed), automation\n  // must stop unconditionally -- no current_step-based exceptions.\n  const state = $items(\"prepare_conversation\", 0, 0)[0]?.json || {};\n  const status = state.conversation_status;\n\n  return status === \"closed\" || status === \"waiting_human\";\n})()\n}}",
+              "rightValue": "contact_captured",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -2240,
+        352
+      ],
+      "id": "9ab2673d-71e7-492e-a338-a3a835f905dd",
+      "name": "check_human_stop"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "68b8112b-2a39-4f93-956a-76d545dbcf0e",
+              "leftValue": "={{$json.text?.toLowerCase()}}",
+              "rightValue": "موظف",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "623c9725-269e-464f-9e1c-de83846f2cc9",
+              "leftValue": "={{$json.text?.toLowerCase()}}",
+              "rightValue": "انسان",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "3cdfc18e-1b8c-4c9a-a78d-7f7a38194922",
+              "leftValue": "={{$json.text?.toLowerCase()}}",
+              "rightValue": "حدا",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "d5a9d72e-022d-4448-935a-56a8f3ebde3c",
+              "leftValue": "={{$json.text?.toLowerCase()}}",
+              "rightValue": "اتواصل",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "a4355689-38c4-4863-8abb-61c1905321d8",
+              "leftValue": "={{$json.text?.toLowerCase()}}",
+              "rightValue": "احكي",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -944,
+        848
+      ],
+      "id": "44671c37-7046-4c4d-ac37-15499b4e54e6",
+      "name": "check_need_human"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"reply\": \"تمام، رح أحوّل طلبك للفريق المختص وبتواصلوا معك بأقرب فرصة 🙏\",\n  \"conversation_status\": \"waiting_human\",\n  \"current_step\": \"contact_captured\",\n  \"reply_source\": \"system\"\n}",
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -368,
+        496
+      ],
+      "id": "ce17d32f-c5af-4ef8-8c68-2931d156ea75",
+      "name": "human_reply"
+    },
+    {
+      "parameters": {
+        "jsCode": "const replyText = $json.reply ?? $json.reply_text ?? \"\";\n\nconst status = $json.conversation_status ?? $json.next_status ?? \"active\";\n\nconst step = $json.current_step ?? $json.next_step ?? null;\n\nconst quickReplies =\n  $json.quick_replies ??\n  $items(\"format_quick_replies\", 0, 0)[0]?.json?.quick_replies ??\n  null;\n\nconst message = {\n  text: replyText\n};\n\nconst blockedSteps = [\n  \"waiting_for_contact\",\n  \"reopen_confirm\"\n];\n\nconst canShowQuickReplies =\n  status !== \"closed\" &&\n  step !== \"done\" &&\n  !blockedSteps.includes(step) &&\n  Array.isArray(quickReplies) &&\n  quickReplies.length > 0;\n\n\nif (canShowQuickReplies) {\n  message.quick_replies = quickReplies;\n}\n\nconst replySource =\n  $json.reply_source ||\n  ($json.intent === \"order\" ? \"ai\" : null) ||\n  ($json.intent === \"human_request\" ? \"system\" : null) ||\n  \"system\";\n\nconst replyFrom = $json.reply_from;\n\nconsole.log($json);\nreturn [{\n  json: {\n    debug_reply_source: replySource,\n    debug_original_reply_source: $json.reply_source,\n\n    debug_reply_from: replyFrom,\n    debug_original_reply_from: $json.reply_from,\n    \n    ...$json,\n    reply: replyText,\n    message,\n    conversation_status: status,\n    current_step: step,\n    quick_replies: canShowQuickReplies ? quickReplies : null,\n    reply_source: replySource,\n    reply_from: replyFrom,\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        112,
+        352
+      ],
+      "id": "064fef97-8da0-487b-a464-14a3d185569a",
+      "name": "state_payload",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"] + \n\"/rest/v1/quick_reply_templates?select=*&client_id=eq.\" + \n$node[\"client_feature\"].json[\"client_id\"] + \n\"&is_active=eq.true&order=display_order.asc\"}}\n",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6326d89b-0c55-4abd-9da3-aae059b1d580",
+      "name": "get_quick_replies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1696,
+        112
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\n\nconst base = $items(\"Code in JavaScript1\", 0, 0)[0]?.json || {};\nconst lastPayload = base.quick_reply_payload || null;\n\nlet hiddenPayloads = [];\nlet selectedRow = null;\n\nif (lastPayload) {\n  selectedRow = rows.find(r => r.payload === lastPayload) || null;\n\n  // إذا الخيار المختار هو تواصل بشري → لا تعرض أي خيارات بعدها\n  if (selectedRow?.action_type === \"human_request\") {\n    return [{\n      json: {\n        quick_replies: [],\n        last_payload: lastPayload,\n        hidden_payloads: [],\n        selected_action_type: selectedRow.action_type\n      }\n    }];\n  }\n\n  hiddenPayloads = [\n    lastPayload,\n    ...(Array.isArray(selectedRow?.hide_after_payloads)\n      ? selectedRow.hide_after_payloads\n      : [])\n  ];\n}\n\nconst filteredRows = rows.filter(r => {\n  if (!lastPayload) return true;\n  return !hiddenPayloads.includes(r.payload);\n});\n\nconst quick_replies = filteredRows.map(r => ({\n  content_type: \"text\",\n  title: r.title,\n  payload: r.payload\n}));\n\nreturn [{\n  json: {\n    quick_replies,\n    last_payload: lastPayload,\n    hidden_payloads: hiddenPayloads,\n    selected_action_type: selectedRow?.action_type || null\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1536,
+        112
+      ],
+      "id": "1a91ba62-b2e1-439b-9a6f-0a4b5454efa7",
+      "name": "format_quick_replies"
+    },
+    {
+      "parameters": {
+        "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"] + \n\"/rest/v1/subscriptions?select=*, plans(id,name,messages_limit,ai_replies_limit,auto_replies_limit)&client_id=eq.\" + \n$node[\"client_feature\"].json[\"client_id\"] + \n\"&status=eq.active&limit=1\"}}\n",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c20f9811-74a6-4a2f-ac3c-c3f055ec9f38",
+      "name": "get_active_subscription",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2096,
+        128
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f28ce580-2323-46ff-8293-cd0c472ba3c3",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "active",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "09801845-c9c7-44fa-9fa1-7ec80faeb2cb",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "7f1604e3-a7e5-41ce-a29a-aa92c5afb988",
+              "leftValue": "={{ \n  !$json.end_date || \n  $json.end_date.slice(0, 10) >= $now.toISODate()\n}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1904,
+        128
+      ],
+      "id": "bcb9fb56-4248-4398-8354-e24b0e30b218",
+      "name": "validate_subscription"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"reply_from\": \"auto\"\n}\n",
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -432,
+        688
+      ],
+      "id": "9733fc7b-cd37-4090-be57-846948e0ebce",
+      "name": "Set Reply Source - auto",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"reply_from\": \"ai\"\n}",
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -352,
+        848
+      ],
+      "id": "cf96d50c-be38-46d2-9d87-bf996525f7c2",
+      "name": "Set Reply Source - ai",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{\n$node[\"Config\"].json[\"SUPABASE_URL\"] +\n\"/rest/v1/subscriptions?id=eq.\" +\n$node[\"get_active_subscription\"].json.id\n}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"ai_replies_used\": {{\n    $node[\"state_payload\"].json[\"reply_from\"] === \"ai\"\n      ? Number($node[\"get_active_subscription\"].json.ai_replies_used) + 1\n      : Number($node[\"get_active_subscription\"].json.ai_replies_used)\n  }},\n\n  \"auto_replies_used\": {{\n    $node[\"state_payload\"].json[\"reply_from\"] === \"auto\"\n      ? Number($node[\"get_active_subscription\"].json.auto_replies_used) + 1\n      : Number($node[\"get_active_subscription\"].json.auto_replies_used)\n  }}\n}",
+        "options": {}
+      },
+      "id": "0f6e1043-3c97-4f8f-95d4-0f8b6c6229d6",
+      "name": "update_usage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1616,
+        320
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6c126811-b4e0-48ce-a15b-d00acef61aa7",
+              "leftValue": "={{$node[\"get_active_subscription\"].json.auto_replies_used}}",
+              "rightValue": "={{$node[\"get_active_subscription\"].json.plans.messages_limit}}",
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -640,
+        848
+      ],
+      "id": "e92fca52-961c-48d9-b0d2-c4c3c51a4aad",
+      "name": "If have auto credit"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.body.object}}",
+                    "rightValue": "whatsapp_business_account",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "b56e179e-e7da-41a1-adac-e7120587f0a2"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "whatsapp"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "22b8f8e5-6ce7-4265-b4ec-571006961111",
+                    "leftValue": "={{$json.body.object}}",
+                    "rightValue": "page",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "facebook"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -2128,
+        -368
+      ],
+      "id": "53f0c12e-930a-4546-a96c-3e98d61a9394",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{\n'https://n8n-production-fcd4.up.railway.app/webhook/751ecf29-1acd-43b7-8c80-bd8f9929f656/inbound/whatsapp/' +\n$json.body.entry[0].changes[0].value.metadata.phone_number_id\n}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json.body}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1488,
+        -528
+      ],
+      "id": "8df2b4f9-881b-4ff7-8907-757ab7d1fdba",
+      "name": "HTTP Request - whatsapp"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$node[\"state_payload\"].json[\"platform\"]}}",
+                    "rightValue": "telegram",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "b56e179e-e7da-41a1-adac-e7120587f0a2"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "telegram"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "22b8f8e5-6ce7-4265-b4ec-571006961111",
+                    "leftValue": "={{$node[\"state_payload\"].json[\"platform\"]}}",
+                    "rightValue": "whatsapp",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "whatsapp"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "84551895-e372-4a28-994b-b76b3b8dfcbd",
+                    "leftValue": "={{$node[\"state_payload\"].json[\"platform\"]}}",
+                    "rightValue": "facebook",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "facebook"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        528,
+        336
+      ],
+      "id": "d7daa772-ce6b-4404-8fcf-4a74b4185e86",
+      "name": "platform"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v23.0/{{$node[\"client_feature\"].json[\"config\"][\"channelKey\"]}}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"client_feature\"].json[\"config\"][\"API Key\"]}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{$node[\"Webhook\"].json.body.entry[0].changes[0].value.contacts[0].wa_id}}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"{{$node['normalize_reply'].json['reply']}}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "4c732a00-2e39-4242-b58d-d8521db4d84b",
+      "name": "send auto reply whatsapp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        320
+      ],
+      "executeOnce": false,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f8d3e591-5cf1-4a41-bd73-03835ddad780",
+              "leftValue": "={{ $json.body.entry[0].changes[0].value.messages !== undefined }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1792,
+        -464
+      ],
+      "id": "d40a8724-b1f0-47c2-9d27-e2b7ba032a17",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "4184187e-9109-4c2d-994a-ee97f1477407",
+              "leftValue": "={{ $node[\"client_feature\"].json[\"is_active\"] === true }}",
+              "rightValue": "contact_captured",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -2464,
+        368
+      ],
+      "id": "1ac073c6-c0e3-4f45-a22f-cdece779a6c0",
+      "name": "check_integration_active"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "8e4721f8-cc3d-41b2-8d3e-4bef92136604",
+              "leftValue": "={{\n  $node[\"client_feature\"].json?.config?.reply_mode?.toLowerCase() === \"welcome_only\"\n}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -2032,
+        496
+      ],
+      "id": "11eb8f0b-fd7e-4b7e-bb0a-c16e30f7ae18",
+      "name": "If reply_mode = welcome_only"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "8e4721f8-cc3d-41b2-8d3e-4bef92136604",
+              "leftValue": "={{\n  $node[\"prepare_conversation\"].json[\"is_new_conversation\"] === true\n}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1888,
+        352
+      ],
+      "id": "62ac7450-e603-4c50-9a23-c0a7637fcbb4",
+      "name": "If new conversation"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f601b552-ae9e-419f-8d84-1e1932c958bb",
+              "name": "reply",
+              "value": "={{ $node[\"prepare_conversation\"].json[\"welcome_message\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "d4d45ed3-9da2-4fdd-b05d-c187108f239d",
+              "name": "conversation_status",
+              "value": "active",
+              "type": "string"
+            },
+            {
+              "id": "835b45ef-02ef-44c1-a141-0a0b1bb61fc3",
+              "name": "current_step",
+              "value": "={{ null }}",
+              "type": "string"
+            },
+            {
+              "id": "78b649d2-9fad-4411-b98c-bf4935b9871e",
+              "name": "reply_source",
+              "value": "system",
+              "type": "string"
+            },
+            {
+              "id": "eb59f368-a4fa-4cbd-b10a-e9bf0f3e2c1f",
+              "name": "client_id",
+              "value": "={{ $node[\"prepare_conversation\"].json[\"client_id\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "86031135-cea2-47d6-9e51-588480ee866d",
+              "name": "sender_id",
+              "value": "={{ $node[\"prepare_conversation\"].json[\"sender_id\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "2c4e050b-a5c9-438c-8938-b09b32728ddd",
+              "name": "platform",
+              "value": "={{ $node[\"prepare_conversation\"].json[\"platform\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "04cff7b9-9419-47d1-8216-ab56a2a0f54c",
+              "name": "channelKey",
+              "value": "={{ $node[\"prepare_conversation\"].json[\"channelKey\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "87ad3329-f84a-46d9-bba4-b529e8ccd12f",
+              "name": "conversation_id",
+              "value": "={{ $node[\"prepare_conversation\"].json[\"conversation_id\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "eb57d2de-850f-403c-a9f7-e10951e87e01",
+              "name": "=config",
+              "value": "={{ $node[\"prepare_conversation\"].json[\"config\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "2c8beaed-92f3-457b-bd24-883ca428e65e",
+              "name": "quick_replies",
+              "value": "={{ [] }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1648,
+        336
+      ],
+      "id": "a4599f23-da14-4c6f-b65f-a52a1b856f1c",
+      "name": "Prepare Welcome Only Reply"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"]}}/rest/v1/rpc/resolve_conversation\n\n",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  \"p_client_id\": $items(\"client_feature\", 0, 0)[0].json.client_id,\n  \"p_platform\": $items(\"Code in JavaScript1\", 0, 0)[0].json.platform,\n  \"p_sender_id\": $items(\"Code in JavaScript1\", 0, 0)[0].json.sender_id,\n  \"p_channel_key\": $items(\"Code in JavaScript1\", 0, 0)[0].json.channelKey\n}\n}}",
+        "options": {}
+      },
+      "id": "a1c2e3f4-1111-4a11-9a11-b1c1d1e1f1a1",
+      "name": "resolve_conversation_v2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3072,
+        368
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "b1JwiXiEiCRpV5gs",
+          "name": "Supabase Service Role"
+        },
+        "httpCustomAuth": {
+          "id": "6fL8mHUGMjVZf2v7",
+          "name": "Custom Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{   $node[\"Config\"].json[\"SUPABASE_URL\"]   + \"/rest/v1/conversations?id=eq.\"   + encodeURIComponent($node[\"prepare_conversation\"].json[\"conversation_id\"]) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n(() => {\n  const state = $node[\"state_payload\"].json || {};\n  const prep = $node[\"prepare_conversation\"].json || {};\n\n  const status =\n    state.conversation_status === \"waiting_human\"\n      ? \"waiting_human\"\n      : state.conversation_status === \"closed\"\n        ? \"closed\"\n        : \"active\";\n\n  const payload = {\n    conversation_status: status,\n    current_step: state.current_step || null,\n    last_message_at: $now,\n    closed_at: status === \"closed\" ? $now : null\n  };\n\n  // Same-day return reopens the SAME conversation,\n  // but it must not keep the previous human assignment.\n  if (prep.resolution === \"same_day_return\") {\n    payload.assigned_user_id = null;\n    payload.assigned_at = null;\n    payload.system_assigned_user_id = null;\n    payload.system_assigned_at = null;\n  }\n\n  return payload;\n})()\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        112,
+        496
+      ],
+      "id": "a1c2e3f4-2222-4a22-9a22-b1c1d1e1f1a2",
+      "name": "sync_conversation_v2",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "b1JwiXiEiCRpV5gs",
+          "name": "Supabase Service Role"
+        },
+        "httpCustomAuth": {
+          "id": "6fL8mHUGMjVZf2v7",
+          "name": "Custom Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b3d5d719-2195-495a-bea1-d4f5d5ddae0d",
+              "leftValue": "={{\n[\n  \"first_conversation\",\n  \"new_day_conversation\",\n  \"new_conversation_data_anomaly\",\n  \"same_day_return\"\n].includes($node[\"prepare_conversation\"].json[\"resolution\"])\n}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        320,
+        496
+      ],
+      "id": "a1c2e3f4-3333-4a33-9a33-b1c1d1e1f1a3",
+      "name": "needs_legacy_reset",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{\n  $node[\"Config\"].json[\"SUPABASE_URL\"]\n  + \"/rest/v1/conversation_state\"\n  + \"?client_id=eq.\"\n  + encodeURIComponent($node[\"state_payload\"].json[\"client_id\"])\n  + \"&conversation_id=eq.\"\n  + encodeURIComponent($node[\"prepare_conversation\"].json[\"conversation_id\"])\n}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n(() => {\n  const prep = $node[\"prepare_conversation\"].json || {};\n\n  const needsFullReset = [\n    \"first_conversation\",\n    \"new_day_conversation\",\n    \"new_conversation_data_anomaly\"\n  ].includes(prep.resolution);\n\n  const needsAssignmentReset =\n    prep.resolution === \"same_day_return\";\n\n  if (needsFullReset) {\n    return {\n      assigned_user_id: null,\n      assigned_at: null,\n      system_assigned_user_id: null,\n      system_assigned_at: null,\n      solved_by: null,\n      solved_at: null,\n      reopened_by: null,\n      reopened_at: null\n    };\n  }\n\n  if (needsAssignmentReset) {\n    return {\n      assigned_user_id: null,\n      assigned_at: null,\n      system_assigned_user_id: null,\n      system_assigned_at: null\n    };\n  }\n\n  return {};\n})()\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        656,
+        384
+      ],
+      "id": "a1c2e3f4-4444-4a44-9a44-b1c1d1e1f1a4",
+      "name": "reset_legacy_state_if_needed",
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "b1JwiXiEiCRpV5gs",
+          "name": "Supabase Service Role"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "client_feature": {
+      "main": [
+        [
+          {
+            "node": "get_active_subscription",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "insert message": {
+      "main": [
+        [
+          {
+            "node": "check_integration_active",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Telegram": {
+      "main": [
+        [],
+        []
+      ]
+    },
+    "send auto reply Telegram": {
+      "main": [
+        [
+          {
+            "node": "insert auto reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "send auto reply Facebook Graph API": {
+      "main": [
+        [
+          {
+            "node": "insert auto reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "auto_replies": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "If have auto reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "client_feature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "facebook-webhook (POST)": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        []
+      ]
+    },
+    "Webhook GET": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "plan_supports_ai check": {
+      "main": [
+        [
+          {
+            "node": "If plan_supports_ai",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If reply_mode = ai": {
+      "main": [
+        [
+          {
+            "node": "plan_supports_ai check",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "default normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If plan_supports_ai": {
+      "main": [
+        [
+          {
+            "node": "call_ai_context",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "default normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "openai_reply": {
+      "main": [
+        [
+          {
+            "node": "extract_ai_reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "extract_ai_reply": {
+      "main": [
+        [
+          {
+            "node": "normalize_reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "message_decision": {
+      "main": [
+        []
+      ]
+    },
+    "upsert_conversation_state": {
+      "main": [
+        [
+          {
+            "node": "platform",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "prepare_conversation": {
+      "main": [
+        [
+          {
+            "node": "insert message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "merge_for_state": {
+      "main": [
+        [
+          {
+            "node": "state_payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If lead": {
+      "main": [
+        [
+          {
+            "node": "insert_lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Reply Source - ai",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "insert_lead": {
+      "main": [
+        [
+          {
+            "node": "restore_reply_after_lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "auto-normalize": {
+      "main": [
+        [
+          {
+            "node": "If have auto credit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "normalize_reply": {
+      "main": [
+        [
+          {
+            "node": "If lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If have auto reply": {
+      "main": [
+        [
+          {
+            "node": "auto-normalize",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "check_need_human",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "default normalize": {
+      "main": [
+        [
+          {
+            "node": "If have auto credit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "restore_reply_after_lead": {
+      "main": [
+        [
+          {
+            "node": "Set Reply Source - ai",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check_human_stop": {
+      "main": [
+        [],
+        [
+          {
+            "node": "If reply_mode = welcome_only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check_need_human": {
+      "main": [
+        [
+          {
+            "node": "human_reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If reply_mode = ai",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "human_reply": {
+      "main": [
+        [
+          {
+            "node": "state_payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "state_payload": {
+      "main": [
+        [
+          {
+            "node": "sync_conversation_v2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_quick_replies": {
+      "main": [
+        [
+          {
+            "node": "format_quick_replies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "format_quick_replies": {
+      "main": [
+        [
+          {
+            "node": "resolve_conversation_v2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_active_subscription": {
+      "main": [
+        [
+          {
+            "node": "validate_subscription",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "validate_subscription": {
+      "main": [
+        [
+          {
+            "node": "get_quick_replies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Reply Source - auto": {
+      "main": [
+        [
+          {
+            "node": "merge_for_state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Reply Source - ai": {
+      "main": [
+        [
+          {
+            "node": "merge_for_state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "insert auto reply": {
+      "main": [
+        [
+          {
+            "node": "update_usage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If have auto credit": {
+      "main": [
+        [
+          {
+            "node": "Set Reply Source - auto",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "plan_supports_ai check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "platform": {
+      "main": [
+        [
+          {
+            "node": "send auto reply Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "send auto reply whatsapp",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "send auto reply Facebook Graph API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "send auto reply whatsapp": {
+      "main": [
+        [
+          {
+            "node": "insert auto reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - whatsapp": {
+      "main": [
+        []
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - whatsapp",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "check_integration_active": {
+      "main": [
+        [
+          {
+            "node": "check_human_stop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If reply_mode = welcome_only": {
+      "main": [
+        [
+          {
+            "node": "If new conversation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "auto_replies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If new conversation": {
+      "main": [
+        [
+          {
+            "node": "Prepare Welcome Only Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Welcome Only Reply": {
+      "main": [
+        [
+          {
+            "node": "state_payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "resolve_conversation_v2": {
+      "main": [
+        [
+          {
+            "node": "prepare_conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "sync_conversation_v2": {
+      "main": [
+        [
+          {
+            "node": "needs_legacy_reset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "needs_legacy_reset": {
+      "main": [
+        [
+          {
+            "node": "reset_legacy_state_if_needed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "upsert_conversation_state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "reset_legacy_state_if_needed": {
+      "main": [
+        [
+          {
+            "node": "upsert_conversation_state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "call_ai_context": {
+      "main": [
+        [
+          {
+            "node": "openai_reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "d6469a2f-890c-479d-ab21-f56877399114",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "24db91edc562a2f32cf7ac569571eca79e1b048807c8a90e363dcb06af59148c"
+  },
+  "id": "mIZc2ttw7QyHRwLa",
+  "tags": []
+}
