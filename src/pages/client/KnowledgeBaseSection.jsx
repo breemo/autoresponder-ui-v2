@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ArrowUpTrayIcon,
@@ -8,32 +8,24 @@ import {
   TrashIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
+import { supabase } from "../../lib/supabaseClient.js";
+import { KNOWLEDGE_CATEGORIES, KNOWLEDGE_ACCEPT_ATTRIBUTE, validateKnowledgeFileMeta } from "../../lib/knowledgeDocuments.js";
 
-// AI Engine V1 — Phase 3 prep (Part C). UI SHELL ONLY.
+// AI Engine V1 — Phase 4A: real backend connection.
 //
-// No backend exists yet for this: no client_knowledge_documents API, no
-// storage bucket, no ingestion worker (all deliberately deferred — see
-// the Knowledge Base Backend Next-Step Plan in the accompanying report).
-// Every document "added" here lives only in this component's local React
-// state and is gone on reload — never persisted, never uploaded anywhere.
-// The previewNotice banner below says exactly that, in-product, so this
-// is never presented to a real client as working functionality.
+// client_knowledge_documents has RLS enabled with zero browser policies
+// (Phase 1) — every read/write here goes through /api/knowledge-documents
+// (service-role Supabase server-side), never a direct
+// supabase.from("client_knowledge_documents") call. The one browser-side
+// Supabase call in this file (uploadToSignedUrl below) writes bytes
+// directly to Storage using a short-lived signed URL/token this endpoint
+// mints — the same shape as the (not-yet-wired) chat-media upload flow
+// in api/media.js. No credential of any kind is ever visible to this
+// component.
 //
-// Built ready to connect: once /api/knowledge-documents /
-// /api/knowledge-upload exist (a later phase), loadDocuments()/
-// handleAddDocument()/handleReprocess()/handleReplace()/handleDelete()
-// below are the exact, only, functions that need their local-state
-// mutation replaced with a real fetch() call — same shape client-
-// facebook.js's callApi() pattern already uses elsewhere in this app.
-// The rendered UI itself does not need to change.
-//
-// Category values are the same fixed set requested in the product spec
-// (Menu / Price List / Brochure / Services Catalog / FAQ / Policy /
-// Other) — translated for display via categoryLabelFor(), stored as a
-// stable lowercase key so a later real API can use the same values
-// without a UI-side remap.
-const CATEGORIES = ["menu", "price_list", "brochure", "services_catalog", "faq", "policy", "other"];
-
+// Category values come from the shared src/lib/knowledgeDocuments.js
+// constant — the same list the API validates against and the Phase 4A
+// migration's CHECK constraint enforces.
 function categoryLabelFor(category, t) {
   const map = {
     menu: t("knowledgeBase.categoryMenu"),
@@ -68,6 +60,25 @@ function extensionOf(fileName) {
   return parts.length > 1 ? parts[parts.length - 1].toUpperCase() : "—";
 }
 
+// Server response uses file_name/file_size_bytes/mime_type (the real
+// column names) — normalized here to the same file_type/size shape this
+// component's rendering already used, so the JSX below (deliberately
+// unchanged/not redesigned) needs no further edits.
+function normalizeDocument(row) {
+  if (!row) return row;
+  return {
+    id: row.id,
+    title: row.title,
+    category: row.category,
+    file_name: row.file_name,
+    file_type: extensionOf(row.file_name),
+    size: row.file_size_bytes,
+    status: row.status,
+    status_error: row.status_error,
+    updated_at: row.updated_at,
+  };
+}
+
 const STATUS_STYLES = {
   uploaded: "bg-slate-100 text-slate-600 ring-slate-200",
   processing: "bg-amber-50 text-amber-700 ring-amber-100",
@@ -86,20 +97,82 @@ function StatusBadge({ status, t }) {
   );
 }
 
-export default function KnowledgeBaseSection({ readOnly = false }) {
+export default function KnowledgeBaseSection({ clientId, actorUserId, readOnly = false }) {
   const { t } = useTranslation();
   const [documents, setDocuments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [pendingFile, setPendingFile] = useState(null); // { file, title, category } — awaiting "Add Document"
+  const [uploading, setUploading] = useState(false);
+  const [busyId, setBusyId] = useState(null); // document id currently reprocessing/replacing/deleting
   const [viewingDocument, setViewingDocument] = useState(null);
+  const [viewUrl, setViewUrl] = useState("");
   const fileInputRef = useRef(null);
   const replaceInputRef = useRef(null);
   const replaceTargetId = useRef(null);
 
   const hasDocuments = documents.length > 0;
 
+  useEffect(() => {
+    if (clientId) loadDocuments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId]);
+
+  async function loadDocuments() {
+    try {
+      setLoading(true);
+      setError("");
+      const response = await fetch(`/api/knowledge-documents?actor_user_id=${encodeURIComponent(actorUserId || "")}&client_id=${encodeURIComponent(clientId || "")}`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.success === false) throw new Error(data?.message || t("knowledgeBase.errLoadFailed"));
+      setDocuments((data.documents || []).map(normalizeDocument));
+    } catch (err) {
+      console.error(err);
+      setError(t("knowledgeBase.errLoadFailed"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function callApi(action, payload = {}) {
+    const response = await fetch("/api/knowledge-documents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, actor_user_id: actorUserId, client_id: clientId, ...payload }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data?.success === false) throw new Error(data?.message);
+    return data;
+  }
+
+  // Two-step upload: mint a signed URL/token scoped to this exact
+  // document (create_upload_intent), write the bytes directly to Storage
+  // with the browser's own Supabase client (the signed token IS the
+  // authorization for this one write — the bucket itself still has no
+  // browser-readable policies), then finalize_upload registers/updates
+  // the row and triggers ingestion server-side.
+  async function uploadFile(file, existingDocumentId) {
+    const intent = await callApi("create_upload_intent", {
+      file_name: file.name,
+      mime_type: file.type,
+      file_size_bytes: file.size,
+      ...(existingDocumentId ? { document_id: existingDocumentId } : {}),
+    });
+
+    const { error: uploadError } = await supabase.storage.from(intent.bucket).uploadToSignedUrl(intent.path, intent.token, file);
+    if (uploadError) throw new Error(t("knowledgeBase.errUploadFailed"));
+
+    return intent;
+  }
+
   function openPendingFile(file) {
     if (!file) return;
+    const check = validateKnowledgeFileMeta({ mimeType: file.type, sizeBytes: file.size });
+    if (!check.valid) {
+      setError(t("knowledgeBase.errUploadFailed"));
+      return;
+    }
     const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
     setPendingFile({ file, title: nameWithoutExt, category: "other" });
   }
@@ -118,39 +191,44 @@ export default function KnowledgeBaseSection({ readOnly = false }) {
     e.target.value = "";
   }
 
-  // TODO Phase 6: replace this local-state push with
-  //   POST /api/knowledge-upload (signed URL) -> upload -> POST
-  //   /api/knowledge-documents { action: "create", ... }
-  // and reload from GET /api/knowledge-documents instead of appending
-  // directly — the rest of this component reads only `documents` state,
-  // so that swap is fully contained to this one function.
-  function handleAddDocument() {
+  async function handleAddDocument() {
     if (!pendingFile) return;
     const { file, title, category } = pendingFile;
-    setDocuments((prev) => [
-      {
-        id: `local-${Date.now()}`,
+    setUploading(true);
+    setError("");
+    try {
+      const intent = await uploadFile(file);
+      const finalized = await callApi("finalize_upload", {
+        document_id: intent.document_id,
+        storage_path: intent.path,
+        file_name: file.name,
+        mime_type: file.type,
+        file_size_bytes: file.size,
         title: title.trim() || file.name,
         category,
-        file_name: file.name,
-        file_type: extensionOf(file.name),
-        size: file.size,
-        status: "uploaded",
-        updated_at: new Date().toISOString(),
-      },
-      ...prev,
-    ]);
-    setPendingFile(null);
+      });
+      setDocuments((prev) => [normalizeDocument(finalized.document), ...prev]);
+      setPendingFile(null);
+    } catch (err) {
+      console.error(err);
+      setError(err.message || t("knowledgeBase.errUploadFailed"));
+    } finally {
+      setUploading(false);
+    }
   }
 
-  // TODO Phase 6: replace with POST /api/knowledge-documents
-  //   { action: "reprocess", id }, then reflect the returned row's real
-  // status instead of this simulated timeout.
-  function handleReprocess(id) {
-    setDocuments((prev) => prev.map((doc) => (doc.id === id ? { ...doc, status: "processing", updated_at: new Date().toISOString() } : doc)));
-    setTimeout(() => {
-      setDocuments((prev) => prev.map((doc) => (doc.id === id ? { ...doc, status: "ready", updated_at: new Date().toISOString() } : doc)));
-    }, 1200);
+  async function handleReprocess(id) {
+    setBusyId(id);
+    setError("");
+    try {
+      const result = await callApi("reprocess", { document_id: id });
+      setDocuments((prev) => prev.map((doc) => (doc.id === id ? normalizeDocument(result.document) : doc)));
+    } catch (err) {
+      console.error(err);
+      setError(err.message || t("knowledgeBase.errActionFailed"));
+    } finally {
+      setBusyId(null);
+    }
   }
 
   function handleReplaceClick(id) {
@@ -158,30 +236,59 @@ export default function KnowledgeBaseSection({ readOnly = false }) {
     replaceInputRef.current?.click();
   }
 
-  // TODO Phase 6: replace with a real upload + POST
-  //   /api/knowledge-documents { action: "update", id, ... }.
-  function handleReplaceChange(e) {
+  async function handleReplaceChange(e) {
     const file = e.target.files?.[0];
     const id = replaceTargetId.current;
-    if (file && id) {
-      setDocuments((prev) =>
-        prev.map((doc) =>
-          doc.id === id
-            ? { ...doc, file_name: file.name, file_type: extensionOf(file.name), size: file.size, status: "uploaded", updated_at: new Date().toISOString() }
-            : doc
-        )
-      );
-    }
     e.target.value = "";
     replaceTargetId.current = null;
+    if (!file || !id) return;
+
+    setBusyId(id);
+    setError("");
+    try {
+      const intent = await uploadFile(file, id);
+      const finalized = await callApi("finalize_upload", {
+        document_id: id,
+        storage_path: intent.path,
+        file_name: file.name,
+        mime_type: file.type,
+        file_size_bytes: file.size,
+      });
+      setDocuments((prev) => prev.map((doc) => (doc.id === id ? normalizeDocument(finalized.document) : doc)));
+    } catch (err) {
+      console.error(err);
+      setError(err.message || t("knowledgeBase.errUploadFailed"));
+    } finally {
+      setBusyId(null);
+    }
   }
 
-  // TODO Phase 6: replace with POST /api/knowledge-documents
-  //   { action: "delete", id } (which also removes the Storage object and
-  // its chunks server-side).
-  function handleDelete(id) {
+  async function handleDelete(id) {
     if (!window.confirm(t("knowledgeBase.confirmDelete"))) return;
-    setDocuments((prev) => prev.filter((doc) => doc.id !== id));
+    setBusyId(id);
+    setError("");
+    try {
+      await callApi("delete", { document_id: id });
+      setDocuments((prev) => prev.filter((doc) => doc.id !== id));
+    } catch (err) {
+      console.error(err);
+      setError(err.message || t("knowledgeBase.errActionFailed"));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleView(doc) {
+    setViewingDocument(doc);
+    setViewUrl("");
+    try {
+      const result = await callApi("sign_read", { document_id: doc.id });
+      setViewUrl(result.url || "");
+    } catch (err) {
+      console.error(err);
+      // Non-fatal — the details modal still shows metadata even if the
+      // signed URL couldn't be minted (e.g. Storage not provisioned yet).
+    }
   }
 
   const rows = useMemo(
@@ -201,20 +308,15 @@ export default function KnowledgeBaseSection({ readOnly = false }) {
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-50 text-xl">📚</div>
           <div>
-            <div className="flex items-center gap-2">
-              <h3 className="font-black text-slate-950">{t("knowledgeBase.title")}</h3>
-              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700 ring-1 ring-amber-100">
-                {t("knowledgeBase.previewBadge")}
-              </span>
-            </div>
+            <h3 className="font-black text-slate-950">{t("knowledgeBase.title")}</h3>
             <p className="text-xs text-slate-500">{t("knowledgeBase.subtitle")}</p>
           </div>
         </div>
       </div>
 
-      <div className="mb-5 rounded-2xl border border-amber-100 bg-amber-50 p-3 text-xs text-amber-800">
-        {t("knowledgeBase.previewNotice")}
-      </div>
+      {error && (
+        <div className="mb-5 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>
+      )}
 
       {!readOnly && (
         <div
@@ -236,13 +338,15 @@ export default function KnowledgeBaseSection({ readOnly = false }) {
             {t("knowledgeBase.browseButton")}
           </button>
           <p className="text-[11px] text-slate-400">{t("knowledgeBase.dropzoneHint")}</p>
-          <input ref={fileInputRef} type="file" className="hidden" onChange={handleBrowseChange} accept=".pdf,.doc,.docx,.txt" />
+          <input ref={fileInputRef} type="file" className="hidden" onChange={handleBrowseChange} accept={KNOWLEDGE_ACCEPT_ATTRIBUTE} />
         </div>
       )}
 
-      <input ref={replaceInputRef} type="file" className="hidden" onChange={handleReplaceChange} accept=".pdf,.doc,.docx,.txt" />
+      <input ref={replaceInputRef} type="file" className="hidden" onChange={handleReplaceChange} accept={KNOWLEDGE_ACCEPT_ATTRIBUTE} />
 
-      {!hasDocuments ? (
+      {loading ? (
+        <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">{t("common.loading")}</div>
+      ) : !hasDocuments ? (
         <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center">
           <DocumentTextIcon className="mx-auto mb-3 h-9 w-9 text-slate-300" />
           <p className="font-semibold text-slate-700">{t("knowledgeBase.emptyTitle")}</p>
@@ -274,7 +378,7 @@ export default function KnowledgeBaseSection({ readOnly = false }) {
                     <td className="py-3 pe-3"><StatusBadge status={doc.status} t={t} /></td>
                     <td className="py-3 pe-3 text-slate-500">{doc.updatedLabel}</td>
                     <td className="py-3">
-                      <DocumentRowActions doc={doc} readOnly={readOnly} t={t} onView={setViewingDocument} onReprocess={handleReprocess} onReplace={handleReplaceClick} onDelete={handleDelete} />
+                      <DocumentRowActions doc={doc} readOnly={readOnly} busy={busyId === doc.id} t={t} onView={handleView} onReprocess={handleReprocess} onReplace={handleReplaceClick} onDelete={handleDelete} />
                     </td>
                   </tr>
                 ))}
@@ -295,7 +399,7 @@ export default function KnowledgeBaseSection({ readOnly = false }) {
                 </div>
                 <p className="mt-2 text-xs text-slate-400">{doc.updatedLabel}</p>
                 <div className="mt-3">
-                  <DocumentRowActions doc={doc} readOnly={readOnly} t={t} onView={setViewingDocument} onReprocess={handleReprocess} onReplace={handleReplaceClick} onDelete={handleDelete} />
+                  <DocumentRowActions doc={doc} readOnly={readOnly} busy={busyId === doc.id} t={t} onView={handleView} onReprocess={handleReprocess} onReplace={handleReplaceClick} onDelete={handleDelete} />
                 </div>
               </div>
             ))}
@@ -319,6 +423,7 @@ export default function KnowledgeBaseSection({ readOnly = false }) {
                   onChange={(e) => setPendingFile((prev) => ({ ...prev, title: e.target.value }))}
                   placeholder={t("knowledgeBase.titleFieldPlaceholder")}
                   className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  disabled={uploading}
                 />
               </div>
               <div>
@@ -327,18 +432,19 @@ export default function KnowledgeBaseSection({ readOnly = false }) {
                   value={pendingFile.category}
                   onChange={(e) => setPendingFile((prev) => ({ ...prev, category: e.target.value }))}
                   className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  disabled={uploading}
                 >
-                  {CATEGORIES.map((cat) => (
+                  {KNOWLEDGE_CATEGORIES.map((cat) => (
                     <option key={cat} value={cat}>{categoryLabelFor(cat, t)}</option>
                   ))}
                 </select>
               </div>
             </div>
             <div className="mt-5 flex gap-2">
-              <button type="button" onClick={handleAddDocument} className="flex-1 rounded-2xl bg-indigo-600 py-2.5 text-sm font-bold text-white hover:bg-indigo-700">
-                {t("knowledgeBase.addDocument")}
+              <button type="button" onClick={handleAddDocument} disabled={uploading} className="flex-1 rounded-2xl bg-indigo-600 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-60">
+                {uploading ? t("settings.saving") : t("knowledgeBase.addDocument")}
               </button>
-              <button type="button" onClick={() => setPendingFile(null)} className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
+              <button type="button" onClick={() => setPendingFile(null)} disabled={uploading} className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
                 {t("knowledgeBase.cancel")}
               </button>
             </div>
@@ -360,8 +466,16 @@ export default function KnowledgeBaseSection({ readOnly = false }) {
               <div className="flex justify-between gap-3"><dt className="text-slate-500">{t("knowledgeBase.columnSize")}</dt><dd className="font-semibold text-slate-800">{formatFileSize(viewingDocument.size)}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-slate-500">{t("knowledgeBase.columnStatus")}</dt><dd><StatusBadge status={viewingDocument.status} t={t} /></dd></div>
               <div className="flex justify-between gap-3"><dt className="text-slate-500">{t("knowledgeBase.columnUpdated")}</dt><dd className="font-semibold text-slate-800">{formatDate(viewingDocument.updated_at)}</dd></div>
+              {viewingDocument.status === "failed" && viewingDocument.status_error && (
+                <div className="flex justify-between gap-3"><dt className="text-slate-500">{t("knowledgeBase.columnStatus")}</dt><dd className="font-semibold text-rose-600">{viewingDocument.status_error}</dd></div>
+              )}
             </dl>
-            <button type="button" onClick={() => setViewingDocument(null)} className="mt-5 w-full rounded-2xl border border-slate-200 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
+            {viewUrl && (
+              <a href={viewUrl} target="_blank" rel="noopener noreferrer" className="mt-4 block text-center text-sm font-semibold text-indigo-600 hover:underline">
+                {t("knowledgeBase.openFile")}
+              </a>
+            )}
+            <button type="button" onClick={() => setViewingDocument(null)} className="mt-4 w-full rounded-2xl border border-slate-200 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
               {t("knowledgeBase.close")}
             </button>
           </div>
@@ -371,7 +485,7 @@ export default function KnowledgeBaseSection({ readOnly = false }) {
   );
 }
 
-function DocumentRowActions({ doc, readOnly, t, onView, onReprocess, onReplace, onDelete }) {
+function DocumentRowActions({ doc, readOnly, busy, t, onView, onReprocess, onReplace, onDelete }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <button type="button" onClick={() => onView(doc)} title={t("knowledgeBase.actionView")} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100">
@@ -379,13 +493,13 @@ function DocumentRowActions({ doc, readOnly, t, onView, onReprocess, onReplace, 
       </button>
       {!readOnly && (
         <>
-          <button type="button" onClick={() => onReprocess(doc.id)} title={t("knowledgeBase.actionReprocess")} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100">
-            <ArrowPathIcon className="h-4 w-4" />
+          <button type="button" disabled={busy} onClick={() => onReprocess(doc.id)} title={t("knowledgeBase.actionReprocess")} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-40">
+            <ArrowPathIcon className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />
           </button>
-          <button type="button" onClick={() => onReplace(doc.id)} title={t("knowledgeBase.actionReplace")} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100">
+          <button type="button" disabled={busy} onClick={() => onReplace(doc.id)} title={t("knowledgeBase.actionReplace")} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-40">
             <ArrowUpTrayIcon className="h-4 w-4" />
           </button>
-          <button type="button" onClick={() => onDelete(doc.id)} title={t("knowledgeBase.actionDelete")} className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50">
+          <button type="button" disabled={busy} onClick={() => onDelete(doc.id)} title={t("knowledgeBase.actionDelete")} className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50 disabled:opacity-40">
             <TrashIcon className="h-4 w-4" />
           </button>
         </>

@@ -1217,7 +1217,7 @@ function calculateEndDate(subscriptionType, duration) {
       )}
 
       <div className="mb-6">
-        <KnowledgeBaseSection readOnly={!isAdmin && !clientCanEdit} />
+        <KnowledgeBaseSection clientId={effectiveClientId} actorUserId={user?.id} readOnly={!isAdmin && !clientCanEdit} />
       </div>
 
 <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">

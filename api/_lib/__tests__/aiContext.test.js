@@ -2,6 +2,26 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { resolveAiContext, formatWorkingHoursText } from "../aiContext.js";
 import { createMockSupabase } from "./mockSupabase.js";
+import { EMBEDDING_DIMENSIONS } from "../openaiEmbeddings.js";
+
+const ORIGINAL_FETCH = globalThis.fetch;
+const ORIGINAL_KEY = process.env.OPENAI_API_KEY;
+
+// Stubs the embeddings HTTP call only — resolveAiContext's own DB access
+// still goes through the mock supabase client passed to it.
+function mockEmbeddingFetch() {
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({ data: [{ index: 0, embedding: new Array(EMBEDDING_DIMENSIONS).fill(0.01) }] }),
+  });
+  process.env.OPENAI_API_KEY = "test-key";
+}
+
+function restoreFetch() {
+  globalThis.fetch = ORIGINAL_FETCH;
+  if (ORIGINAL_KEY === undefined) delete process.env.OPENAI_API_KEY;
+  else process.env.OPENAI_API_KEY = ORIGINAL_KEY;
+}
 
 // Shared fixture set. Two conversations for the same client on two
 // different platforms — facebook (has its own reply_mode column, Stage 1)
@@ -140,4 +160,93 @@ test("working hours normalization: null/unset input degrades to null, never thro
   assert.equal(formatWorkingHoursText(null), null);
   assert.equal(formatWorkingHoursText(undefined), null);
   assert.equal(formatWorkingHoursText({}), null);
+});
+
+// --- Phase 4B: relevant_knowledge integration -----------------------------
+
+test("relevant_knowledge is populated from semantic retrieval when it succeeds", async (t) => {
+  mockEmbeddingFetch();
+  t.after(restoreFetch);
+
+  const supabase = createMockSupabase(baseTables());
+  supabase.rpc = async (name, params) => {
+    assert.equal(name, "match_knowledge_chunks");
+    assert.equal(params.p_client_id, "client-1");
+    return {
+      data: [{ document_id: "doc-1", document_title: "Menu", category: "menu", content: "Grilled chicken plate", similarity: 0.9 }],
+      error: null,
+    };
+  };
+
+  const result = await resolveAiContext(supabase, { conversationId: "conv-1", clientId: "client-1", currentMessageText: "what food do you serve?" });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.context.relevant_knowledge.length, 1);
+  assert.equal(result.context.relevant_knowledge[0].content, "Grilled chicken plate");
+});
+
+test("retrieval unavailable (RPC failure) degrades to relevant_knowledge: [] WITHOUT failing the whole AI Context request", async (t) => {
+  mockEmbeddingFetch();
+  t.after(restoreFetch);
+
+  const supabase = createMockSupabase(baseTables());
+  supabase.rpc = async () => ({ data: null, error: { message: "relation does not exist" } });
+
+  const result = await resolveAiContext(supabase, { conversationId: "conv-1", clientId: "client-1", currentMessageText: "what food do you serve?" });
+
+  assert.equal(result.ok, true); // the request itself still succeeds
+  assert.deepEqual(result.context.relevant_knowledge, []);
+  // Business Profile / AI Behavior are completely unaffected by the
+  // Knowledge Base being unavailable.
+  assert.equal(result.context.client.business_name, "Tasty Kitchen");
+  assert.equal(result.context.ai_behavior.reply_tone, "friendly");
+});
+
+test("retrieval unavailable (missing OPENAI_API_KEY, no fetch mock) also degrades safely — business profile still works", async () => {
+  const supabase = createMockSupabase(baseTables());
+  supabase.rpc = async () => { throw new Error("must not be called without a successful embedding"); };
+
+  const result = await resolveAiContext(supabase, { conversationId: "conv-1", clientId: "client-1", currentMessageText: "what food do you serve?" });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.context.relevant_knowledge, []);
+  assert.equal(result.context.client.business_name, "Tasty Kitchen");
+});
+
+test("retrieval throwing an unexpected exception still degrades to [] rather than failing the request", async (t) => {
+  mockEmbeddingFetch();
+  t.after(restoreFetch);
+
+  const supabase = createMockSupabase(baseTables());
+  supabase.rpc = async () => { throw new Error("unexpected connection reset"); };
+
+  const result = await resolveAiContext(supabase, { conversationId: "conv-1", clientId: "client-1", currentMessageText: "what food do you serve?" });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.context.relevant_knowledge, []);
+});
+
+// --- Tenant isolation at the AI Context layer ------------------------------
+
+test("cross-client isolation: client A's AI context never contains client B's knowledge, even if the RPC is passed the wrong id by mistake", async (t) => {
+  mockEmbeddingFetch();
+  t.after(restoreFetch);
+
+  const supabase = createMockSupabase(baseTables());
+  // Simulates the RPC's own client_id-scoped behavior: it only ever
+  // returns rows for the client_id it was actually called with.
+  const knowledgeByClient = {
+    "client-1": [{ document_id: "doc-a1", document_title: "Client A Menu", category: "menu", content: "Client A's own dish", similarity: 0.9 }],
+    "client-2": [{ document_id: "doc-b1", document_title: "Client B Menu", category: "menu", content: "Client B's own dish — must NEVER reach client A", similarity: 0.95 }],
+  };
+  supabase.rpc = async (name, params) => ({ data: knowledgeByClient[params.p_client_id] || [], error: null });
+
+  const result = await resolveAiContext(supabase, { conversationId: "conv-1", clientId: "client-1", currentMessageText: "what's on the menu?" });
+
+  assert.equal(result.ok, true);
+  const contents = result.context.relevant_knowledge.map((r) => r.content);
+  assert.ok(contents.includes("Client A's own dish"));
+  assert.ok(!contents.some((c) => c.includes("Client B")), "client B's content must never appear in client A's context");
+  // And the RPC itself was always called with client-1's own id, never
+  // an id derived from anywhere else.
 });

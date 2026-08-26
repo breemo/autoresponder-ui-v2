@@ -34,6 +34,7 @@
 // avoided here.
 
 import { REPLY_MODE_VALUES } from "../../src/lib/replyMode.js";
+import { retrieveRelevantKnowledge } from "./knowledgeRetrieval.js";
 
 // platform -> { table, legacy feature slug }. The legacy feature slug is
 // what client_feature_integrations rows are actually keyed by for reply_
@@ -209,6 +210,40 @@ async function loadHistory(supabase, { clientId, conversationId }) {
     .map((row) => ({ role: row.direction === "outbound" ? "assistant" : "user", content: row.message.trim() }));
 }
 
+// Phase 4B: semantic Knowledge Base retrieval — wrapped so a Knowledge
+// Base problem (missing OPENAI_API_KEY, an OpenAI outage, an RPC error)
+// can NEVER fail the whole AI Context request. Every failure path here
+// degrades to an empty array and a single safe server-side warning (no
+// vectors, no document content, no secrets in the log) — Business
+// Profile, AI Behavior, and Conversation context are already fully
+// resolved by the time this runs and are completely unaffected by
+// whatever happens in here.
+async function retrieveKnowledgeSafely(supabase, { clientId, conversationId, queryText }) {
+  const trimmedQuery = (queryText || "").trim();
+  if (!trimmedQuery) return [];
+
+  try {
+    const result = await retrieveRelevantKnowledge(supabase, { clientId, queryText: trimmedQuery });
+    if (!result.ok) {
+      console.warn("aiContext: knowledge retrieval unavailable, continuing with relevant_knowledge: []", {
+        clientId,
+        conversationId,
+        reason: result.reason,
+      });
+      return [];
+    }
+    console.info("aiContext: knowledge retrieval complete", { clientId, conversationId, resultCount: result.results.length });
+    return result.results;
+  } catch (error) {
+    console.warn("aiContext: knowledge retrieval threw, continuing with relevant_knowledge: []", {
+      clientId,
+      conversationId,
+      message: error?.message,
+    });
+    return [];
+  }
+}
+
 export async function resolveAiContext(supabase, { conversationId, clientId, currentMessageText }) {
   if (!conversationId || !clientId) {
     return fail(400, "missing_input", "conversation_id and client_id are required");
@@ -267,6 +302,7 @@ export async function resolveAiContext(supabase, { conversationId, clientId, cur
   });
 
   const history = await loadHistory(supabase, { clientId, conversationId });
+  const relevantKnowledge = await retrieveKnowledgeSafely(supabase, { clientId, conversationId, queryText: currentMessageText });
 
   const context = {
     client: {
@@ -306,7 +342,7 @@ export async function resolveAiContext(supabase, { conversationId, clientId, cur
       history,
       current_message_text: currentMessageText || "",
     },
-    relevant_knowledge: [], // always an array — see Phase 3 report §13; populated by a later phase only.
+    relevant_knowledge: relevantKnowledge, // always an array — [] on any retrieval problem, never thrown (see retrieveKnowledgeSafely above).
   };
 
   return { ok: true, context };

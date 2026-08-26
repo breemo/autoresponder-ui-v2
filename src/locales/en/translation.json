@@ -699,7 +699,11 @@
     "emptyTitle": "No documents yet",
     "emptyDescription": "Upload menus, price lists, brochures, FAQs, or policies. When a customer asks a question, the AI automatically looks up only the relevant part of your documents — it doesn't read the entire file on every message.",
     "viewDetailsTitle": "Document Details",
-    "close": "Close"
+    "close": "Close",
+    "openFile": "Open file",
+    "errLoadFailed": "Failed to load documents",
+    "errUploadFailed": "Failed to upload the document",
+    "errActionFailed": "The action failed. Please try again."
   },
   "subscriptionBanner": {
     "message": "Your subscription is inactive or has expired. You can keep viewing your data, but service actions (sending replies, adding new numbers/integrations) are disabled until you renew.",
