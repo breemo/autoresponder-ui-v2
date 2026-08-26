@@ -16,6 +16,7 @@ import {
   SparklesIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
+import KnowledgeBaseSection from "../client/KnowledgeBaseSection.jsx";
 
 function getFeatureMeta(feature, t) {
   const slug = String(feature?.slug || "").toLowerCase();
@@ -210,6 +211,20 @@ function getUsageStatus(percent, t) {
 // client_feature_integrations.config — deliberately no business-fact
 // field (business_name/description/phone/working_hours) is rendered here
 // at all; those live only in Account Settings now (ClientSettings.jsx).
+// Reply Tone quick-select chips — stored value stays the plain lowercase
+// English word (matching the legacy client_feature_integrations.config
+// convention this dual-writes to, e.g. "friendly"), only the displayed
+// chip label is translated. Clicking a chip sets the field; the input
+// below stays fully editable for a custom tone, satisfying "predefined
+// common choices plus custom option".
+const REPLY_TONE_PRESETS = [
+  { value: "friendly", labelKey: "aiBehaviorToneFriendly" },
+  { value: "professional", labelKey: "aiBehaviorToneProfessional" },
+  { value: "casual", labelKey: "aiBehaviorToneCasual" },
+  { value: "formal", labelKey: "aiBehaviorToneFormal" },
+  { value: "enthusiastic", labelKey: "aiBehaviorToneEnthusiastic" },
+];
+
 function AiBehaviorFormBody({
   t,
   loading,
@@ -221,7 +236,7 @@ function AiBehaviorFormBody({
   onAddForbiddenRule,
   onRemoveForbiddenRule,
 }) {
-  const textareaClass =
+  const fieldClass =
     "w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-50 disabled:opacity-60";
 
   if (loading) {
@@ -229,20 +244,21 @@ function AiBehaviorFormBody({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4">
         <p className="text-sm font-semibold text-violet-800">{t("featureSettingsPage.aiBehaviorTitle")}</p>
         <p className="mt-1 text-xs text-violet-700">{t("featureSettingsPage.aiBehaviorSubtitle")}</p>
       </div>
 
       <div>
-        <label className="mb-1.5 block text-sm font-semibold text-slate-700">{t("featureSettingsPage.aiBehaviorPersonality")}</label>
+        <label className="mb-1 block text-sm font-semibold text-slate-700">{t("featureSettingsPage.aiBehaviorPersonality")}</label>
+        <p className="mb-1.5 text-xs text-slate-500">{t("featureSettingsPage.aiBehaviorPersonalityHelp")}</p>
         <input
           type="text"
           value={form.personality}
           onChange={(e) => onChange("personality", e.target.value)}
           placeholder={t("featureSettingsPage.aiBehaviorPersonalityPlaceholder")}
-          className={textareaClass}
+          className={fieldClass}
           disabled={readOnly}
         />
       </div>
@@ -250,12 +266,29 @@ function AiBehaviorFormBody({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label className="mb-1.5 block text-sm font-semibold text-slate-700">{t("featureSettingsPage.aiBehaviorReplyTone")}</label>
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {REPLY_TONE_PRESETS.map((preset) => (
+              <button
+                key={preset.value}
+                type="button"
+                disabled={readOnly}
+                onClick={() => onChange("reply_tone", preset.value)}
+                className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 transition disabled:opacity-60 ${
+                  form.reply_tone === preset.value
+                    ? "bg-indigo-600 text-white ring-indigo-600"
+                    : "bg-white text-slate-600 ring-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                {t(`featureSettingsPage.${preset.labelKey}`)}
+              </button>
+            ))}
+          </div>
           <input
             type="text"
             value={form.reply_tone}
             onChange={(e) => onChange("reply_tone", e.target.value)}
             placeholder={t("featureSettingsPage.aiBehaviorReplyTonePlaceholder")}
-            className={textareaClass}
+            className={fieldClass}
             disabled={readOnly}
           />
         </div>
@@ -264,7 +297,7 @@ function AiBehaviorFormBody({
           <select
             value={form.default_language}
             onChange={(e) => onChange("default_language", e.target.value)}
-            className={textareaClass}
+            className={fieldClass}
             disabled={readOnly}
           >
             <option value="">—</option>
@@ -274,40 +307,46 @@ function AiBehaviorFormBody({
         </div>
       </div>
 
-      <div>
-        <label className="mb-1.5 block text-sm font-semibold text-slate-700">{t("featureSettingsPage.aiBehaviorSpecialInstructions")}</label>
-        <textarea
-          rows={3}
-          value={form.special_instructions}
-          onChange={(e) => onChange("special_instructions", e.target.value)}
-          placeholder={t("featureSettingsPage.aiBehaviorSpecialInstructionsPlaceholder")}
-          className={textareaClass}
-          disabled={readOnly}
-        />
-      </div>
-
-      <div>
-        <label className="mb-1.5 block text-sm font-semibold text-slate-700">{t("featureSettingsPage.aiBehaviorBookingInstructions")}</label>
-        <textarea
-          rows={3}
-          value={form.booking_instructions}
-          onChange={(e) => onChange("booking_instructions", e.target.value)}
-          placeholder={t("featureSettingsPage.aiBehaviorBookingInstructionsPlaceholder")}
-          className={textareaClass}
-          disabled={readOnly}
-        />
-      </div>
-
-      <div>
-        <label className="mb-1.5 block text-sm font-semibold text-slate-700">{t("featureSettingsPage.aiBehaviorEscalationInstructions")}</label>
-        <textarea
-          rows={3}
-          value={form.escalation_instructions}
-          onChange={(e) => onChange("escalation_instructions", e.target.value)}
-          placeholder={t("featureSettingsPage.aiBehaviorEscalationInstructionsPlaceholder")}
-          className={textareaClass}
-          disabled={readOnly}
-        />
+      <div className="rounded-2xl border border-slate-200 p-4">
+        <div className="mb-3">
+          <h4 className="text-sm font-bold text-slate-800">{t("featureSettingsPage.aiBehaviorInstructionsGroupTitle")}</h4>
+          <p className="text-xs text-slate-500">{t("featureSettingsPage.aiBehaviorInstructionsGroupSubtitle")}</p>
+        </div>
+        <div className="space-y-4 divide-y divide-slate-100">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-slate-700">{t("featureSettingsPage.aiBehaviorSpecialInstructions")}</label>
+            <textarea
+              rows={2}
+              value={form.special_instructions}
+              onChange={(e) => onChange("special_instructions", e.target.value)}
+              placeholder={t("featureSettingsPage.aiBehaviorSpecialInstructionsPlaceholder")}
+              className={fieldClass}
+              disabled={readOnly}
+            />
+          </div>
+          <div className="pt-4">
+            <label className="mb-1.5 block text-xs font-semibold text-slate-700">{t("featureSettingsPage.aiBehaviorBookingInstructions")}</label>
+            <textarea
+              rows={2}
+              value={form.booking_instructions}
+              onChange={(e) => onChange("booking_instructions", e.target.value)}
+              placeholder={t("featureSettingsPage.aiBehaviorBookingInstructionsPlaceholder")}
+              className={fieldClass}
+              disabled={readOnly}
+            />
+          </div>
+          <div className="pt-4">
+            <label className="mb-1.5 block text-xs font-semibold text-slate-700">{t("featureSettingsPage.aiBehaviorEscalationInstructions")}</label>
+            <textarea
+              rows={2}
+              value={form.escalation_instructions}
+              onChange={(e) => onChange("escalation_instructions", e.target.value)}
+              placeholder={t("featureSettingsPage.aiBehaviorEscalationInstructionsPlaceholder")}
+              className={fieldClass}
+              disabled={readOnly}
+            />
+          </div>
+        </div>
       </div>
 
       <div>
@@ -317,22 +356,23 @@ function AiBehaviorFormBody({
         {form.forbidden_rules.length === 0 ? (
           <p className="mb-2 text-xs text-slate-400">{t("featureSettingsPage.aiBehaviorForbiddenRulesEmpty")}</p>
         ) : (
-          <ul className="mb-2 space-y-2">
+          <div className="mb-3 flex flex-wrap gap-2">
             {form.forbidden_rules.map((rule, index) => (
-              <li key={index} className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                <span className="min-w-0 flex-1 break-words">{rule}</span>
+              <span key={index} className="inline-flex max-w-full items-center gap-2 rounded-full bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 ring-1 ring-rose-100">
+                <span className="truncate">{rule}</span>
                 {!readOnly && (
                   <button
                     type="button"
                     onClick={() => onRemoveForbiddenRule(index)}
-                    className="shrink-0 text-xs font-semibold text-rose-600 hover:underline"
+                    aria-label={t("common.delete")}
+                    className="shrink-0 rounded-full p-0.5 text-rose-500 hover:bg-rose-100"
                   >
-                    {t("common.delete")}
+                    <XMarkIcon className="h-3.5 w-3.5" />
                   </button>
                 )}
-              </li>
+              </span>
             ))}
-          </ul>
+          </div>
         )}
 
         {!readOnly && (
@@ -342,7 +382,7 @@ function AiBehaviorFormBody({
               value={newForbiddenRule}
               onChange={(e) => onNewForbiddenRuleChange(e.target.value)}
               placeholder={t("featureSettingsPage.aiBehaviorForbiddenRulesPlaceholder")}
-              className={`${textareaClass} flex-1`}
+              className={`${fieldClass} flex-1`}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
@@ -359,10 +399,6 @@ function AiBehaviorFormBody({
             </button>
           </div>
         )}
-      </div>
-
-      <div className="rounded-2xl border border-dashed border-slate-200 p-3 text-xs text-slate-400">
-        {t("featureSettingsPage.knowledgeBaseComingSoon")}
       </div>
     </div>
   );
@@ -1179,6 +1215,10 @@ function calculateEndDate(subscriptionType, duration) {
           })}
         </div>
       )}
+
+      <div className="mb-6">
+        <KnowledgeBaseSection readOnly={!isAdmin && !clientCanEdit} />
+      </div>
 
 <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
 <div className="flex items-center justify-between">
