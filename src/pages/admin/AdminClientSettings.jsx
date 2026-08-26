@@ -203,6 +203,171 @@ function getUsageStatus(percent, t) {
 
 
 
+// AI Engine V1 — Phase 2. The ai_auto_reply feature's entire drawer body:
+// personality/reply_tone/default_language/special_instructions/
+// booking_instructions/escalation_instructions/forbidden_rules, bound to
+// public.client_ai_behavior (via /api/client-ai-behavior), NOT to
+// client_feature_integrations.config — deliberately no business-fact
+// field (business_name/description/phone/working_hours) is rendered here
+// at all; those live only in Account Settings now (ClientSettings.jsx).
+function AiBehaviorFormBody({
+  t,
+  loading,
+  readOnly,
+  form,
+  onChange,
+  newForbiddenRule,
+  onNewForbiddenRuleChange,
+  onAddForbiddenRule,
+  onRemoveForbiddenRule,
+}) {
+  const textareaClass =
+    "w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-50 disabled:opacity-60";
+
+  if (loading) {
+    return <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">{t("featureSettingsPage.loadingFeatureSettings")}</div>;
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4">
+        <p className="text-sm font-semibold text-violet-800">{t("featureSettingsPage.aiBehaviorTitle")}</p>
+        <p className="mt-1 text-xs text-violet-700">{t("featureSettingsPage.aiBehaviorSubtitle")}</p>
+      </div>
+
+      <div>
+        <label className="mb-1.5 block text-sm font-semibold text-slate-700">{t("featureSettingsPage.aiBehaviorPersonality")}</label>
+        <input
+          type="text"
+          value={form.personality}
+          onChange={(e) => onChange("personality", e.target.value)}
+          placeholder={t("featureSettingsPage.aiBehaviorPersonalityPlaceholder")}
+          className={textareaClass}
+          disabled={readOnly}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <label className="mb-1.5 block text-sm font-semibold text-slate-700">{t("featureSettingsPage.aiBehaviorReplyTone")}</label>
+          <input
+            type="text"
+            value={form.reply_tone}
+            onChange={(e) => onChange("reply_tone", e.target.value)}
+            placeholder={t("featureSettingsPage.aiBehaviorReplyTonePlaceholder")}
+            className={textareaClass}
+            disabled={readOnly}
+          />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-sm font-semibold text-slate-700">{t("featureSettingsPage.aiBehaviorLanguage")}</label>
+          <select
+            value={form.default_language}
+            onChange={(e) => onChange("default_language", e.target.value)}
+            className={textareaClass}
+            disabled={readOnly}
+          >
+            <option value="">—</option>
+            <option value="ar">{t("featureSettingsPage.aiBehaviorLanguageArabic")}</option>
+            <option value="en">{t("featureSettingsPage.aiBehaviorLanguageEnglish")}</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label className="mb-1.5 block text-sm font-semibold text-slate-700">{t("featureSettingsPage.aiBehaviorSpecialInstructions")}</label>
+        <textarea
+          rows={3}
+          value={form.special_instructions}
+          onChange={(e) => onChange("special_instructions", e.target.value)}
+          placeholder={t("featureSettingsPage.aiBehaviorSpecialInstructionsPlaceholder")}
+          className={textareaClass}
+          disabled={readOnly}
+        />
+      </div>
+
+      <div>
+        <label className="mb-1.5 block text-sm font-semibold text-slate-700">{t("featureSettingsPage.aiBehaviorBookingInstructions")}</label>
+        <textarea
+          rows={3}
+          value={form.booking_instructions}
+          onChange={(e) => onChange("booking_instructions", e.target.value)}
+          placeholder={t("featureSettingsPage.aiBehaviorBookingInstructionsPlaceholder")}
+          className={textareaClass}
+          disabled={readOnly}
+        />
+      </div>
+
+      <div>
+        <label className="mb-1.5 block text-sm font-semibold text-slate-700">{t("featureSettingsPage.aiBehaviorEscalationInstructions")}</label>
+        <textarea
+          rows={3}
+          value={form.escalation_instructions}
+          onChange={(e) => onChange("escalation_instructions", e.target.value)}
+          placeholder={t("featureSettingsPage.aiBehaviorEscalationInstructionsPlaceholder")}
+          className={textareaClass}
+          disabled={readOnly}
+        />
+      </div>
+
+      <div>
+        <label className="mb-1.5 block text-sm font-semibold text-slate-700">{t("featureSettingsPage.aiBehaviorForbiddenRules")}</label>
+        <p className="mb-2 text-xs text-slate-500">{t("featureSettingsPage.aiBehaviorForbiddenRulesSubtitle")}</p>
+
+        {form.forbidden_rules.length === 0 ? (
+          <p className="mb-2 text-xs text-slate-400">{t("featureSettingsPage.aiBehaviorForbiddenRulesEmpty")}</p>
+        ) : (
+          <ul className="mb-2 space-y-2">
+            {form.forbidden_rules.map((rule, index) => (
+              <li key={index} className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                <span className="min-w-0 flex-1 break-words">{rule}</span>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={() => onRemoveForbiddenRule(index)}
+                    className="shrink-0 text-xs font-semibold text-rose-600 hover:underline"
+                  >
+                    {t("common.delete")}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {!readOnly && (
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newForbiddenRule}
+              onChange={(e) => onNewForbiddenRuleChange(e.target.value)}
+              placeholder={t("featureSettingsPage.aiBehaviorForbiddenRulesPlaceholder")}
+              className={`${textareaClass} flex-1`}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  onAddForbiddenRule();
+                }
+              }}
+            />
+            <button
+              type="button"
+              onClick={onAddForbiddenRule}
+              className="shrink-0 rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              {t("featureSettingsPage.aiBehaviorForbiddenRulesAdd")}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-2xl border border-dashed border-slate-200 p-3 text-xs text-slate-400">
+        {t("featureSettingsPage.knowledgeBaseComingSoon")}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminClientSettings({ clientIdOverride }) {
   const params = useParams();
   const effectiveClientId = clientIdOverride || params.id;
@@ -239,6 +404,25 @@ export default function AdminClientSettings({ clientIdOverride }) {
   const [readOnly, setReadOnly] = useState(false);
   const [showTelegramGuide, setShowTelegramGuide] = useState(false);
   const [copiedValue, setCopiedValue] = useState("");
+
+  // AI Engine V1 — Phase 2. ai_auto_reply's drawer content is entirely
+  // separate from the generic client_feature_integrations.config field
+  // loop below (see openFeatureDrawer/handleSaveFeature) — it reads/
+  // writes public.client_ai_behavior via /api/client-ai-behavior instead.
+  // newForbiddenRule is the draft text for the "add rule" input in the
+  // Forbidden Rules list editor.
+  const EMPTY_AI_BEHAVIOR_FORM = {
+    personality: "",
+    reply_tone: "",
+    default_language: "",
+    special_instructions: "",
+    booking_instructions: "",
+    escalation_instructions: "",
+    forbidden_rules: [],
+  };
+  const [aiBehaviorForm, setAiBehaviorForm] = useState(EMPTY_AI_BEHAVIOR_FORM);
+  const [aiBehaviorLoading, setAiBehaviorLoading] = useState(false);
+  const [newForbiddenRule, setNewForbiddenRule] = useState("");
 
   useEffect(() => {
     if (effectiveClientId) {
@@ -409,6 +593,39 @@ console.log("activeSub", activeSub);
     const clientCanEdit = plan?.allow_self_edit === true;
     setReadOnly(!isAdmin && !clientCanEdit);
 
+    // AI Behavior — separate table (client_ai_behavior), separate API,
+    // separate drawer body. Business Profile fields are no longer part of
+    // this feature's drawer at all (see the render section below).
+    if (feature.slug === "ai_auto_reply") {
+      setAiBehaviorLoading(true);
+      setNewForbiddenRule("");
+      try {
+        const response = await fetch(
+          `/api/client-ai-behavior?actor_user_id=${encodeURIComponent(user?.id || "")}&client_id=${encodeURIComponent(effectiveClientId)}`
+        );
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data?.success === false) {
+          throw new Error(data?.message || t("featureSettingsPage.aiBehaviorLoadFailed"));
+        }
+        const behavior = data.behavior || {};
+        setAiBehaviorForm({
+          personality: behavior.personality || "",
+          reply_tone: behavior.reply_tone || "",
+          default_language: behavior.default_language || "",
+          special_instructions: behavior.special_instructions || "",
+          booking_instructions: behavior.booking_instructions || "",
+          escalation_instructions: behavior.escalation_instructions || "",
+          forbidden_rules: Array.isArray(behavior.forbidden_rules) ? behavior.forbidden_rules : [],
+        });
+      } catch (err) {
+        console.error(err);
+        setMsg(t("featureSettingsPage.aiBehaviorLoadFailed"));
+        setAiBehaviorForm(EMPTY_AI_BEHAVIOR_FORM);
+      }
+      setAiBehaviorLoading(false);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("client_feature_integrations")
       .select("id, config")
@@ -435,6 +652,62 @@ console.log("activeSub", activeSub);
     setFeatureValues(initialValues);
   }
 
+  function updateAiBehaviorField(field, value) {
+    setAiBehaviorForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function addForbiddenRule() {
+    const rule = newForbiddenRule.trim();
+    if (!rule) return;
+    setAiBehaviorForm((prev) => ({ ...prev, forbidden_rules: [...prev.forbidden_rules, rule] }));
+    setNewForbiddenRule("");
+  }
+
+  function removeForbiddenRule(index) {
+    setAiBehaviorForm((prev) => ({ ...prev, forbidden_rules: prev.forbidden_rules.filter((_, i) => i !== index) }));
+  }
+
+  async function handleSaveAiBehavior(e) {
+    e.preventDefault();
+    if (readOnly || !effectiveClientId) return;
+
+    setSaving(true);
+    setMsg("");
+
+    try {
+      const response = await fetch("/api/client-ai-behavior", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actor_user_id: user?.id,
+          client_id: effectiveClientId,
+          ...aiBehaviorForm,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.success === false) {
+        throw new Error(data?.message || t("featureSettingsPage.aiBehaviorSaveFailed"));
+      }
+
+      const behavior = data.behavior || {};
+      setAiBehaviorForm({
+        personality: behavior.personality || "",
+        reply_tone: behavior.reply_tone || "",
+        default_language: behavior.default_language || "",
+        special_instructions: behavior.special_instructions || "",
+        booking_instructions: behavior.booking_instructions || "",
+        escalation_instructions: behavior.escalation_instructions || "",
+        forbidden_rules: Array.isArray(behavior.forbidden_rules) ? behavior.forbidden_rules : [],
+      });
+      setMsg(t("featureSettingsPage.aiBehaviorSaved"));
+    } catch (err) {
+      console.error("AI behavior save error:", err);
+      setMsg(t("featureSettingsPage.aiBehaviorSaveFailed"));
+    }
+
+    setSaving(false);
+  }
+
   function closeFeatureDrawer() {
     setDrawerOpen(false);
     setActiveFeature(null);
@@ -443,6 +716,8 @@ console.log("activeSub", activeSub);
     setSaving(false);
     setShowTelegramGuide(false);
     setCopiedValue("");
+    setAiBehaviorForm(EMPTY_AI_BEHAVIOR_FORM);
+    setNewForbiddenRule("");
   }
 
   function handleFieldChange(fieldName, value) {
@@ -1442,8 +1717,22 @@ function calculateEndDate(subscriptionType, duration) {
               </div>
             </div>
 
-            <form onSubmit={handleSaveFeature} className="space-y-5 p-5">
-              {isTelegramFeature && (
+            <form onSubmit={activeFeature.slug === "ai_auto_reply" ? handleSaveAiBehavior : handleSaveFeature} className="space-y-5 p-5">
+              {activeFeature.slug === "ai_auto_reply" && (
+                <AiBehaviorFormBody
+                  t={t}
+                  loading={aiBehaviorLoading}
+                  readOnly={readOnly}
+                  form={aiBehaviorForm}
+                  onChange={updateAiBehaviorField}
+                  newForbiddenRule={newForbiddenRule}
+                  onNewForbiddenRuleChange={setNewForbiddenRule}
+                  onAddForbiddenRule={addForbiddenRule}
+                  onRemoveForbiddenRule={removeForbiddenRule}
+                />
+              )}
+
+              {activeFeature.slug !== "ai_auto_reply" && isTelegramFeature && (
                 <div className="rounded-3xl border border-blue-100 bg-blue-50 p-4">
                   <button
                     type="button"
@@ -1465,29 +1754,31 @@ function calculateEndDate(subscriptionType, duration) {
                 </div>
               )}
 
-              {activeFeature.fields && typeof activeFeature.fields === "object" && !Array.isArray(activeFeature.fields) ? (
-                <div className="grid grid-cols-1 gap-4">
-                  {Object.entries(activeFeature.fields).map(([fieldName, fieldType]) => {
-                    const type = fieldType === "password" || fieldType === "number" || fieldType === "url" ? fieldType : "text";
-                    return (
-                      <div key={fieldName}>
-                        <label className="mb-1.5 block text-sm font-semibold text-slate-700">{fieldName}</label>
-                        <input
-                          type={type}
-                          value={featureValues[fieldName] || ""}
-                          onChange={(e) => handleFieldChange(fieldName, e.target.value)}
-                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-50"
-                          disabled={readOnly}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">{t("featureSettingsPage.noFieldsDefined")}</div>
+              {activeFeature.slug !== "ai_auto_reply" && (
+                activeFeature.fields && typeof activeFeature.fields === "object" && !Array.isArray(activeFeature.fields) ? (
+                  <div className="grid grid-cols-1 gap-4">
+                    {Object.entries(activeFeature.fields).map(([fieldName, fieldType]) => {
+                      const type = fieldType === "password" || fieldType === "number" || fieldType === "url" ? fieldType : "text";
+                      return (
+                        <div key={fieldName}>
+                          <label className="mb-1.5 block text-sm font-semibold text-slate-700">{fieldName}</label>
+                          <input
+                            type={type}
+                            value={featureValues[fieldName] || ""}
+                            onChange={(e) => handleFieldChange(fieldName, e.target.value)}
+                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-50"
+                            disabled={readOnly}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">{t("featureSettingsPage.noFieldsDefined")}</div>
+                )
               )}
 
-              {setupLinks.length > 0 && (
+              {activeFeature.slug !== "ai_auto_reply" && setupLinks.length > 0 && (
                 <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
                   <div className="mb-3 flex items-center gap-2">
                     <LinkIcon className="h-5 w-5 text-indigo-600" />
