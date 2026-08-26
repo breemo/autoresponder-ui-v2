@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { XMarkIcon } from "@heroicons/react/24/outline";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useLanguage } from "../../context/LanguageContext.jsx";
@@ -12,6 +13,7 @@ const cardClass = "rounded-3xl border border-slate-200 bg-white shadow-sm";
 // One empty-array day = closed that day. Multiple entries in one day's
 // array = multiple periods (split shifts). No holiday/exception
 // scheduling yet (out of scope for v1, per the approved architecture).
+// UNCHANGED in this UI/UX pass — only how it's edited/displayed moved.
 const DAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 const WEEKDAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday"];
 
@@ -66,6 +68,12 @@ function normalizeWorkingHours(raw) {
   return result;
 }
 
+function cloneWorkingHours(wh) {
+  const days = {};
+  for (const day of DAY_KEYS) days[day] = wh.days[day].map((p) => ({ ...p }));
+  return { timezone: wh.timezone, days };
+}
+
 // Drops incomplete periods (missing open or close) and empty timezone —
 // never invents a value. If truly nothing is set (no timezone, every day
 // empty), returns null so the column stays genuinely unset rather than
@@ -103,6 +111,61 @@ function validateWorkingHours(wh, t) {
   return errors;
 }
 
+function formatTime12h(time, t) {
+  if (!time) return "";
+  const [hStr, mStr] = time.split(":");
+  let h = parseInt(hStr, 10);
+  if (Number.isNaN(h)) return time;
+  const period = h >= 12 ? t("settings.pm") : t("settings.am");
+  h = h % 12;
+  if (h === 0) h = 12;
+  return `${h}:${mStr || "00"} ${period}`;
+}
+
+function periodsToText(periods, t) {
+  if (!periods || periods.length === 0) return t("settings.workingHoursClosed");
+  return periods.map((p) => `${formatTime12h(p.open, t)} – ${formatTime12h(p.close, t)}`).join(", ");
+}
+
+function dayScheduleKey(periods) {
+  if (!periods || periods.length === 0) return "closed";
+  return periods.map((p) => `${p.open}-${p.close}`).join(",");
+}
+
+// Groups CONSECUTIVE days (in Sunday->Saturday order) that share the
+// exact same schedule into one summary row — "Sun – Thu / 9:00 AM –
+// 5:00 PM" instead of 5 identical lines. Non-consecutive matches (e.g.
+// Sunday and Saturday happening to share hours but Monday differs) are
+// deliberately NOT merged — only real runs, matching how a person reads
+// a weekly schedule.
+function groupWorkingHoursSummary(wh, t) {
+  const groups = [];
+  let current = null;
+  for (const day of DAY_KEYS) {
+    const key = dayScheduleKey(wh.days[day]);
+    if (current && current.key === key) {
+      current.days.push(day);
+    } else {
+      current = { key, days: [day] };
+      groups.push(current);
+    }
+  }
+
+  return groups.map((group) => {
+    let label;
+    if (group.days.length === DAY_KEYS.length) {
+      label = t("settings.workingHoursEveryDay");
+    } else if (group.days.length > 1) {
+      const first = group.days[0];
+      const last = group.days[group.days.length - 1];
+      label = `${t(`settings.daysShort.${first}`)} – ${t(`settings.daysShort.${last}`)}`;
+    } else {
+      label = t(`settings.days.${group.days[0]}`);
+    }
+    return { label, text: periodsToText(wh.days[group.days[0]], t) };
+  });
+}
+
 function TimezoneField({ value, onChange, t }) {
   return (
     <div>
@@ -123,10 +186,11 @@ function TimezoneField({ value, onChange, t }) {
   );
 }
 
-// Compact one-row-per-day schedule. A day with periods.length === 0 is
-// "closed" — no separate boolean needed, matching the storage shape
-// exactly. Each additional period renders as a small indented row under
-// the day, not a new card.
+// Compact one-row-per-day schedule + bulk-copy toolbar + timezone. Lives
+// ONLY inside the Edit Hours drawer now — never on the main settings page
+// (see BusinessHoursSummaryCard for what the page itself shows). A day
+// with periods.length === 0 is "closed" — no separate boolean needed,
+// matching the storage shape exactly.
 function WorkingHoursEditor({ value, onChange, errors, t }) {
   const [copySource, setCopySource] = useState("sunday");
 
@@ -271,6 +335,113 @@ function WorkingHoursEditor({ value, onChange, errors, t }) {
   );
 }
 
+// Main-page card: read-only summary only — no toggles, no time inputs,
+// no bulk-copy controls. This is the entire point of the progressive-
+// disclosure rework: a rarely-edited setting should not permanently
+// occupy this much of the page. "Edit Hours" (or "Add Hours" if nothing
+// is configured yet) is the only control here.
+function BusinessHoursSummaryCard({ workingHours, onEdit, t }) {
+  const hasAnySchedule = DAY_KEYS.some((day) => workingHours.days[day].length > 0);
+  const summary = useMemo(() => (hasAnySchedule ? groupWorkingHoursSummary(workingHours, t) : []), [workingHours, hasAnySchedule, t]);
+
+  return (
+    <div className={`${cardClass} p-6`}>
+      <div className="mb-4 flex items-center gap-3">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-xl">🕒</div>
+        <div>
+          <h3 className="font-black text-slate-950">{t("settings.workingHoursTitle")}</h3>
+          <p className="text-xs text-slate-500">{t("settings.workingHoursSubtitle")}</p>
+        </div>
+      </div>
+
+      {!hasAnySchedule ? (
+        <p className="text-sm text-slate-400">{t("settings.workingHoursNotSet")}</p>
+      ) : (
+        <div className="space-y-1.5 text-sm">
+          {summary.map((row, i) => (
+            <div key={i} className="flex items-center justify-between gap-3">
+              <span className="font-semibold text-slate-700">{row.label}</span>
+              <span className="text-slate-500">{row.text}</span>
+            </div>
+          ))}
+          {workingHours.timezone && (
+            <p className="pt-2 text-xs text-slate-400">{t("settings.timezone")}: {workingHours.timezone}</p>
+          )}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={onEdit}
+        className="mt-4 rounded-2xl border border-slate-200 px-4 py-2 text-sm font-bold text-indigo-700 hover:bg-indigo-50"
+      >
+        {hasAnySchedule ? t("settings.workingHoursEditButton") : t("settings.workingHoursAddButton")}
+      </button>
+    </div>
+  );
+}
+
+// Drawer on desktop (side panel, matches the exact pattern already used
+// by AdminClientSettings.jsx's feature drawer for visual consistency
+// across the app), full-width/full-screen on mobile (the panel is
+// `w-full`, only capped by `max-w-xl` above the `sm` breakpoint).
+//
+// Save model, deliberately unambiguous (no double-save): "Apply" commits
+// the draft into this page's `workingHours` form state ONLY — it does
+// NOT call Supabase. The page's single "Save Settings" button (top of
+// page, unchanged) is the only thing that ever persists to the database,
+// for every field on this page including hours. Closing via ✕/backdrop
+// discards the draft instead.
+function BusinessHoursDrawer({ draft, onDraftChange, onApply, onCancel, t }) {
+  const errors = useMemo(() => validateWorkingHours(draft, t), [draft, t]);
+  const hasErrors = Object.keys(errors).length > 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="flex-1 bg-slate-950/50 backdrop-blur-sm" onClick={onCancel} />
+      <div className="h-full w-full max-w-xl overflow-y-auto border-s border-slate-200 bg-white shadow-2xl">
+        <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 p-5 backdrop-blur">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-black text-slate-950">{t("settings.workingHoursDrawerTitle")}</h2>
+              <p className="mt-1 text-sm text-slate-500">{t("settings.workingHoursDrawerSubtitle")}</p>
+            </div>
+            <button type="button" onClick={onCancel} className="rounded-2xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50">
+              <XMarkIcon className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-5 p-5">
+          <WorkingHoursEditor value={draft} onChange={onDraftChange} errors={errors} t={t} />
+
+          {hasErrors && (
+            <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
+              {t("settings.workingHoursHasErrors")}
+            </div>
+          )}
+
+          <p className="text-xs text-slate-400">{t("settings.workingHoursDrawerHint")}</p>
+
+          <div className="flex gap-3 border-t border-slate-100 pt-5">
+            <button
+              type="button"
+              onClick={onApply}
+              disabled={hasErrors}
+              className="flex-1 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {t("settings.workingHoursApply")}
+            </button>
+            <button type="button" onClick={onCancel} className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">
+              {t("common.cancel")}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ClientSettings() {
   const { user } = useAuth();
   const { t } = useTranslation();
@@ -279,14 +450,12 @@ export default function ClientSettings() {
   const clientId = user?.client_id || null;
   const [form, setForm] = useState({ business_name: "", email: "", phone: "", address: "", business_description: "", welcome_message: "", default_reply: "", closing_message: "", website: "" });
   const [workingHours, setWorkingHours] = useState(emptyWorkingHours());
+  const [hoursDraft, setHoursDraft] = useState(null); // non-null while the drawer is open
   const [defaultLanguage, setDefaultLanguage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
   const [langSaving, setLangSaving] = useState(false);
   const [langMsg, setLangMsg] = useState("");
-
-  const workingHoursErrors = useMemo(() => validateWorkingHours(workingHours, t), [workingHours, t]);
-  const hasWorkingHoursErrors = Object.keys(workingHoursErrors).length > 0;
 
   useEffect(() => { if (clientId) loadClient(); }, [clientId]);
 
@@ -308,8 +477,26 @@ export default function ClientSettings() {
     }
   }
 
+  function openHoursDrawer() {
+    setHoursDraft(cloneWorkingHours(workingHours));
+  }
+
+  function applyHoursDraft() {
+    if (Object.keys(validateWorkingHours(hoursDraft, t)).length > 0) return; // Apply is disabled in this state; defensive no-op
+    setWorkingHours(hoursDraft);
+    setHoursDraft(null);
+  }
+
+  function cancelHoursDrawer() {
+    setHoursDraft(null); // discard — never touches the page's working hours state
+  }
+
   async function handleSave() {
-    if (hasWorkingHoursErrors) {
+    // Safety net only — the drawer's own Apply button already blocks on
+    // invalid periods, so workingHours here should always be valid by
+    // the time Save is reachable; this just avoids ever persisting a bad
+    // value if that ever changes.
+    if (Object.keys(validateWorkingHours(workingHours, t)).length > 0) {
       setMsg(t("settings.workingHoursHasErrors"));
       return;
     }
@@ -365,46 +552,35 @@ export default function ClientSettings() {
 
       {msg && <div className={`rounded-2xl border px-4 py-3 text-sm font-bold ${isSuccessMsg ? "border-emerald-100 bg-emerald-50 text-emerald-700" : "border-red-100 bg-red-50 text-red-700"}`}>{msg}</div>}
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <div className={`${cardClass} p-6`}>
-          <div className="mb-5 flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-xl">🏢</div><div><h3 className="font-black text-slate-950">{t("settings.businessInfoTitle")}</h3><p className="text-xs text-slate-500">{t("settings.businessInfoSubtitle")}</p></div></div>
-          <div className="space-y-4">
-            <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.businessName")}</label><input className={inputClass} value={form.business_name} onChange={(e) => update("business_name", e.target.value)} /></div>
-            <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.businessDescription")}</label><textarea rows={5} className={inputClass} value={form.business_description} onChange={(e) => update("business_description", e.target.value)} /></div>
-          </div>
-        </div>
-
-        <div className={`${cardClass} p-6`}>
-          <div className="mb-5 flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-50 text-xl">📍</div><div><h3 className="font-black text-slate-950">{t("settings.contactLocationTitle")}</h3><p className="text-xs text-slate-500">{t("settings.contactLocationSubtitle")}</p></div></div>
-          <div className="space-y-4">
+      {/* A. Business Information — one calm card, no tiny cards split out. */}
+      <div className={`${cardClass} p-6`}>
+        <div className="mb-5 flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-xl">🏢</div><div><h3 className="font-black text-slate-950">{t("settings.businessInfoTitle")}</h3><p className="text-xs text-slate-500">{t("settings.businessInfoSubtitle")}</p></div></div>
+        <div className="space-y-4">
+          <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.businessName")}</label><input className={inputClass} value={form.business_name} onChange={(e) => update("business_name", e.target.value)} /></div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.email")}</label><input className={inputClass} value={form.email} disabled /><p className="mt-1 text-xs text-slate-400">{t("settings.emailHint")}</p></div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.phone")}</label><input className={inputClass} value={form.phone} onChange={(e) => update("phone", e.target.value)} /></div>
-              <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.website")}</label><input className={inputClass} value={form.website} onChange={(e) => update("website", e.target.value)} placeholder={t("settings.websitePlaceholder")} /></div>
-            </div>
+            <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.phone")}</label><input className={inputClass} value={form.phone} onChange={(e) => update("phone", e.target.value)} /></div>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.website")}</label><input className={inputClass} value={form.website} onChange={(e) => update("website", e.target.value)} placeholder={t("settings.websitePlaceholder")} /></div>
             <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.address")}</label><input className={inputClass} value={form.address} onChange={(e) => update("address", e.target.value)} /></div>
           </div>
+          <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.businessDescription")}</label><textarea rows={4} className={inputClass} value={form.business_description} onChange={(e) => update("business_description", e.target.value)} /></div>
         </div>
+      </div>
 
-        <div className={`${cardClass} p-6 xl:col-span-2`}>
-          <div className="mb-5 flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-xl">🕒</div><div><h3 className="font-black text-slate-950">{t("settings.workingHoursTitle")}</h3><p className="text-xs text-slate-500">{t("settings.workingHoursSubtitle")}</p></div></div>
-          <WorkingHoursEditor value={workingHours} onChange={setWorkingHours} errors={workingHoursErrors} t={t} />
-        </div>
-
-        <div className={`${cardClass} p-6`}>
-          <div className="mb-5 flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-xl">💬</div><div><h3 className="font-black text-slate-950">{t("settings.conversationMessagesTitle")}</h3><p className="text-xs text-slate-500">{t("settings.conversationMessagesSubtitle")}</p></div></div>
-          <div className="space-y-4">
-            <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.welcomeMessage")}</label><textarea rows={4} className={inputClass} value={form.welcome_message} onChange={(e) => update("welcome_message", e.target.value)} placeholder={t("settings.welcomeMessagePlaceholder")} /></div>
-            <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.defaultReply")}</label><textarea rows={4} className={inputClass} value={form.default_reply} onChange={(e) => update("default_reply", e.target.value)} placeholder={t("settings.defaultReplyPlaceholder")} /></div>
-            <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.closingMessage")}</label><textarea rows={3} className={inputClass} value={form.closing_message} onChange={(e) => update("closing_message", e.target.value)} placeholder={t("settings.closingMessagePlaceholder")} /></div>
-          </div>
-        </div>
+      {/* B. Business Hours (summary only) + D. Language & Regional — paired
+          side by side so neither is a lonely, mostly-empty full-width card. */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <BusinessHoursSummaryCard workingHours={workingHours} onEdit={openHoursDrawer} t={t} />
 
         <div className={`${cardClass} p-6`}>
           <div className="mb-4">
-            <h3 className="font-black text-slate-950">{t("settings.defaultLanguageTitle")}</h3>
-            <p className="text-xs text-slate-500">{t("settings.defaultLanguageSubtitle")}</p>
+            <h3 className="font-black text-slate-950">{t("settings.regionalSettingsTitle")}</h3>
+            <p className="text-xs text-slate-500">{t("settings.regionalSettingsSubtitle")}</p>
           </div>
+
+          <p className="mb-2 text-xs font-bold text-slate-600">{t("settings.defaultLanguageTitle")}</p>
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -427,9 +603,41 @@ export default function ClientSettings() {
               {t("settings.defaultLanguageEnglish")}
             </button>
           </div>
-          {langMsg && <p className="mt-3 text-xs font-bold text-indigo-700">{langMsg}</p>}
+          {langMsg && <p className="mt-2 text-xs font-bold text-indigo-700">{langMsg}</p>}
+          <p className="mt-2 text-[11px] text-slate-400">{t("settings.defaultLanguageSubtitle")}</p>
+
+          <div className="mt-5 border-t border-slate-100 pt-4">
+            <p className="text-xs font-bold text-slate-600">{t("settings.timezone")}</p>
+            <div className="mt-1 flex items-center justify-between gap-3">
+              <span className="text-sm text-slate-700">{workingHours.timezone || "—"}</span>
+              <button type="button" onClick={openHoursDrawer} className="text-xs font-semibold text-indigo-600 hover:underline">
+                {t("settings.timezoneEditHint")}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* C. Conversation Messages — compact, side by side on larger screens
+          instead of one tall stacked column. */}
+      <div className={`${cardClass} p-6`}>
+        <div className="mb-5 flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-xl">💬</div><div><h3 className="font-black text-slate-950">{t("settings.conversationMessagesTitle")}</h3><p className="text-xs text-slate-500">{t("settings.conversationMessagesSubtitle")}</p></div></div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.welcomeMessage")}</label><textarea rows={3} className={inputClass} value={form.welcome_message} onChange={(e) => update("welcome_message", e.target.value)} placeholder={t("settings.welcomeMessagePlaceholder")} /></div>
+          <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.defaultReply")}</label><textarea rows={3} className={inputClass} value={form.default_reply} onChange={(e) => update("default_reply", e.target.value)} placeholder={t("settings.defaultReplyPlaceholder")} /></div>
+          <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.closingMessage")}</label><textarea rows={3} className={inputClass} value={form.closing_message} onChange={(e) => update("closing_message", e.target.value)} placeholder={t("settings.closingMessagePlaceholder")} /></div>
+        </div>
+      </div>
+
+      {hoursDraft && (
+        <BusinessHoursDrawer
+          draft={hoursDraft}
+          onDraftChange={setHoursDraft}
+          onApply={applyHoursDraft}
+          onCancel={cancelHoursDrawer}
+          t={t}
+        />
+      )}
     </div>
   );
 }
