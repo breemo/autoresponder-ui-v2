@@ -147,15 +147,21 @@ export const KNOWLEDGE_MATCH_COUNT = 5;
 // dimensions, chunking, match count, and the RPC itself are unchanged.
 export const KNOWLEDGE_MIN_SIMILARITY = 0.5;
 
-export async function retrieveRelevantKnowledge(supabase, { clientId, queryText, matchCount = KNOWLEDGE_MATCH_COUNT, minSimilarity = KNOWLEDGE_MIN_SIMILARITY }) {
+// Internal — does the embed+RPC call and returns RAW rows (still
+// including chunk_id, needed internally for Phase 2's cross-method
+// dedup). retrieveRelevantKnowledge() below wraps this with its existing,
+// unchanged public contract (chunk_id stripped, never exposed — see its
+// own comment). Extracted as a pure refactor for Phase 2 reuse; behavior
+// of retrieveRelevantKnowledge() itself is byte-for-byte unchanged.
+async function embedAndSearchVector(supabase, { clientId, queryText, matchCount, minSimilarity }) {
   const trimmedQuery = (queryText || "").trim();
   if (!clientId || !trimmedQuery) {
-    return { ok: false, reason: "missing_input", results: [] };
+    return { ok: false, reason: "missing_input", rows: [] };
   }
 
   const embedding = await embedText(trimmedQuery);
   if (!embedding.ok) {
-    return { ok: false, reason: embedding.reason, results: [] };
+    return { ok: false, reason: embedding.reason, rows: [] };
   }
 
   const { data, error } = await supabase.rpc("match_knowledge_chunks", {
@@ -166,20 +172,239 @@ export async function retrieveRelevantKnowledge(supabase, { clientId, queryText,
   });
 
   if (error) {
-    return { ok: false, reason: "rpc_failed", results: [] };
+    return { ok: false, reason: "rpc_failed", rows: [] };
+  }
+
+  return { ok: true, rows: data || [] };
+}
+
+export async function retrieveRelevantKnowledge(supabase, { clientId, queryText, matchCount = KNOWLEDGE_MATCH_COUNT, minSimilarity = KNOWLEDGE_MIN_SIMILARITY }) {
+  const search = await embedAndSearchVector(supabase, { clientId, queryText, matchCount, minSimilarity });
+  if (!search.ok) {
+    return { ok: false, reason: search.reason, results: [] };
   }
 
   // Never returns the raw vector — only grounding metadata a prompt can
-  // use. `data` may legitimately be null/empty (no match above the
-  // threshold, or the client has no ready documents yet) — that's a
-  // normal, successful "no results" outcome, not a failure.
-  const results = (data || []).map((row) => ({
+  // use. `rows` may legitimately be empty (no match above the threshold,
+  // or the client has no ready documents yet) — that's a normal,
+  // successful "no results" outcome, not a failure.
+  const results = search.rows.map((row) => ({
     document_id: row.document_id,
     document_title: row.document_title,
     category: row.category,
     content: row.content,
     similarity: row.similarity,
   }));
+
+  return { ok: true, results };
+}
+
+// ---------------------------------------------------------------------
+// Phase 2 — Hybrid Knowledge Retrieval (vector + lexical, RRF fusion)
+// ---------------------------------------------------------------------
+// Root cause being addressed: a query like "عرض المنيو" can score below
+// the (unchanged) 0.50 vector-similarity threshold even when a document
+// contains the near-exact term — vector search alone has no mechanism to
+// guarantee a near-exact keyword hit ranks highly. This adds a second,
+// independent lexical candidate path (PostgreSQL full-text search, see
+// the accompanying migration's header comment for why the "simple"
+// config was chosen over English/Arabic-specific configs or pg_trgm),
+// fused with the existing vector path via Reciprocal Rank Fusion — never
+// arbitrary score addition (a cosine similarity and a ts_rank are not the
+// same unit and are never treated as such).
+//
+// KNOWLEDGE_MIN_SIMILARITY/KNOWLEDGE_MATCH_COUNT are reused unchanged for
+// BOTH the vector call and the lexical candidate-pool size — no new
+// tunable threshold is introduced. The FINAL relevant_knowledge array
+// returned to the caller is still capped at KNOWLEDGE_MATCH_COUNT, same
+// as today.
+const MIN_LEXICAL_TOKEN_LENGTH = 2; // drops single-letter tokens (e.g. Arabic "و") without a keyword dictionary
+const MAX_LEXICAL_TOKENS = 12; // bounds tsquery size for a long (Phase 1 contextual) query
+const RRF_K = 60; // standard Reciprocal Rank Fusion constant (Cormack et al.) — not exposed as a tunable knob in this phase
+
+// Strips to letters (incl. Arabic) + digits + whitespace only. No manual
+// keyword/stopword dictionary — "simple" tsvector already lowercases and
+// tokenizes on the Postgres side identically for the indexed content, so
+// the only normalization needed here is stripping punctuation/operator
+// characters so the resulting string is always safe, valid tsquery
+// syntax (see the migration's own defensive handling too).
+function tokenizeForLexicalSearch(text) {
+  const cleaned = (text || "").replace(/[^\p{L}\p{N}\s]/gu, " ").trim();
+  if (!cleaned) return [];
+  return cleaned
+    .split(/\s+/)
+    .filter((token) => token.length >= MIN_LEXICAL_TOKEN_LENGTH)
+    .slice(0, MAX_LEXICAL_TOKENS);
+}
+
+// Pure, deterministic. Builds an OR-combined, prefix-matched tsquery
+// string ("token1:* | token2:* | ...") — OR, not AND, so a longer
+// Phase-1-enriched contextual query doesn't require every single word to
+// be present to produce any candidate at all; ts_rank still scores a
+// chunk matching MORE terms higher, so this doesn't sacrifice precision.
+// Returns null when no usable token remains (e.g. empty/punctuation-only
+// input, or every token too short) — callers must treat null as "skip
+// lexical search", never call the RPC with it.
+export function buildLexicalTsQuery(text) {
+  const tokens = tokenizeForLexicalSearch(text);
+  if (tokens.length === 0) return null;
+  return tokens.map((token) => `${token}:*`).join(" | ");
+}
+
+// Internal — mirrors embedAndSearchVector's shape (raw rows, including
+// chunk_id) for the lexical path.
+async function searchLexical(supabase, { clientId, queryText, matchCount }) {
+  const tsQuery = buildLexicalTsQuery(queryText);
+  if (!clientId || !tsQuery) {
+    return { ok: false, reason: "missing_input", rows: [] };
+  }
+
+  const { data, error } = await supabase.rpc("match_knowledge_chunks_lexical", {
+    p_client_id: clientId,
+    p_tsquery: tsQuery,
+    p_match_count: matchCount,
+  });
+
+  if (error) {
+    return { ok: false, reason: "rpc_failed", rows: [] };
+  }
+
+  return { ok: true, rows: data || [] };
+}
+
+// Public lexical-only entry point — same contract shape as
+// retrieveRelevantKnowledge (never throws, { ok, results }), useful for
+// direct testing/observability of the lexical path in isolation.
+export async function retrieveRelevantKnowledgeLexical(supabase, { clientId, queryText, matchCount = KNOWLEDGE_MATCH_COUNT }) {
+  const search = await searchLexical(supabase, { clientId, queryText, matchCount });
+  if (!search.ok) {
+    return { ok: false, reason: search.reason, results: [] };
+  }
+
+  const results = search.rows.map((row) => ({
+    document_id: row.document_id,
+    document_title: row.document_title,
+    category: row.category,
+    content: row.content,
+    lexical_rank: row.lexical_rank,
+  }));
+
+  return { ok: true, results };
+}
+
+// Reciprocal Rank Fusion score for one already rank-ordered row list
+// (both RPCs order their own results, vector by similarity desc, lexical
+// by ts_rank desc — this function trusts that ordering, it does not
+// re-sort by any raw score itself).
+function computeRrfScores(rows) {
+  const scores = new Map();
+  rows.forEach((row, index) => {
+    const rank = index + 1; // 1-based
+    const key = dedupKey(row);
+    const current = scores.get(key) || 0;
+    scores.set(key, current + 1 / (RRF_K + rank));
+  });
+  return scores;
+}
+
+// chunk_id is the authoritative dedup identity (both RPCs always return
+// it in real production use — see the migrations' own RETURNS TABLE
+// definitions). Falls back to a document_id+content composite when it's
+// ever absent, so a row is never silently dropped from the merge just
+// because one column is missing — defensive robustness, not something
+// real traffic should ever actually hit.
+function dedupKey(row) {
+  return row?.chunk_id || `${row?.document_id || ""}::${row?.content || ""}`;
+}
+
+// Merges + deduplicates (by chunk_id — the authoritative identity, per
+// Step 5) + ranks two independent candidate lists via RRF, then maps down
+// to the exact same public shape retrieveRelevantKnowledge already
+// returns — promptBuilder.js and every existing downstream consumer
+// remain completely unaware whether a result came from vector, lexical,
+// or both. `similarity` is populated with the real cosine similarity when
+// the chunk was found by vector search; null when it was lexical-only
+// (never a fabricated number — see the report).
+function fuseRankedResults({ vectorRows, lexicalRows, limit }) {
+  const vectorScores = computeRrfScores(vectorRows);
+  const lexicalScores = computeRrfScores(lexicalRows);
+
+  const byKey = new Map();
+  for (const row of vectorRows) {
+    if (!row) continue;
+    byKey.set(dedupKey(row), { ...row });
+  }
+  for (const row of lexicalRows) {
+    if (!row) continue;
+    const key = dedupKey(row);
+    const existing = byKey.get(key);
+    if (existing) {
+      // Already present from vector — keep its similarity, just merge in
+      // whatever fields might be missing (defensive only; both RPCs
+      // always populate document_title/category/content).
+      byKey.set(key, { ...row, ...existing });
+    } else {
+      byKey.set(key, { ...row });
+    }
+  }
+
+  const fused = Array.from(byKey.entries()).map(([key, row]) => ({
+    row,
+    rrfScore: (vectorScores.get(key) || 0) + (lexicalScores.get(key) || 0),
+  }));
+
+  fused.sort((a, b) => b.rrfScore - a.rrfScore);
+
+  return fused.slice(0, limit).map(({ row }) => ({
+    document_id: row.document_id,
+    document_title: row.document_title,
+    category: row.category,
+    content: row.content,
+    similarity: typeof row.similarity === "number" ? row.similarity : null,
+  }));
+}
+
+// The Phase 2 entry point — replaces retrieveRelevantKnowledge as the
+// call api/_lib/aiContext.js makes. Runs vector and lexical search in
+// PARALLEL (Promise.all — no added sequential latency), each already
+// non-throwing on its own (embedAndSearchVector/searchLexical), with an
+// additional .catch() as belt-and-suspenders so a genuinely unexpected
+// exception in either path can never take down the other (Step 10 —
+// Failure Isolation): if vector fails, lexical results (if any) are still
+// used, and vice versa; only if BOTH fail does this return ok:false,
+// which api/_lib/aiContext.js already degrades to relevant_knowledge: []
+// exactly as it does today for a single-method failure.
+export async function retrieveRelevantKnowledgeHybrid(
+  supabase,
+  { clientId, queryText, matchCount = KNOWLEDGE_MATCH_COUNT, minSimilarity = KNOWLEDGE_MIN_SIMILARITY }
+) {
+  const trimmedQuery = (queryText || "").trim();
+  if (!clientId || !trimmedQuery) {
+    return { ok: false, reason: "missing_input", results: [] };
+  }
+
+  const [vectorSearch, lexicalSearch] = await Promise.all([
+    embedAndSearchVector(supabase, { clientId, queryText: trimmedQuery, matchCount, minSimilarity }).catch(() => ({
+      ok: false,
+      reason: "vector_threw",
+      rows: [],
+    })),
+    searchLexical(supabase, { clientId, queryText: trimmedQuery, matchCount }).catch(() => ({
+      ok: false,
+      reason: "lexical_threw",
+      rows: [],
+    })),
+  ]);
+
+  if (!vectorSearch.ok && !lexicalSearch.ok) {
+    return { ok: false, reason: vectorSearch.reason || lexicalSearch.reason || "retrieval_failed", results: [] };
+  }
+
+  const results = fuseRankedResults({
+    vectorRows: vectorSearch.ok ? vectorSearch.rows : [],
+    lexicalRows: lexicalSearch.ok ? lexicalSearch.rows : [],
+    limit: matchCount,
+  });
 
   return { ok: true, results };
 }
