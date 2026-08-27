@@ -239,9 +239,17 @@ async function loadHistory(supabase, { clientId, conversationId }) {
 // prepended context — see knowledgeRetrieval.js's buildLexicalTsQuery for
 // the confirmed bug this fixes. `queryText` (the Phase-1 contextual
 // string) still goes to vector embedding exactly as before Phase 2B.
+//
+// TEMPORARY DIAGNOSTIC: `logTag` (conversationId + a short per-call
+// suffix) is passed through so every knowledgeRetrieval[DIAGNOSTIC] line
+// for one customer message can be correlated together in the log viewer
+// — see knowledgeRetrieval.js's own comment on retrieveRelevantKnowledgeHybrid.
+// Purely additive metadata, never branched on.
 async function retrieveKnowledgeSafely(supabase, { clientId, conversationId, queryText, history }) {
   const trimmedQuery = (queryText || "").trim();
   if (!trimmedQuery) return [];
+
+  const logTag = `${conversationId || "no-conv"}:${Date.now().toString(36)}`;
 
   let effectiveQuery = trimmedQuery;
   let lexicalContextText = "";
@@ -259,11 +267,13 @@ async function retrieveKnowledgeSafely(supabase, { clientId, conversationId, que
       queryText: effectiveQuery,
       currentMessageText: trimmedQuery,
       contextText: lexicalContextText,
+      logTag,
     });
     if (!result.ok) {
       console.warn("aiContext: knowledge retrieval unavailable, continuing with relevant_knowledge: []", {
         clientId,
         conversationId,
+        logTag,
         reason: result.reason,
       });
       return [];
@@ -271,6 +281,7 @@ async function retrieveKnowledgeSafely(supabase, { clientId, conversationId, que
     console.info("aiContext: knowledge retrieval complete", {
       clientId,
       conversationId,
+      logTag,
       resultCount: result.results.length,
       queryContextualized: effectiveQuery !== trimmedQuery,
     });
@@ -279,6 +290,7 @@ async function retrieveKnowledgeSafely(supabase, { clientId, conversationId, que
     console.warn("aiContext: knowledge retrieval threw, continuing with relevant_knowledge: []", {
       clientId,
       conversationId,
+      logTag,
       message: error?.message,
     });
     return [];

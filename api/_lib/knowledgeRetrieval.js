@@ -405,9 +405,26 @@ function dedupKey(row) {
 // both. `similarity` is populated with the real cosine similarity when
 // the chunk was found by vector search; null when it was lexical-only
 // (never a fabricated number).
+// Returns { results, diagnostics } — `results` is byte-for-byte the same
+// value this function has always returned (the final, capped,
+// promptBuilder-facing array); `diagnostics` is an ADDITIVE, log-only
+// view of every fused candidate (not just the final `limit`), with each
+// one's originating vector/lexical rank (if any), its fused RRF score,
+// and whether it survived the final cap — added for the temporary
+// diagnostic patch (see retrieveRelevantKnowledgeHybrid). Nothing about
+// `results` itself, or the ranking/dedup logic that produces it, changed.
 function fuseRankedResults({ vectorRows, lexicalRows, limit }) {
   const vectorScores = computeRrfScores(vectorRows);
   const lexicalScores = computeRrfScores(lexicalRows);
+
+  const vectorRankByKey = new Map();
+  vectorRows.forEach((row, index) => {
+    if (row) vectorRankByKey.set(dedupKey(row), index + 1);
+  });
+  const lexicalRankByKey = new Map();
+  lexicalRows.forEach((row, index) => {
+    if (row) lexicalRankByKey.set(dedupKey(row), index + 1);
+  });
 
   const byKey = new Map();
   for (const row of vectorRows) {
@@ -429,19 +446,36 @@ function fuseRankedResults({ vectorRows, lexicalRows, limit }) {
   }
 
   const fused = Array.from(byKey.entries()).map(([key, row]) => ({
+    key,
     row,
     rrfScore: (vectorScores.get(key) || 0) + (lexicalScores.get(key) || 0),
+    vectorRank: vectorRankByKey.get(key) || null,
+    lexicalRank: lexicalRankByKey.get(key) || null,
   }));
 
   fused.sort((a, b) => b.rrfScore - a.rrfScore);
 
-  return fused.slice(0, limit).map(({ row }) => ({
+  const selectedKeys = new Set(fused.slice(0, limit).map((f) => f.key));
+
+  const results = fused.slice(0, limit).map(({ row }) => ({
     document_id: row.document_id,
     document_title: row.document_title,
     category: row.category,
     content: row.content,
     similarity: typeof row.similarity === "number" ? row.similarity : null,
   }));
+
+  const diagnostics = fused.map((f) => ({
+    chunk_id: f.row.chunk_id || null,
+    document_title: f.row.document_title || null,
+    category: f.row.category || null,
+    vectorRank: f.vectorRank,
+    lexicalRank: f.lexicalRank,
+    rrfScore: f.rrfScore,
+    selected: selectedKeys.has(f.key),
+  }));
+
+  return { results, diagnostics };
 }
 
 // The Phase 2/2B entry point — replaces retrieveRelevantKnowledge as the
@@ -468,15 +502,34 @@ function fuseRankedResults({ vectorRows, lexicalRows, limit }) {
 // candidates internally (Phase 2B — wider pre-fusion pool); the final
 // fused/returned array is still capped at `matchCount`
 // (KNOWLEDGE_MATCH_COUNT, 5, unchanged).
+//
+// ---------------------------------------------------------------------
+// TEMPORARY DIAGNOSTIC LOGGING — logging only, no behavior change.
+// ---------------------------------------------------------------------
+// Added to answer, from real Vercel runtime logs, exactly which stage
+// (vector candidates / lexical candidates / RRF fusion / final cap) a
+// specific query's expected chunk drops out at — see the diagnostic
+// report this accompanies. `logTag` (optional; passed by
+// api/_lib/aiContext.js as `${conversationId}:${short id}`) correlates
+// every line for one customer message/request together in the log
+// viewer. Every value logged here is metadata only — chunk_id, document
+// title, category, numeric ranks/scores, and boolean flags. NEVER logged:
+// embeddings, chunk content, API keys/secrets, auth headers, or full
+// conversation history (only the single current message text and a
+// length-capped preview of the Phase-1 contextual query, itself already
+// capped upstream at 500 chars). Intended to be removed once the
+// diagnosis is complete — search for "knowledgeRetrieval[DIAGNOSTIC]" to
+// find every line this adds.
 export async function retrieveRelevantKnowledgeHybrid(
   supabase,
-  { clientId, queryText, currentMessageText, contextText = "", matchCount = KNOWLEDGE_MATCH_COUNT, minSimilarity = KNOWLEDGE_MIN_SIMILARITY }
+  { clientId, queryText, currentMessageText, contextText = "", matchCount = KNOWLEDGE_MATCH_COUNT, minSimilarity = KNOWLEDGE_MIN_SIMILARITY, logTag }
 ) {
   const trimmedQuery = (queryText || "").trim();
   if (!clientId || !trimmedQuery) {
     return { ok: false, reason: "missing_input", results: [] };
   }
   const effectiveCurrentText = (currentMessageText || trimmedQuery || "").trim();
+  const tag = logTag || "no-tag";
 
   const [vectorSearch, lexicalSearch] = await Promise.all([
     embedAndSearchVector(supabase, { clientId, queryText: trimmedQuery, matchCount: KNOWLEDGE_CANDIDATE_POOL_SIZE, minSimilarity }).catch(() => ({
@@ -491,14 +544,64 @@ export async function retrieveRelevantKnowledgeHybrid(
     })),
   ]);
 
+  // Computed a second time purely for the log line below (buildLexicalTsQuery
+  // is pure/deterministic — this has zero effect on the real lexical RPC
+  // call, which already computed and used its own copy inside searchLexical).
+  const lexicalTsQueryForLog = buildLexicalTsQuery({ currentMessageText: effectiveCurrentText, contextText });
+
+  console.info("knowledgeRetrieval[DIAGNOSTIC]: query construction", {
+    logTag: tag,
+    currentMessageText: effectiveCurrentText,
+    contextualQueryPreview: trimmedQuery.slice(0, 300),
+    lexicalTsQuery: lexicalTsQueryForLog,
+  });
+
+  console.info("knowledgeRetrieval[DIAGNOSTIC]: vector candidates", {
+    logTag: tag,
+    ok: vectorSearch.ok,
+    reason: vectorSearch.ok ? null : vectorSearch.reason,
+    count: vectorSearch.ok ? vectorSearch.rows.length : 0,
+    candidates: (vectorSearch.ok ? vectorSearch.rows : []).map((row, i) => ({
+      rank: i + 1,
+      chunk_id: row.chunk_id || null,
+      document_title: row.document_title || null,
+      category: row.category || null,
+      similarity: row.similarity,
+    })),
+  });
+
+  console.info("knowledgeRetrieval[DIAGNOSTIC]: lexical candidates", {
+    logTag: tag,
+    ok: lexicalSearch.ok,
+    reason: lexicalSearch.ok ? null : lexicalSearch.reason,
+    count: lexicalSearch.ok ? lexicalSearch.rows.length : 0,
+    candidates: (lexicalSearch.ok ? lexicalSearch.rows : []).map((row, i) => ({
+      rank: i + 1,
+      chunk_id: row.chunk_id || null,
+      document_title: row.document_title || null,
+      category: row.category || null,
+      lexical_rank: row.lexical_rank,
+    })),
+  });
+
   if (!vectorSearch.ok && !lexicalSearch.ok) {
+    console.info("knowledgeRetrieval[DIAGNOSTIC]: both paths failed — no fusion attempted", { logTag: tag });
     return { ok: false, reason: vectorSearch.reason || lexicalSearch.reason || "retrieval_failed", results: [] };
   }
 
-  const results = fuseRankedResults({
+  const { results, diagnostics } = fuseRankedResults({
     vectorRows: vectorSearch.ok ? vectorSearch.rows : [],
     lexicalRows: lexicalSearch.ok ? lexicalSearch.rows : [],
     limit: matchCount,
+  });
+
+  console.info("knowledgeRetrieval[DIAGNOSTIC]: RRF fusion", { logTag: tag, candidates: diagnostics });
+
+  console.info("knowledgeRetrieval[DIAGNOSTIC]: final relevant_knowledge", {
+    logTag: tag,
+    candidates: diagnostics
+      .filter((d) => d.selected)
+      .map((d) => ({ chunk_id: d.chunk_id, document_title: d.document_title, category: d.category })),
   });
 
   return { ok: true, results };
