@@ -42,6 +42,83 @@ export function buildAiContextResponse(context) {
   return { success: true, context, messages: buildPromptMessages(context) };
 }
 
+// ---------------------------------------------------------------------
+// TEMPORARY DIAGNOSTIC — Locations "negative from silence" bug
+// ---------------------------------------------------------------------
+// Added to prove, from real Vercel runtime logs, exactly WHY the AI still
+// answers a confident "no" for an unlisted location (Ramallah) when the
+// business has one configured location (Nablus) and
+// locations_list_complete = false — after the prompt-only fix in 807c5c0
+// did NOT change the live behavior. Answers the questions the existing
+// knowledgeRetrieval[DIAGNOSTIC] lines cannot: the runtime locations_list_
+// complete value, the exact LOCATIONS block semantics that reached the
+// model, whether 807c5c0's grounding rules are actually in the deployed
+// system prompt, and whether earlier "only Nablus / no Ramallah branch"
+// assistant turns are still being replayed into the OpenAI request.
+//
+// Pure function (context + already-built messages in, plain object out) —
+// unit-tested in api/_lib/__tests__/aiContextResponse.test.js, called
+// once by the handler wrapped in try/catch so it can never affect the
+// response. Logged as a single line, greppable by "aiContext[LOCDIAG]".
+//
+// NEVER logs: secrets/keys/headers, embeddings, tokens, or customer
+// message bodies from history. DOES log (all explicitly in scope per the
+// debugging brief): booleans, counts, message roles, configured location
+// names/cities, KB document titles/categories, the single current
+// customer message (same as the existing diagnostic), and a length-capped
+// preview of only ASSISTANT (AI-generated) history turns that match an
+// exclusivity phrase — the specific evidence needed to confirm history
+// poisoning. Remove this block, its handler call, and its tests once the
+// root cause is confirmed.
+const LOCDIAG_EXCLUSIVITY_PATTERN =
+  /موقعنا الوحيد|فرعنا الوحيد|الفرع الوحيد|الموقع الوحيد|لا يوجد فرع|لا يوجد لدينا فرع|ليس لدينا فرع|ما في فرع|ما عنا فرع|only (one )?(branch|location)|single (branch|location)|no (other )?branch|does not have a branch/i;
+
+export function buildLocationsDiagnostics(context, messages) {
+  const client = (context && context.client) || {};
+  const conversation = (context && context.conversation) || {};
+  const locations = Array.isArray(client.locations) ? client.locations : [];
+  const history = Array.isArray(conversation.history) ? conversation.history : [];
+  const kb = Array.isArray(context && context.relevant_knowledge) ? context.relevant_knowledge : [];
+  const systemMsg = (Array.isArray(messages) && messages[0] && typeof messages[0].content === "string") ? messages[0].content : "";
+
+  const assistantExclusivityHits = history
+    .map((m, index) => ({ index, role: m && m.role, content: (m && m.content) || "" }))
+    .filter((m) => m.role === "assistant" && LOCDIAG_EXCLUSIVITY_PATTERN.test(m.content))
+    .map((m) => ({ index: m.index, preview: m.content.slice(0, 160) }));
+
+  return {
+    conversation_id: conversation.id || null,
+    client_id: client.id || null,
+    current_message_text: conversation.current_message_text || "",
+    locations_list_complete: client.locations_list_complete === true,
+    locations_count: locations.length,
+    locations: locations.map((l) => ({
+      name: (l && l.name) || null,
+      city: (l && l.city) || null,
+      is_primary: !!(l && l.is_primary),
+    })),
+    system_prompt_len: systemMsg.length,
+    locations_block_present: /\nLocations:\n/.test(systemMsg) || systemMsg.startsWith("Locations:\n"),
+    locations_completeness_marker: systemMsg.includes("CONFIRMED COMPLETE list of every active location")
+      ? "COMPLETE"
+      : systemMsg.includes("this list is NOT confirmed complete")
+        ? "INCOMPLETE"
+        : "NONE",
+    rule_single_location_present: systemMsg.includes("is NEVER by itself proof that it is the ONLY location"),
+    rule_earlier_replies_present: systemMsg.includes(
+      "Earlier assistant replies in this conversation are NOT an authoritative business fact"
+    ),
+    rule_kb_address_present: systemMsg.includes("does NOT by itself mean that is the only location"),
+    history_count: history.length,
+    history_roles: history.map((m) => (m && m.role) || null),
+    assistant_exclusivity_hit_count: assistantExclusivityHits.length,
+    assistant_exclusivity_hits: assistantExclusivityHits,
+    messages_total: Array.isArray(messages) ? messages.length : 0,
+    kb_count: kb.length,
+    kb_items: kb.map((k) => ({ document_title: (k && k.document_title) || null, category: (k && k.category) || null })),
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ success: false, message: "Method not allowed" });
@@ -73,7 +150,15 @@ export default async function handler(req, res) {
       // are deliberately not distinguished in the response body).
       return res.status(result.status).json({ success: false, message: result.message, code: result.code });
     }
-    return res.status(200).json(buildAiContextResponse(result.context));
+    const response = buildAiContextResponse(result.context);
+    // TEMPORARY DIAGNOSTIC (see buildLocationsDiagnostics above) — never
+    // allowed to affect the response.
+    try {
+      console.info("aiContext[LOCDIAG]", buildLocationsDiagnostics(result.context, response.messages));
+    } catch (diagError) {
+      console.warn("aiContext[LOCDIAG]: diagnostic failed", { message: diagError?.message });
+    }
+    return res.status(200).json(response);
   } catch (error) {
     console.error("ai-context: failed to resolve context:", { code: error?.code, message: error?.message });
     return res.status(500).json({ success: false, message: "Failed to resolve AI context" });
