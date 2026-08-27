@@ -48,6 +48,14 @@ function startsWithAnyMarker(text) {
 // with a known follow-up/discourse word, or a very short message (<=2
 // words, e.g. "ليش؟"), is treated as likely depending on the previous
 // turn to be understood.
+//
+// Known tradeoff (Phase 2B diagnostic): this also fires for ordinary
+// short standalone requests ("عرض المنيو", "طلب وجبة" — both 2 words).
+// That is intentionally NOT "fixed" by narrowing this heuristic in
+// Phase 2B — instead, buildLexicalTsQuery (below) is redesigned so that,
+// even when this heuristic fires, the current message's own words can
+// never be crowded out of the lexical query by whatever prior-turn
+// context gets attached. See that function's own comment.
 function isLikelyFollowUp(text) {
   if (startsWithAnyMarker(text)) return true;
   const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
@@ -104,8 +112,24 @@ function findPreviousTurn(trimmedCurrent, history) {
   return { userMsg, assistantMsg };
 }
 
+// Shared by buildContextualRetrievalQuery (vector's embedding string) and
+// buildLexicalContextText (lexical's context-only tokens) — a single
+// source of truth for "is this a follow-up, and if so what's the prior
+// context", so the two retrieval methods can never disagree about it.
+function resolveFollowUpContext(currentMessageText, history) {
+  const trimmedCurrent = (currentMessageText || "").trim();
+  if (!trimmedCurrent || !isLikelyFollowUp(trimmedCurrent)) {
+    return { trimmedCurrent, contextParts: [] };
+  }
+  const previousTurn = findPreviousTurn(trimmedCurrent, history);
+  if (!previousTurn) return { trimmedCurrent, contextParts: [] };
+
+  const contextParts = [previousTurn.userMsg, previousTurn.assistantMsg].filter(Boolean);
+  return { trimmedCurrent, contextParts };
+}
+
 // Pure, deterministic, network-free. Builds the string that actually
-// gets embedded for retrieval:
+// gets embedded for VECTOR retrieval:
 //   - a standalone message is returned unchanged (no unrelated history
 //     injected — see the report's explicit requirement)
 //   - a likely follow-up gets at most [previous user message, previous
@@ -116,15 +140,8 @@ function findPreviousTurn(trimmedCurrent, history) {
 // Never throws outward — any unexpected `history` shape degrades to
 // returning the current message unchanged (see findPreviousTurn).
 export function buildContextualRetrievalQuery(currentMessageText, history) {
-  const trimmedCurrent = (currentMessageText || "").trim();
-  if (!trimmedCurrent) return trimmedCurrent;
-  if (!isLikelyFollowUp(trimmedCurrent)) return trimmedCurrent;
-
-  const previousTurn = findPreviousTurn(trimmedCurrent, history);
-  if (!previousTurn) return trimmedCurrent;
-
-  const contextParts = [previousTurn.userMsg, previousTurn.assistantMsg].filter(Boolean);
-  if (contextParts.length === 0) return trimmedCurrent;
+  const { trimmedCurrent, contextParts } = resolveFollowUpContext(currentMessageText, history);
+  if (!trimmedCurrent || contextParts.length === 0) return trimmedCurrent;
 
   let combined = [...contextParts, trimmedCurrent].join(" ");
 
@@ -138,6 +155,18 @@ export function buildContextualRetrievalQuery(currentMessageText, history) {
   return combined;
 }
 
+// Phase 2B: the prior-turn context TEXT ONLY (current message never
+// mixed in here) — used by buildLexicalTsQuery so the current message's
+// own tokens can be prioritized separately from context tokens. Same
+// follow-up detection as buildContextualRetrievalQuery (shared via
+// resolveFollowUpContext) — never drifts from it. Returns "" (not null)
+// when there's no usable context, matching buildLexicalTsQuery's
+// expected input shape.
+export function buildLexicalContextText(currentMessageText, history) {
+  const { contextParts } = resolveFollowUpContext(currentMessageText, history);
+  return contextParts.join(" ");
+}
+
 export const KNOWLEDGE_MATCH_COUNT = 5;
 // Lowered from 0.75 to 0.50 — live diagnostic against the Tasty client's
 // real, ready documents (match_knowledge_chunks, p_min_similarity=0)
@@ -145,7 +174,31 @@ export const KNOWLEDGE_MATCH_COUNT = 5;
 // with the next-best result dropping to 0.3195 — 0.75 excluded every real
 // match. 0.50 keeps that same clean separation from the drop-off. Model,
 // dimensions, chunking, match count, and the RPC itself are unchanged.
+//
+// Phase 2B note: kept as the ONE similarity floor — both the "candidate
+// generation" floor inside match_knowledge_chunks AND the de facto
+// "final relevance" floor. No separate, lower internal candidate
+// threshold was introduced in this phase: doing so would require picking
+// a specific number with no evaluation data to justify it (explicitly
+// not done — see the report's "Vector Candidate Threshold Decision").
+// What DID change is candidate *count* (KNOWLEDGE_CANDIDATE_POOL_SIZE,
+// below), which is a distinct, safely justifiable knob.
 export const KNOWLEDGE_MIN_SIMILARITY = 0.5;
+
+// Phase 2B: internal pre-fusion candidate pool size, distinct from the
+// FINAL relevant_knowledge count. Both retrieval methods previously
+// requested only KNOWLEDGE_MATCH_COUNT (5) candidates each — the same
+// number as the final output — meaning RRF never had more than 10
+// (already-deduped-down-further) candidates to fuse from, so a chunk
+// ranked 6th-or-worse by BOTH methods individually could never be pulled
+// up by cross-method agreement. 20 was chosen after inspecting the real
+// Tasty dataset (7 chunks total across all 5 documents) — comfortably
+// covers a small/typical Knowledge Base in full today, while remaining a
+// cheap LIMIT for a larger one later. The FINAL relevant_knowledge array
+// is still capped at KNOWLEDGE_MATCH_COUNT (5) after fusion — this
+// constant only widens what RRF has to work with, never what reaches the
+// prompt.
+export const KNOWLEDGE_CANDIDATE_POOL_SIZE = 20;
 
 // Internal — does the embed+RPC call and returns RAW rows (still
 // including chunk_id, needed internally for Phase 2's cross-method
@@ -200,61 +253,84 @@ export async function retrieveRelevantKnowledge(supabase, { clientId, queryText,
 }
 
 // ---------------------------------------------------------------------
-// Phase 2 — Hybrid Knowledge Retrieval (vector + lexical, RRF fusion)
+// Phase 2 / 2B — Hybrid Knowledge Retrieval (vector + lexical, RRF fusion)
 // ---------------------------------------------------------------------
 // Root cause being addressed: a query like "عرض المنيو" can score below
 // the (unchanged) 0.50 vector-similarity threshold even when a document
 // contains the near-exact term — vector search alone has no mechanism to
 // guarantee a near-exact keyword hit ranks highly. This adds a second,
 // independent lexical candidate path (PostgreSQL full-text search, see
-// the accompanying migration's header comment for why the "simple"
-// config was chosen over English/Arabic-specific configs or pg_trgm),
+// the accompanying migrations' header comments for why the "simple"
+// config was chosen, and why document title now participates too),
 // fused with the existing vector path via Reciprocal Rank Fusion — never
 // arbitrary score addition (a cosine similarity and a ts_rank are not the
 // same unit and are never treated as such).
-//
-// KNOWLEDGE_MIN_SIMILARITY/KNOWLEDGE_MATCH_COUNT are reused unchanged for
-// BOTH the vector call and the lexical candidate-pool size — no new
-// tunable threshold is introduced. The FINAL relevant_knowledge array
-// returned to the caller is still capped at KNOWLEDGE_MATCH_COUNT, same
-// as today.
 const MIN_LEXICAL_TOKEN_LENGTH = 2; // drops single-letter tokens (e.g. Arabic "و") without a keyword dictionary
-const MAX_LEXICAL_TOKENS = 12; // bounds tsquery size for a long (Phase 1 contextual) query
+const MAX_LEXICAL_TOKENS = 12; // total token budget — current-message tokens are NEVER subject to this cap (see buildLexicalTsQuery); only context tokens are
 const RRF_K = 60; // standard Reciprocal Rank Fusion constant (Cormack et al.) — not exposed as a tunable knob in this phase
 
-// Strips to letters (incl. Arabic) + digits + whitespace only. No manual
-// keyword/stopword dictionary — "simple" tsvector already lowercases and
-// tokenizes on the Postgres side identically for the indexed content, so
-// the only normalization needed here is stripping punctuation/operator
-// characters so the resulting string is always safe, valid tsquery
-// syntax (see the migration's own defensive handling too).
+// Strips to letters (incl. Arabic) + digits + whitespace only, splits on
+// whitespace, drops tokens shorter than MIN_LEXICAL_TOKEN_LENGTH. No
+// manual keyword/stopword dictionary, and — as of Phase 2B — no length
+// cap here either; the cap is applied by the caller (buildLexicalTsQuery)
+// ONLY to context tokens, never to current-message tokens. "simple"
+// tsvector already lowercases and tokenizes on the Postgres side
+// identically for the indexed content, so the only normalization needed
+// here is stripping punctuation/operator characters so the resulting
+// string is always safe, valid tsquery syntax (see the migrations' own
+// defensive handling too).
 function tokenizeForLexicalSearch(text) {
   const cleaned = (text || "").replace(/[^\p{L}\p{N}\s]/gu, " ").trim();
   if (!cleaned) return [];
-  return cleaned
-    .split(/\s+/)
-    .filter((token) => token.length >= MIN_LEXICAL_TOKEN_LENGTH)
-    .slice(0, MAX_LEXICAL_TOKENS);
+  return cleaned.split(/\s+/).filter((token) => token.length >= MIN_LEXICAL_TOKEN_LENGTH);
+}
+
+// Order-preserving de-duplication.
+function dedupeTokens(tokens) {
+  return [...new Set(tokens)];
 }
 
 // Pure, deterministic. Builds an OR-combined, prefix-matched tsquery
-// string ("token1:* | token2:* | ...") — OR, not AND, so a longer
-// Phase-1-enriched contextual query doesn't require every single word to
-// be present to produce any candidate at all; ts_rank still scores a
-// chunk matching MORE terms higher, so this doesn't sacrifice precision.
-// Returns null when no usable token remains (e.g. empty/punctuation-only
-// input, or every token too short) — callers must treat null as "skip
-// lexical search", never call the RPC with it.
-export function buildLexicalTsQuery(text) {
-  const tokens = tokenizeForLexicalSearch(text);
-  if (tokens.length === 0) return null;
-  return tokens.map((token) => `${token}:*`).join(" | ");
+// string ("token1:* | token2:* | ...") — OR, not AND, so a longer query
+// doesn't require every single word to be present to produce any
+// candidate at all; ts_rank still scores a chunk matching MORE terms
+// higher, so this doesn't sacrifice precision.
+//
+// Phase 2B fix (confirmed bug): current-message tokens are ALWAYS
+// included in full and are NEVER subject to MAX_LEXICAL_TOKENS — only
+// contextText's tokens are capped, to whatever budget remains after the
+// current message's own (deduplicated) tokens are counted. Previously,
+// a single flattened string (context + current) was tokenized and
+// capped from the beginning, so a long prepended prior-turn context
+// could consume the entire token budget before the current message's
+// own words were ever reached — for a short message like "عرض المنيو"
+// following any prior turn, the current message's tokens could be
+// dropped from the query ENTIRELY. That can no longer happen: this
+// function's contract guarantees every current-message token (that
+// survives the length filter) is present in the output.
+//
+// Returns null when there are no usable tokens at all (current AND
+// context both empty/too-short/punctuation-only) — callers must treat
+// null as "skip lexical search", never call the RPC with it.
+export function buildLexicalTsQuery({ currentMessageText, contextText } = {}) {
+  const currentTokens = dedupeTokens(tokenizeForLexicalSearch(currentMessageText));
+  const currentSet = new Set(currentTokens);
+
+  const remainingBudget = Math.max(MAX_LEXICAL_TOKENS - currentTokens.length, 0);
+  const contextTokens = dedupeTokens(tokenizeForLexicalSearch(contextText))
+    .filter((token) => !currentSet.has(token))
+    .slice(0, remainingBudget);
+
+  const allTokens = [...currentTokens, ...contextTokens];
+  if (allTokens.length === 0) return null;
+
+  return allTokens.map((token) => `${token}:*`).join(" | ");
 }
 
 // Internal — mirrors embedAndSearchVector's shape (raw rows, including
 // chunk_id) for the lexical path.
-async function searchLexical(supabase, { clientId, queryText, matchCount }) {
-  const tsQuery = buildLexicalTsQuery(queryText);
+async function searchLexical(supabase, { clientId, currentMessageText, contextText, matchCount }) {
+  const tsQuery = buildLexicalTsQuery({ currentMessageText, contextText });
   if (!clientId || !tsQuery) {
     return { ok: false, reason: "missing_input", rows: [] };
   }
@@ -274,9 +350,13 @@ async function searchLexical(supabase, { clientId, queryText, matchCount }) {
 
 // Public lexical-only entry point — same contract shape as
 // retrieveRelevantKnowledge (never throws, { ok, results }), useful for
-// direct testing/observability of the lexical path in isolation.
+// direct testing/observability of the lexical path in isolation. No
+// conversational context here (single string in, matching its existing
+// contract) — routed through buildLexicalTsQuery with an empty
+// contextText, so behavior for a plain string is unaffected by the
+// Phase 2B current/context split.
 export async function retrieveRelevantKnowledgeLexical(supabase, { clientId, queryText, matchCount = KNOWLEDGE_MATCH_COUNT }) {
-  const search = await searchLexical(supabase, { clientId, queryText, matchCount });
+  const search = await searchLexical(supabase, { clientId, currentMessageText: queryText, contextText: "", matchCount });
   if (!search.ok) {
     return { ok: false, reason: search.reason, results: [] };
   }
@@ -317,14 +397,14 @@ function dedupKey(row) {
   return row?.chunk_id || `${row?.document_id || ""}::${row?.content || ""}`;
 }
 
-// Merges + deduplicates (by chunk_id — the authoritative identity, per
-// Step 5) + ranks two independent candidate lists via RRF, then maps down
-// to the exact same public shape retrieveRelevantKnowledge already
-// returns — promptBuilder.js and every existing downstream consumer
-// remain completely unaware whether a result came from vector, lexical,
-// or both. `similarity` is populated with the real cosine similarity when
+// Merges + deduplicates (by chunk_id — the authoritative identity) +
+// ranks two independent candidate lists via RRF, then maps down to the
+// exact same public shape retrieveRelevantKnowledge already returns —
+// promptBuilder.js and every existing downstream consumer remain
+// completely unaware whether a result came from vector, lexical, or
+// both. `similarity` is populated with the real cosine similarity when
 // the chunk was found by vector search; null when it was lexical-only
-// (never a fabricated number — see the report).
+// (never a fabricated number).
 function fuseRankedResults({ vectorRows, lexicalRows, limit }) {
   const vectorScores = computeRrfScores(vectorRows);
   const lexicalScores = computeRrfScores(lexicalRows);
@@ -364,32 +444,47 @@ function fuseRankedResults({ vectorRows, lexicalRows, limit }) {
   }));
 }
 
-// The Phase 2 entry point — replaces retrieveRelevantKnowledge as the
+// The Phase 2/2B entry point — replaces retrieveRelevantKnowledge as the
 // call api/_lib/aiContext.js makes. Runs vector and lexical search in
 // PARALLEL (Promise.all — no added sequential latency), each already
 // non-throwing on its own (embedAndSearchVector/searchLexical), with an
 // additional .catch() as belt-and-suspenders so a genuinely unexpected
-// exception in either path can never take down the other (Step 10 —
-// Failure Isolation): if vector fails, lexical results (if any) are still
-// used, and vice versa; only if BOTH fail does this return ok:false,
-// which api/_lib/aiContext.js already degrades to relevant_knowledge: []
-// exactly as it does today for a single-method failure.
+// exception in either path can never take down the other: if vector
+// fails, lexical results (if any) are still used, and vice versa; only
+// if BOTH fail does this return ok:false, which api/_lib/aiContext.js
+// already degrades to relevant_knowledge: [] exactly as it does today
+// for a single-method failure.
+//
+// `queryText` is the Phase-1 CONTEXTUAL query (already built by the
+// caller via buildContextualRetrievalQuery) — used for vector embedding,
+// unchanged from Phase 2. `currentMessageText`/`contextText` are the
+// Phase 2B current/context SPLIT — used only for lexical, so the
+// current message's own tokens are never starved (see
+// buildLexicalTsQuery). If currentMessageText is omitted, it falls back
+// to queryText (keeps this function usable with a single plain string,
+// e.g. in tests, without requiring every caller to compute the split).
+//
+// Both retrieval methods request KNOWLEDGE_CANDIDATE_POOL_SIZE
+// candidates internally (Phase 2B — wider pre-fusion pool); the final
+// fused/returned array is still capped at `matchCount`
+// (KNOWLEDGE_MATCH_COUNT, 5, unchanged).
 export async function retrieveRelevantKnowledgeHybrid(
   supabase,
-  { clientId, queryText, matchCount = KNOWLEDGE_MATCH_COUNT, minSimilarity = KNOWLEDGE_MIN_SIMILARITY }
+  { clientId, queryText, currentMessageText, contextText = "", matchCount = KNOWLEDGE_MATCH_COUNT, minSimilarity = KNOWLEDGE_MIN_SIMILARITY }
 ) {
   const trimmedQuery = (queryText || "").trim();
   if (!clientId || !trimmedQuery) {
     return { ok: false, reason: "missing_input", results: [] };
   }
+  const effectiveCurrentText = (currentMessageText || trimmedQuery || "").trim();
 
   const [vectorSearch, lexicalSearch] = await Promise.all([
-    embedAndSearchVector(supabase, { clientId, queryText: trimmedQuery, matchCount, minSimilarity }).catch(() => ({
+    embedAndSearchVector(supabase, { clientId, queryText: trimmedQuery, matchCount: KNOWLEDGE_CANDIDATE_POOL_SIZE, minSimilarity }).catch(() => ({
       ok: false,
       reason: "vector_threw",
       rows: [],
     })),
-    searchLexical(supabase, { clientId, queryText: trimmedQuery, matchCount }).catch(() => ({
+    searchLexical(supabase, { clientId, currentMessageText: effectiveCurrentText, contextText, matchCount: KNOWLEDGE_CANDIDATE_POOL_SIZE }).catch(() => ({
       ok: false,
       reason: "lexical_threw",
       rows: [],

@@ -7,8 +7,11 @@ import {
   retrieveRelevantKnowledgeHybrid,
   retrieveRelevantKnowledgeLexical,
   buildLexicalTsQuery,
+  buildContextualRetrievalQuery,
+  buildLexicalContextText,
   KNOWLEDGE_MATCH_COUNT,
   KNOWLEDGE_MIN_SIMILARITY,
+  KNOWLEDGE_CANDIDATE_POOL_SIZE,
 } from "../knowledgeRetrieval.js";
 import { EMBEDDING_DIMENSIONS, EMBEDDING_MODEL } from "../openaiEmbeddings.js";
 
@@ -86,8 +89,8 @@ test("mechanism: an arbitrary query (menu/catalog request) runs both paths and r
 // --- 8. Numeric query -------------------------------------------------------
 
 test("8. a numeric query tokenizes correctly for lexical search", () => {
-  assert.equal(buildLexicalTsQuery("75"), "75:*");
-  assert.equal(buildLexicalTsQuery("كم سعر 75"), "كم:* | سعر:* | 75:*");
+  assert.equal(buildLexicalTsQuery({ currentMessageText: "75" }), "75:*");
+  assert.equal(buildLexicalTsQuery({ currentMessageText: "كم سعر 75" }), "كم:* | سعر:* | 75:*");
 });
 
 // --- 12/13. Unknown / unrelated information --------------------------------
@@ -186,6 +189,224 @@ test("17. the lexical migration enforces status='ready' and dual client_id scopi
   assert.match(sql, /revoke all on function public\.match_knowledge_chunks_lexical.* from authenticated/);
 });
 
+test("K/17b. the Phase 2B title-search migration preserves the exact same isolation/security properties (source-verified)", () => {
+  const __filename = fileURLToPath(import.meta.url);
+  const migrationPath = path.resolve(
+    path.dirname(__filename),
+    "../../../supabase/migrations/20260827_ai_engine_v1_phase2b_lexical_title_search.sql"
+  );
+  const sql = fs.readFileSync(migrationPath, "utf-8");
+
+  assert.match(sql, /c\.client_id\s*=\s*p_client_id/);
+  assert.match(sql, /d\.client_id\s*=\s*p_client_id/);
+  assert.match(sql, /d\.status\s*=\s*'ready'/);
+  assert.match(sql, /grant execute on function public\.match_knowledge_chunks_lexical.* to service_role/);
+  assert.match(sql, /revoke all on function public\.match_knowledge_chunks_lexical.* from public/);
+  assert.match(sql, /revoke all on function public\.match_knowledge_chunks_lexical.* from anon/);
+  assert.match(sql, /revoke all on function public\.match_knowledge_chunks_lexical.* from authenticated/);
+  assert.doesNotMatch(sql, /security definer/i);
+});
+
+test("L. the Phase 2B migration makes document title participate in lexical matching (source-verified)", () => {
+  const __filename = fileURLToPath(import.meta.url);
+  const migrationPath = path.resolve(
+    path.dirname(__filename),
+    "../../../supabase/migrations/20260827_ai_engine_v1_phase2b_lexical_title_search.sql"
+  );
+  const sql = fs.readFileSync(migrationPath, "utf-8");
+
+  assert.match(sql, /to_tsvector\('simple',\s*coalesce\(d\.title/, "title must participate in the match expression");
+  assert.match(sql, /to_tsvector\('simple',\s*c\.content\)/, "content matching must still be present");
+  assert.match(sql, /greatest\(/, "title and content ranks must be combined via greatest(), never summed");
+  // category is a deliberate, explained exclusion (see the migration's own
+  // header comment) — confirm it's genuinely not part of the match/rank
+  // expressions (it may still appear as a plain SELECTed/returned column).
+  assert.doesNotMatch(sql, /to_tsvector\('simple',\s*coalesce\(d\.category/);
+});
+
+// --- Phase 2B: candidate pool widening (E/F/D) ------------------------------
+
+test("E. the vector path requests the wider internal candidate pool, not the final result count", async (t) => {
+  mockEmbeddingFetch();
+  t.after(restore);
+
+  let vectorMatchCount;
+  const supabase = mockHybridSupabase({
+    vector: (params) => {
+      vectorMatchCount = params.p_match_count;
+      return { data: [], error: null };
+    },
+    lexical: () => ({ data: [], error: null }),
+  });
+
+  await retrieveRelevantKnowledgeHybrid(supabase, { clientId: "client-1", queryText: "hours?" });
+
+  assert.equal(vectorMatchCount, KNOWLEDGE_CANDIDATE_POOL_SIZE);
+  assert.ok(KNOWLEDGE_CANDIDATE_POOL_SIZE > KNOWLEDGE_MATCH_COUNT, "the candidate pool must be wider than the final cap");
+});
+
+test("F. the lexical path requests the wider internal candidate pool, not the final result count", async (t) => {
+  mockEmbeddingFetch();
+  t.after(restore);
+
+  let lexicalMatchCount;
+  const supabase = mockHybridSupabase({
+    vector: () => ({ data: [], error: null }),
+    lexical: (params) => {
+      lexicalMatchCount = params.p_match_count;
+      return { data: [], error: null };
+    },
+  });
+
+  await retrieveRelevantKnowledgeHybrid(supabase, { clientId: "client-1", queryText: "hours?" });
+
+  assert.equal(lexicalMatchCount, KNOWLEDGE_CANDIDATE_POOL_SIZE);
+});
+
+test("D. the final relevant_knowledge array stays capped at KNOWLEDGE_MATCH_COUNT even when the candidate pool has more unique chunks", async (t) => {
+  mockEmbeddingFetch();
+  t.after(restore);
+
+  // 8 unique vector-only candidates — more than KNOWLEDGE_MATCH_COUNT (5),
+  // fewer than KNOWLEDGE_CANDIDATE_POOL_SIZE (20), so all 8 legitimately
+  // reach fusion, and only the cap should trim it down.
+  const vectorRows = Array.from({ length: 8 }, (_, i) => ({
+    chunk_id: `c${i}`,
+    document_id: `d${i}`,
+    document_title: `Doc ${i}`,
+    category: "other",
+    content: `Content ${i}`,
+    similarity: 0.9 - i * 0.01,
+  }));
+
+  const supabase = mockHybridSupabase({
+    vector: () => ({ data: vectorRows, error: null }),
+    lexical: () => ({ data: [], error: null }),
+  });
+
+  const result = await retrieveRelevantKnowledgeHybrid(supabase, { clientId: "client-1", queryText: "test query" });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.results.length, KNOWLEDGE_MATCH_COUNT);
+  assert.equal(result.results.length, 5);
+});
+
+// --- Phase 2B: current-message token priority (A/B/C) -----------------------
+
+test("A. current-message tokens are never starved by a long prepended context", () => {
+  // A deliberately long context string that alone would exceed the token
+  // budget several times over.
+  const longContext = Array.from({ length: 30 }, (_, i) => `contextword${i}`).join(" ");
+
+  const tsQuery = buildLexicalTsQuery({ currentMessageText: "عرض المنيو", contextText: longContext });
+
+  assert.ok(tsQuery.includes("عرض:*"), "the current message's first word must survive");
+  assert.ok(tsQuery.includes("المنيو:*"), "the current message's second word must survive");
+});
+
+test("A2. even a current message alone longer than the token cap is never truncated", () => {
+  const longCurrent = Array.from({ length: 20 }, (_, i) => `word${i}`).join(" ");
+  const tsQuery = buildLexicalTsQuery({ currentMessageText: longCurrent, contextText: "some context here" });
+
+  for (let i = 0; i < 20; i++) {
+    assert.ok(tsQuery.includes(`word${i}:*`), `word${i} must be present — current-message tokens are never capped`);
+  }
+});
+
+test("B. context tokens only fill whatever budget remains after current-message tokens", () => {
+  const tsQuery = buildLexicalTsQuery({
+    currentMessageText: "عرض المنيو", // 2 tokens
+    contextText: Array.from({ length: 30 }, (_, i) => `ctx${i}`).join(" "), // 30 tokens available
+  });
+
+  const tokenCount = tsQuery.split(" | ").length;
+  // MAX_LEXICAL_TOKENS is 12 (current tokens uncapped, context capped to
+  // whatever remains) — 2 current + at most 10 context = at most 12 total.
+  assert.ok(tokenCount <= 12, `expected at most 12 tokens, got ${tokenCount}`);
+  assert.ok(tsQuery.includes("عرض:*") && tsQuery.includes("المنيو:*"));
+});
+
+test("C. duplicate tokens between current message and context are not repeated in the tsquery", () => {
+  const tsQuery = buildLexicalTsQuery({
+    currentMessageText: "توصيل نابلس",
+    contextText: "توصيل نابلس متاح", // "توصيل" and "نابلس" duplicate the current message's own tokens
+  });
+
+  const tokens = tsQuery.split(" | ");
+  const uniqueTokens = new Set(tokens);
+  assert.equal(tokens.length, uniqueTokens.size, "no token should appear twice in the tsquery");
+  assert.equal(tokens.filter((t) => t === "توصيل:*").length, 1);
+  assert.equal(tokens.filter((t) => t === "نابلس:*").length, 1);
+});
+
+// --- Phase 2B: Phase 1 parity (M) -------------------------------------------
+
+test("M. buildLexicalContextText agrees with buildContextualRetrievalQuery about what counts as a follow-up", () => {
+  const history = [
+    { role: "user", content: "هل يوجد توصيل خارج نابلس؟" },
+    { role: "assistant", content: "لا، لا يوجد توصيل خارج مدينة نابلس حالياً." },
+  ];
+
+  // Follow-up case (matches the original Phase 1 example exactly).
+  const contextualQuery = buildContextualRetrievalQuery("طيب بتوصلوا داخل نابلس؟", history);
+  const lexicalContext = buildLexicalContextText("طيب بتوصلوا داخل نابلس؟", history);
+  assert.equal(contextualQuery, "هل يوجد توصيل خارج نابلس؟ لا، لا يوجد توصيل خارج مدينة نابلس حالياً. طيب بتوصلوا داخل نابلس؟");
+  assert.equal(lexicalContext, "هل يوجد توصيل خارج نابلس؟ لا، لا يوجد توصيل خارج مدينة نابلس حالياً.");
+
+  // Standalone case — both must agree there is NO context to inject.
+  const standaloneQuery = buildContextualRetrievalQuery("كم سعر وجبة المشاوي المشكلة؟", history);
+  const standaloneLexicalContext = buildLexicalContextText("كم سعر وجبة المشاوي المشكلة؟", history);
+  assert.equal(standaloneQuery, "كم سعر وجبة المشاوي المشكلة؟");
+  assert.equal(standaloneLexicalContext, "");
+});
+
+test("M2. the confirmed Phase 2 bug is fixed end-to-end: a short standalone-like query after a long prior turn still searches for its OWN words lexically", () => {
+  // Reproduces the exact scenario the Phase 2 diagnostic report proved
+  // was broken: a 2-word message ("عرض المنيو") is classified as a
+  // likely follow-up (short-message heuristic) and a prior unrelated
+  // turn exists — before the fix, the resulting tsquery contained NONE
+  // of the current message's own words.
+  const history = [
+    { role: "user", content: "طيب بتوصلوا داخل نابلس؟" },
+    { role: "assistant", content: "التوصيل داخل نابلس متاح، التكلفة 10 شيكل، ومجاني للطلبات فوق 200 شيكل." },
+  ];
+
+  const contextText = buildLexicalContextText("عرض المنيو", history);
+  const tsQuery = buildLexicalTsQuery({ currentMessageText: "عرض المنيو", contextText });
+
+  assert.ok(tsQuery.includes("عرض:*"), "the current message's own word must survive the fix");
+  assert.ok(tsQuery.includes("المنيو:*"), "the current message's own word must survive the fix");
+});
+
+// --- Phase 2B: unknown-information safety unaffected (N) -------------------
+
+test("N. unknown-information safety is unaffected by the wider candidate pool — still empty when genuinely nothing matches", async (t) => {
+  mockEmbeddingFetch();
+  t.after(restore);
+
+  let vectorMatchCount, lexicalMatchCount;
+  const supabase = mockHybridSupabase({
+    vector: (params) => {
+      vectorMatchCount = params.p_match_count;
+      return { data: [], error: null };
+    },
+    lexical: (params) => {
+      lexicalMatchCount = params.p_match_count;
+      return { data: [], error: null };
+    },
+  });
+
+  const result = await retrieveRelevantKnowledgeHybrid(supabase, { clientId: "client-1", queryText: "عندكم سوشي؟" });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.results, []);
+  // Confirms the wider pool didn't change WHAT is requested being empty —
+  // both paths were still asked for the full candidate pool, they simply
+  // had nothing to return.
+  assert.equal(vectorMatchCount, KNOWLEDGE_CANDIDATE_POOL_SIZE);
+  assert.equal(lexicalMatchCount, KNOWLEDGE_CANDIDATE_POOL_SIZE);
+});
+
 // --- 18. Empty query ---------------------------------------------------------
 
 test("18. an empty query is rejected before any network/RPC call, on both paths", async () => {
@@ -202,10 +423,11 @@ test("18. an empty query is rejected before any network/RPC call, on both paths"
 });
 
 test("buildLexicalTsQuery returns null for empty/punctuation-only/too-short input — never calls the RPC", async () => {
-  assert.equal(buildLexicalTsQuery(""), null);
-  assert.equal(buildLexicalTsQuery("   "), null);
-  assert.equal(buildLexicalTsQuery("؟!."), null);
-  assert.equal(buildLexicalTsQuery("و"), null, "a single-letter token below the minimum length must be dropped, not searched");
+  assert.equal(buildLexicalTsQuery({ currentMessageText: "" }), null);
+  assert.equal(buildLexicalTsQuery({ currentMessageText: "   " }), null);
+  assert.equal(buildLexicalTsQuery({ currentMessageText: "؟!." }), null);
+  assert.equal(buildLexicalTsQuery({ currentMessageText: "و" }), null, "a single-letter token below the minimum length must be dropped, not searched");
+  assert.equal(buildLexicalTsQuery(), null, "missing argument object entirely must not throw");
 });
 
 // --- 19. Vector failure -> lexical still works ------------------------------
@@ -328,4 +550,10 @@ test("Phase 2 confirmation: KNOWLEDGE_MATCH_COUNT remains 5", () => {
 test("Phase 2 confirmation: embedding model/dimensions unchanged", () => {
   assert.equal(EMBEDDING_MODEL, "text-embedding-3-small");
   assert.equal(EMBEDDING_DIMENSIONS, 1536);
+});
+
+test("Phase 2B confirmation: candidate pool (20) is wider than the final result count (5), and the final count is unchanged", () => {
+  assert.equal(KNOWLEDGE_CANDIDATE_POOL_SIZE, 20);
+  assert.equal(KNOWLEDGE_MATCH_COUNT, 5);
+  assert.ok(KNOWLEDGE_CANDIDATE_POOL_SIZE > KNOWLEDGE_MATCH_COUNT);
 });

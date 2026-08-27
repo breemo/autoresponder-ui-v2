@@ -34,7 +34,7 @@
 // avoided here.
 
 import { REPLY_MODE_VALUES } from "../../src/lib/replyMode.js";
-import { retrieveRelevantKnowledgeHybrid, buildContextualRetrievalQuery } from "./knowledgeRetrieval.js";
+import { retrieveRelevantKnowledgeHybrid, buildContextualRetrievalQuery, buildLexicalContextText } from "./knowledgeRetrieval.js";
 
 // platform -> { table, legacy feature slug }. The legacy feature slug is
 // what client_feature_integrations rows are actually keyed by for reply_
@@ -230,22 +230,36 @@ async function loadHistory(supabase, { clientId, conversationId }) {
 // Phase 2 — Hybrid Knowledge Retrieval: retrieveRelevantKnowledgeHybrid()
 // (vector + lexical, RRF-fused) replaces the Phase 1 vector-only
 // retrieveRelevantKnowledge() call here — see knowledgeRetrieval.js for
-// the fusion itself. This is the ONLY change Phase 2 makes at this call
-// site; every other line below (error handling, logging, the [] fallback
-// contract) is unchanged.
+// the fusion itself.
+//
+// Phase 2B: also passes currentMessageText/contextText (built via the
+// same buildLexicalContextText helper, sharing follow-up detection with
+// buildContextualRetrievalQuery so the two can never disagree) so the
+// lexical path can prioritize the current message's own tokens ahead of
+// prepended context — see knowledgeRetrieval.js's buildLexicalTsQuery for
+// the confirmed bug this fixes. `queryText` (the Phase-1 contextual
+// string) still goes to vector embedding exactly as before Phase 2B.
 async function retrieveKnowledgeSafely(supabase, { clientId, conversationId, queryText, history }) {
   const trimmedQuery = (queryText || "").trim();
   if (!trimmedQuery) return [];
 
   let effectiveQuery = trimmedQuery;
+  let lexicalContextText = "";
   try {
     effectiveQuery = buildContextualRetrievalQuery(trimmedQuery, history) || trimmedQuery;
+    lexicalContextText = buildLexicalContextText(trimmedQuery, history) || "";
   } catch (error) {
     effectiveQuery = trimmedQuery;
+    lexicalContextText = "";
   }
 
   try {
-    const result = await retrieveRelevantKnowledgeHybrid(supabase, { clientId, queryText: effectiveQuery });
+    const result = await retrieveRelevantKnowledgeHybrid(supabase, {
+      clientId,
+      queryText: effectiveQuery,
+      currentMessageText: trimmedQuery,
+      contextText: lexicalContextText,
+    });
     if (!result.ok) {
       console.warn("aiContext: knowledge retrieval unavailable, continuing with relevant_knowledge: []", {
         clientId,
