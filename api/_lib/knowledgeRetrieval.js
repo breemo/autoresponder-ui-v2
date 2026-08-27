@@ -13,7 +13,13 @@
 import { embedText } from "./openaiEmbeddings.js";
 
 export const KNOWLEDGE_MATCH_COUNT = 5;
-export const KNOWLEDGE_MIN_SIMILARITY = 0.75;
+// Lowered from 0.75 to 0.50 — live diagnostic against the Tasty client's
+// real, ready documents (match_knowledge_chunks, p_min_similarity=0)
+// showed the three genuinely relevant chunks scoring 0.5850/0.5398/0.5098,
+// with the next-best result dropping to 0.3195 — 0.75 excluded every real
+// match. 0.50 keeps that same clean separation from the drop-off. Model,
+// dimensions, chunking, match count, and the RPC itself are unchanged.
+export const KNOWLEDGE_MIN_SIMILARITY = 0.5;
 
 export async function retrieveRelevantKnowledge(supabase, { clientId, queryText, matchCount = KNOWLEDGE_MATCH_COUNT, minSimilarity = KNOWLEDGE_MIN_SIMILARITY }) {
   const trimmedQuery = (queryText || "").trim();

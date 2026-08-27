@@ -48,8 +48,8 @@ test("retrieveRelevantKnowledge: top_k default is 5", () => {
   assert.equal(KNOWLEDGE_MATCH_COUNT, 5);
 });
 
-test("retrieveRelevantKnowledge: similarity threshold default is 0.75", () => {
-  assert.equal(KNOWLEDGE_MIN_SIMILARITY, 0.75);
+test("retrieveRelevantKnowledge: similarity threshold default is 0.50", () => {
+  assert.equal(KNOWLEDGE_MIN_SIMILARITY, 0.5);
 });
 
 test("retrieveRelevantKnowledge: custom match_count/min_similarity override the defaults", async (t) => {
