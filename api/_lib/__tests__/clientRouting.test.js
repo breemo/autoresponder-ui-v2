@@ -18,6 +18,10 @@ test("?resource=ai-behavior routes to the former api/client-ai-behavior.js logic
   assert.equal(resolveClientRoute({ query: { resource: "ai-behavior", actor_user_id: "u1" } }), "ai-behavior");
 });
 
+test("?resource=locations routes to api/_lib/clientLocations.js", () => {
+  assert.equal(resolveClientRoute({ query: { resource: "locations", actor_user_id: "u1" } }), "locations");
+});
+
 test("an unrecognized resource returns a controlled null (handler responds 400 'Unknown resource')", () => {
   assert.equal(resolveClientRoute({ query: { resource: "integrations" } }), null);
   assert.equal(resolveClientRoute({ query: { resource: "not_a_real_resource" } }), null);

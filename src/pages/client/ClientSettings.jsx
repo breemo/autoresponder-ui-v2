@@ -4,6 +4,7 @@ import { XMarkIcon } from "@heroicons/react/24/outline";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useLanguage } from "../../context/LanguageContext.jsx";
+import LocationsSection from "./LocationsSection.jsx";
 
 const inputClass = "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50 disabled:bg-slate-50 disabled:text-slate-500";
 const cardClass = "rounded-3xl border border-slate-200 bg-white shadow-sm";
@@ -568,6 +569,13 @@ export default function ClientSettings() {
           <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.businessDescription")}</label><textarea rows={4} className={inputClass} value={form.business_description} onChange={(e) => update("business_description", e.target.value)} /></div>
         </div>
       </div>
+
+      {/* AI Engine V1 — Business Voice + Authoritative Locations. Separate
+          card, deliberately not merged into Business Information above —
+          it owns its own load/save lifecycle (each action persists
+          immediately via the locations API) rather than participating in
+          this page's single "Save Settings" button. */}
+      <LocationsSection clientId={clientId} actorUserId={user?.id} />
 
       {/* B. Business Hours (summary only) + D. Language & Regional — paired
           side by side so neither is a lonely, mostly-empty full-width card. */}

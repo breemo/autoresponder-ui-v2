@@ -71,7 +71,79 @@ test("scenario 2: missing business description never invents a business type —
   // description being set.
   assert.match(system, /Do NOT infer or guess a different business type/);
   assert.match(system, /bird farm/);
-  assert.match(system, /say plainly that you don't have that information/);
+  // UNKNOWN-framing rule (Business Voice + Authoritative Locations phase):
+  // replaced the old "say plainly that you don't have that information"
+  // wording (itself an instance of the external-assistant phrasing this
+  // phase eliminates) with an explicit UNKNOWN rule — semantic check only.
+  assert.match(system, /isn't confirmed|not confirmed/i);
+});
+
+test("business voice: model is instructed to speak AS the business, not as an external assistant describing it", () => {
+  const messages = buildPromptMessages(makeContext());
+  const system = messages[0].content;
+  assert.match(system, /Speak AS/);
+  assert.match(system, /I don't have information about the business/);
+});
+
+test("SUPPORTED TRUE/FALSE vs UNKNOWN grounding rules are both present", () => {
+  const messages = buildPromptMessages(makeContext());
+  const system = messages[0].content;
+  assert.match(system, /SUPPORTED TRUE or SUPPORTED FALSE/);
+  assert.match(system, /UNKNOWN:/);
+});
+
+test("locations: no LOCATIONS block rendered for a client with zero configured locations (backward compatible)", () => {
+  const messages = buildPromptMessages(makeContext());
+  const system = messages[0].content;
+  assert.doesNotMatch(system, /^Locations:/m);
+  // Address/Phone lines still render exactly as before.
+  assert.match(system, /Address: Main Street, Hebron/);
+});
+
+test("locations: active locations are rendered with the primary flagged, inactive ones never passed through", () => {
+  const messages = buildPromptMessages(
+    makeContext({
+      client: {
+        locations: [
+          { name: "Nablus Branch", address: "Rafidia St", city: "Nablus", phone: null, working_hours_text: null, is_primary: true },
+          { name: "Ramallah Branch", address: "Al-Manara", city: "Ramallah", phone: null, working_hours_text: null, is_primary: false },
+        ],
+        locations_list_complete: false,
+      },
+    })
+  );
+  const system = messages[0].content;
+  assert.match(system, /Nablus Branch/);
+  assert.match(system, /\(Primary\).*Nablus Branch/);
+  assert.match(system, /Ramallah Branch/);
+});
+
+test("locations: list NOT marked complete instructs the model that an unlisted location is unknown, not confirmed absent", () => {
+  const messages = buildPromptMessages(
+    makeContext({
+      client: {
+        locations: [{ name: "Nablus Branch", address: "Rafidia St", city: "Nablus", phone: null, working_hours_text: null, is_primary: true }],
+        locations_list_complete: false,
+      },
+    })
+  );
+  const system = messages[0].content;
+  assert.match(system, /NOT confirmed complete/);
+  assert.match(system, /never as confirmed absent/);
+});
+
+test("locations: list marked complete instructs the model it may confidently deny an unlisted location", () => {
+  const messages = buildPromptMessages(
+    makeContext({
+      client: {
+        locations: [{ name: "Nablus Branch", address: "Rafidia St", city: "Nablus", phone: null, working_hours_text: null, is_primary: true }],
+        locations_list_complete: true,
+      },
+    })
+  );
+  const system = messages[0].content;
+  assert.match(system, /CONFIRMED COMPLETE/);
+  assert.match(system, /does NOT have it/);
 });
 
 test("scenario 3: forbidden rules appear as explicit bullets in the system message", () => {

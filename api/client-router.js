@@ -1,5 +1,6 @@
 import { handleClientUsers } from "./_lib/clientUsers.js";
 import { handleClientAiBehavior } from "./_lib/clientAiBehavior.js";
+import { handleClientLocations } from "./_lib/clientLocations.js";
 
 // Vercel Hobby Function-count consolidation — merges the former top-level
 // api/client-users.js (Team Management) and api/client-ai-behavior.js
@@ -25,6 +26,10 @@ import { handleClientAiBehavior } from "./_lib/clientAiBehavior.js";
 //   GET  /api/client-router?resource=ai-behavior&actor_user_id=&client_id=
 //   POST /api/client-router?resource=ai-behavior { actor_user_id, client_id?, ... }
 //     -> former api/client-ai-behavior.js, unchanged
+//   GET  /api/client-router?resource=locations&actor_user_id=&client_id=
+//   POST /api/client-router?resource=locations { action, actor_user_id, client_id?, ... }
+//     -> api/_lib/clientLocations.js (AI Engine V1 — Business Voice +
+//     Authoritative Locations; new, not a merge of a former top-level file)
 // Pure, synchronous routing decision — extracted from handler() below so
 // it's unit-testable (api/_lib/__tests__/clientRouting.test.js) without
 // needing a real Supabase client.
@@ -32,6 +37,7 @@ export function resolveClientRoute(req) {
   const resource = req.query?.resource;
   if (resource === "users") return "users";
   if (resource === "ai-behavior") return "ai-behavior";
+  if (resource === "locations") return "locations";
   return null;
 }
 
@@ -43,6 +49,9 @@ export default async function handler(req, res) {
   }
   if (route === "ai-behavior") {
     return handleClientAiBehavior(req, res);
+  }
+  if (route === "locations") {
+    return handleClientLocations(req, res);
   }
 
   return res.status(400).json({ success: false, message: "Unknown resource" });

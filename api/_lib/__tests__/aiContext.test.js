@@ -289,6 +289,82 @@ test("Phase 1: a conversational follow-up embeds a contextualized query end-to-e
   assert.equal(result.context.conversation.current_message_text, "طيب بتوصلوا داخل نابلس؟");
 });
 
+// --- Business Voice + Authoritative Locations ------------------------------
+
+test("locations A/B: a client with zero client_locations rows still builds a valid profile, with locations_list_complete defaulting false (address alone never implies a complete branch list)", async () => {
+  const supabase = createMockSupabase(baseTables()); // no client_locations table/rows at all
+  const result = await resolveAiContext(supabase, { conversationId: "conv-1", clientId: "client-1", currentMessageText: "hi" });
+  assert.equal(result.ok, true);
+  assert.equal(result.context.client.address, "Main Street, Hebron");
+  assert.deepEqual(result.context.client.locations, []);
+  assert.equal(result.context.client.locations_list_complete, false);
+});
+
+test("locations C/D/E: multiple active locations appear (primary correctly flagged), an inactive one is excluded", async () => {
+  const tables = baseTables();
+  tables.clients[0].locations_list_complete = true;
+  tables.client_locations = [
+    { id: "loc-1", client_id: "client-1", name: "Nablus Branch", address: "Rafidia St", city: "Nablus", phone: null, working_hours: null, is_primary: true, is_active: true, created_at: "2026-01-01T00:00:00Z" },
+    { id: "loc-2", client_id: "client-1", name: "Ramallah Branch", address: "Al-Manara", city: "Ramallah", phone: null, working_hours: null, is_primary: false, is_active: true, created_at: "2026-01-02T00:00:00Z" },
+    { id: "loc-3", client_id: "client-1", name: "Closed Branch", address: "Old St", city: "Nablus", phone: null, working_hours: null, is_primary: false, is_active: false, created_at: "2026-01-03T00:00:00Z" },
+  ];
+  const supabase = createMockSupabase(tables);
+  const result = await resolveAiContext(supabase, { conversationId: "conv-1", clientId: "client-1", currentMessageText: "hi" });
+
+  assert.equal(result.ok, true);
+  const names = result.context.client.locations.map((l) => l.name);
+  assert.ok(names.includes("Nablus Branch"));
+  assert.ok(names.includes("Ramallah Branch"));
+  assert.ok(!names.includes("Closed Branch"), "inactive location must never appear in the AI context");
+
+  const primary = result.context.client.locations.find((l) => l.is_primary);
+  assert.equal(primary?.name, "Nablus Branch");
+});
+
+test("locations F: locations_list_complete is represented clearly and only true when explicitly set", async () => {
+  const tables = baseTables();
+  tables.clients[0].locations_list_complete = true;
+  tables.client_locations = [
+    { id: "loc-1", client_id: "client-1", name: "Nablus Branch", address: "Rafidia St", city: "Nablus", phone: null, working_hours: null, is_primary: true, is_active: true, created_at: "2026-01-01T00:00:00Z" },
+  ];
+  const supabase = createMockSupabase(tables);
+  const result = await resolveAiContext(supabase, { conversationId: "conv-1", clientId: "client-1", currentMessageText: "hi" });
+  assert.equal(result.ok, true);
+  assert.equal(result.context.client.locations_list_complete, true);
+});
+
+test("locations: a not-yet-applied migration (client_locations query errors) degrades safely to locations: [] rather than failing AI Context", async () => {
+  const tables = baseTables();
+  const supabase = createMockSupabase(tables);
+  const realFrom = supabase.from.bind(supabase);
+  supabase.from = (table) => {
+    if (table === "client_locations") {
+      return { select: () => ({ eq: () => ({ eq: () => ({ order: () => ({ order: () => Promise.resolve({ data: null, error: { message: "relation does not exist" } }) }) }) }) }) };
+    }
+    return realFrom(table);
+  };
+
+  const result = await resolveAiContext(supabase, { conversationId: "conv-1", clientId: "client-1", currentMessageText: "hi" });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.context.client.locations, []);
+  assert.equal(result.context.client.locations_list_complete, false);
+  assert.equal(result.context.client.business_name, "Tasty Kitchen");
+});
+
+test("locations I: tenant isolation — client A's context never contains client B's locations", async () => {
+  const tables = baseTables();
+  tables.client_locations = [
+    { id: "loc-a", client_id: "client-1", name: "Client A Branch", address: "A St", city: "Nablus", phone: null, working_hours: null, is_primary: true, is_active: true, created_at: "2026-01-01T00:00:00Z" },
+    { id: "loc-b", client_id: "client-2", name: "Client B Branch — must never leak", address: "B St", city: "Ramallah", phone: null, working_hours: null, is_primary: true, is_active: true, created_at: "2026-01-01T00:00:00Z" },
+  ];
+  const supabase = createMockSupabase(tables);
+  const result = await resolveAiContext(supabase, { conversationId: "conv-1", clientId: "client-1", currentMessageText: "hi" });
+  assert.equal(result.ok, true);
+  const names = result.context.client.locations.map((l) => l.name);
+  assert.ok(names.includes("Client A Branch"));
+  assert.ok(!names.some((n) => n.includes("Client B")), "client B's location must never appear in client A's context");
+});
+
 test("Phase 1: a standalone factual query embeds unchanged end-to-end, even with unrelated history present", async (t) => {
   let capturedInput = null;
   globalThis.fetch = async (url, options) => {

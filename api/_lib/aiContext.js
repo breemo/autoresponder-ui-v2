@@ -297,6 +297,55 @@ async function retrieveKnowledgeSafely(supabase, { clientId, conversationId, que
   }
 }
 
+// Business Voice + Authoritative Locations — wrapped so a not-yet-applied
+// migration (client_locations / clients.locations_list_complete) can
+// NEVER fail the whole AI Context request, exactly matching
+// retrieveKnowledgeSafely's own degrade-safely discipline just above.
+// Degrades to "no locations configured, completeness unknown" — the
+// exact same safe state as a client who genuinely has zero locations
+// configured (see the migration's own header comment for why
+// locations_list_complete defaults to false: silence must never be
+// read as a negative fact). Deliberately does NOT touch clients.address/
+// business_name/phone/working_hours — those are fetched separately,
+// below, by the REQUIRED (non-degrading) clients query, so a missing
+// locations migration can never affect the rest of the Business Profile.
+async function loadLocationsSafely(supabase, clientId) {
+  try {
+    const [{ data: locationRows, error: locationsError }, { data: clientRow, error: clientError }] = await Promise.all([
+      supabase
+        .from("client_locations")
+        .select("name, address, city, phone, working_hours, is_primary")
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .order("is_primary", { ascending: false })
+        .order("created_at", { ascending: true }),
+      supabase.from("clients").select("locations_list_complete").eq("id", clientId).maybeSingle(),
+    ]);
+
+    if (locationsError || clientError) {
+      console.warn("aiContext: locations lookup unavailable, continuing with locations: []", {
+        clientId,
+        message: locationsError?.message || clientError?.message,
+      });
+      return { locations: [], locationsListComplete: false };
+    }
+
+    const locations = (locationRows || []).map((row) => ({
+      name: row.name || null,
+      address: row.address,
+      city: row.city || null,
+      phone: row.phone || null,
+      working_hours_text: formatWorkingHoursText(row.working_hours),
+      is_primary: row.is_primary === true,
+    }));
+
+    return { locations, locationsListComplete: clientRow?.locations_list_complete === true };
+  } catch (error) {
+    console.warn("aiContext: locations lookup threw, continuing with locations: []", { clientId, message: error?.message });
+    return { locations: [], locationsListComplete: false };
+  }
+}
+
 export async function resolveAiContext(supabase, { conversationId, clientId, currentMessageText }) {
   if (!conversationId || !clientId) {
     return fail(400, "missing_input", "conversation_id and client_id are required");
@@ -356,6 +405,7 @@ export async function resolveAiContext(supabase, { conversationId, clientId, cur
 
   const history = await loadHistory(supabase, { clientId, conversationId });
   const relevantKnowledge = await retrieveKnowledgeSafely(supabase, { clientId, conversationId, queryText: currentMessageText, history });
+  const { locations, locationsListComplete } = await loadLocationsSafely(supabase, clientId);
 
   const context = {
     client: {
@@ -368,6 +418,15 @@ export async function resolveAiContext(supabase, { conversationId, clientId, cur
       timezone: clientRow.timezone || null,
       working_hours: clientRow.working_hours || null,
       working_hours_text: formatWorkingHoursText(clientRow.working_hours),
+      // Business Voice + Authoritative Locations — additive alongside the
+      // fields above (which remain exactly as before for every client,
+      // including one with zero client_locations rows). `locations` is
+      // always an array (possibly empty); `locations_list_complete` is
+      // only ever true when the client/admin has explicitly asserted it
+      // — see the migration's header comment. promptBuilder.js is what
+      // turns this into the actual TRUE/FALSE/UNKNOWN grounding instruction.
+      locations,
+      locations_list_complete: locationsListComplete,
     },
     account: {
       platform: channelIdentity.platform,
