@@ -365,6 +365,24 @@ test("locations I: tenant isolation — client A's context never contains client
   assert.ok(!names.some((n) => n.includes("Client B")), "client B's location must never appear in client A's context");
 });
 
+// Regression (production locations_list_complete=false bug investigation,
+// item 7 of the required test matrix): tenant isolation must hold for the
+// completeness FLAG itself, not just the location rows — client A's
+// locations_list_complete must never be read from/contaminated by client
+// B's row.
+test("regression 7: locations_list_complete tenant isolation — client A's flag is never client B's", async () => {
+  const tables = baseTables();
+  tables.clients.push({ ...tables.clients[0], id: "client-2", business_name: "Other Business", locations_list_complete: true });
+  tables.clients[0].locations_list_complete = false;
+  tables.client_locations = [
+    { id: "loc-a", client_id: "client-1", name: "Nablus Branch", address: "Nablus", city: "Nablus", phone: null, working_hours: null, is_primary: true, is_active: true, created_at: "2026-01-01T00:00:00Z" },
+  ];
+  const supabase = createMockSupabase(tables);
+  const result = await resolveAiContext(supabase, { conversationId: "conv-1", clientId: "client-1", currentMessageText: "hi" });
+  assert.equal(result.ok, true);
+  assert.equal(result.context.client.locations_list_complete, false, "client A must see its own false flag, never client B's true flag");
+});
+
 test("Phase 1: a standalone factual query embeds unchanged end-to-end, even with unrelated history present", async (t) => {
   let capturedInput = null;
   globalThis.fetch = async (url, options) => {

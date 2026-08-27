@@ -146,6 +146,106 @@ test("locations: list marked complete instructs the model it may confidently den
   assert.match(system, /does NOT have it/);
 });
 
+// --- Regression: locations_list_complete=false negative-inference bug ---
+//
+// Confirmed production bug: with one configured Nablus location and
+// locations_list_complete=false, the AI still answered "لا، ليس لدينا فرع
+// في رام الله" (a confident negative) instead of UNKNOWN. Root cause was
+// prompt-layer under-specification, not the data/API layer (UI/API
+// persistence of locations_list_complete=false was verified correct) —
+// the model had no explicit instruction that (a) a single configured
+// location is never proof of exclusivity on its own, (b) a Knowledge Base
+// excerpt merely stating an address is not the same as an excerpt stating
+// exclusivity, and (c) an earlier assistant reply in the same conversation
+// (e.g. from before the client toggled the setting off) is not itself an
+// authoritative fact. These tests assert the strengthened rules generically
+// — no city name is hardcoded in promptBuilder.js itself.
+
+function nablusOnlyContext(overrides = {}) {
+  return makeContext({
+    ...overrides,
+    client: {
+      locations: [{ name: "فرع نابلس", address: "Nablus", city: "Nablus", phone: null, working_hours_text: null, is_primary: true }],
+      locations_list_complete: false,
+      ...overrides.client,
+    },
+  });
+}
+
+test("regression 1: one configured location + complete=true — a confident negative about an unlisted place is permitted", () => {
+  const context = nablusOnlyContext({ client: { locations_list_complete: true }, conversation: { current_message_text: "عندكم فرع في رام الله؟" } });
+  const messages = buildPromptMessages(context);
+  const system = messages[0].content;
+  assert.match(system, /CONFIRMED COMPLETE/);
+  assert.match(system, /does NOT have it/);
+  assert.equal(messages[messages.length - 1].content, "عندكم فرع في رام الله؟");
+});
+
+test("regression 2: one configured location + complete=false — negative inference about an unlisted place is explicitly forbidden", () => {
+  const context = nablusOnlyContext({ conversation: { current_message_text: "عندكم فرع في رام الله؟" } });
+  const messages = buildPromptMessages(context);
+  const system = messages[0].content;
+  assert.match(system, /NOT confirmed complete/);
+  assert.match(system, /never as confirmed absent/);
+  // The generic "one location is never proof of exclusivity" rule.
+  assert.match(system, /NEVER by itself proof/);
+  assert.match(system, /our only location is X/i);
+});
+
+test("regression 3: complete=false + a KB excerpt that only states a single address — must remain UNKNOWN for an unlisted place", () => {
+  const context = nablusOnlyContext({
+    relevant_knowledge: [{ document_title: "Business Info", category: "faq", content: "الموقع: نابلس" }],
+    conversation: { current_message_text: "عندكم فرع في رام الله؟" },
+  });
+  const messages = buildPromptMessages(context);
+  const system = messages[0].content;
+  // The bare-address excerpt is present as data...
+  assert.match(system, /الموقع: نابلس/);
+  // ...but the rule explicitly denies that a bare address excerpt proves exclusivity.
+  assert.match(system, /does NOT by itself mean that is the only location/);
+});
+
+test("regression 4: complete=false + a KB excerpt that EXPLICITLY states exclusivity — may support a supported negative", () => {
+  const context = nablusOnlyContext({
+    relevant_knowledge: [{ document_title: "Business Info", category: "faq", content: "لدينا فرع واحد فقط وهو فرع نابلس" }],
+    conversation: { current_message_text: "عندكم فرع في رام الله؟" },
+  });
+  const messages = buildPromptMessages(context);
+  const system = messages[0].content;
+  assert.match(system, /لدينا فرع واحد فقط وهو فرع نابلس/);
+  // The rule that permits this excerpt to support SUPPORTED FALSE.
+  assert.match(system, /EXPLICITLY states exclusivity or absence/);
+});
+
+test("regression 5: complete=false + an earlier assistant reply already claimed exclusivity — the earlier reply must not become authoritative", () => {
+  const context = nablusOnlyContext({
+    conversation: {
+      history: [
+        { role: "user", content: "عندكم فرع في رام الله؟" },
+        { role: "assistant", content: "موقعنا الوحيد في نابلس" },
+      ],
+      current_message_text: "متأكد؟",
+    },
+  });
+  const messages = buildPromptMessages(context);
+  const system = messages[0].content;
+  // The stale claim still exists in history (never silently stripped)...
+  assert.ok(messages.some((m) => m.role === "assistant" && m.content === "موقعنا الوحيد في نابلس"));
+  // ...but the system prompt explicitly instructs the model not to treat
+  // an earlier reply in this conversation as authoritative over the
+  // current structured context.
+  assert.match(system, /Earlier assistant replies in this conversation are NOT an authoritative business fact/);
+});
+
+test("regression 6: a question about a location that IS configured gets a confident positive regardless of complete=true/false", () => {
+  for (const complete of [true, false]) {
+    const context = nablusOnlyContext({ client: { locations_list_complete: complete }, conversation: { current_message_text: "وين فرع نابلس؟" } });
+    const messages = buildPromptMessages(context);
+    const system = messages[0].content;
+    assert.match(system, /فرع نابلس/);
+  }
+});
+
 test("scenario 3: forbidden rules appear as explicit bullets in the system message", () => {
   const context = makeContext({ ai_behavior: { forbidden_rules: ["never quote a price that isn't listed", "never promise a delivery time"] } });
   const messages = buildPromptMessages(context);
