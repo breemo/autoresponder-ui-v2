@@ -114,6 +114,11 @@ export function buildLocationsDiagnostics(context, messages) {
     assistant_exclusivity_hit_count: assistantExclusivityHits.length,
     assistant_exclusivity_hits: assistantExclusivityHits,
     messages_total: Array.isArray(messages) ? messages.length : 0,
+    // Post-fix (76218c9): the OpenAI-bound messages must be
+    // [system, user, user, ...] with NO assistant turn. history_roles
+    // above still shows the raw DB transcript (assistant turns included) —
+    // this is what actually leaves for OpenAI.
+    messages_roles: Array.isArray(messages) ? messages.map((m) => (m && m.role) || null) : [],
     kb_count: kb.length,
     kb_items: kb.map((k) => ({ document_title: (k && k.document_title) || null, category: (k && k.category) || null })),
   };

@@ -238,6 +238,11 @@ test("LOCDIAG 7. reports KB titles/categories only, and total message count", ()
   assert.deepEqual(diag.kb_items, [{ document_title: "معلومات عامة", category: "faq" }]);
   assert.equal(JSON.stringify(diag.kb_items).includes("نابلس"), false);
   assert.equal(diag.messages_total, response.messages.length);
+  // Post-fix: raw history has an assistant turn, but the OpenAI-bound
+  // messages must not.
+  assert.equal(diag.history_roles.includes("assistant"), true);
+  assert.equal(diag.messages_roles.includes("assistant"), false);
+
 });
 
 test("LOCDIAG 8. never throws on a malformed/empty context", () => {
