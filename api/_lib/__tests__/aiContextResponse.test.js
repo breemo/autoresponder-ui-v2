@@ -68,7 +68,7 @@ test("2. messages[0].role === 'system'", () => {
   assert.equal(response.messages[0].role, "system");
 });
 
-test("3. history appears as role-separated messages", () => {
+test("3. history appears as role-separated messages — customer turns only, assistant turns dropped", () => {
   const context = makeContext({
     conversation: {
       history: [
@@ -81,10 +81,10 @@ test("3. history appears as role-separated messages", () => {
   const response = buildAiContextResponse(context);
   assert.deepEqual(
     response.messages.map((m) => m.role),
-    ["system", "user", "assistant", "user"]
+    ["system", "user", "user"]
   );
   assert.equal(response.messages[1].content, "hi");
-  assert.equal(response.messages[2].content, "hello, how can I help?");
+  assert.equal(response.messages[2].content, "do you deliver outside Nablus?");
 });
 
 test("4. current user message is last", () => {

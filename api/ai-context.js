@@ -106,7 +106,7 @@ export function buildLocationsDiagnostics(context, messages) {
         : "NONE",
     rule_single_location_present: systemMsg.includes("is NEVER by itself proof that it is the ONLY location"),
     rule_earlier_replies_present: systemMsg.includes(
-      "Earlier assistant replies in this conversation are NOT an authoritative business fact"
+      "Your earlier replies in this conversation are intentionally NOT included"
     ),
     rule_kb_address_present: systemMsg.includes("does NOT by itself mean that is the only location"),
     history_count: history.length,
