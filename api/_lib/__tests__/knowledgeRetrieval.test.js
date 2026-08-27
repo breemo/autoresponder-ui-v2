@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { retrieveRelevantKnowledge, KNOWLEDGE_MATCH_COUNT, KNOWLEDGE_MIN_SIMILARITY } from "../knowledgeRetrieval.js";
-import { EMBEDDING_DIMENSIONS } from "../openaiEmbeddings.js";
+import { retrieveRelevantKnowledge, buildContextualRetrievalQuery, KNOWLEDGE_MATCH_COUNT, KNOWLEDGE_MIN_SIMILARITY } from "../knowledgeRetrieval.js";
+import { EMBEDDING_DIMENSIONS, EMBEDDING_MODEL } from "../openaiEmbeddings.js";
 
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_KEY = process.env.OPENAI_API_KEY;
@@ -137,4 +137,89 @@ test("retrieveRelevantKnowledge: missing client_id or empty query text is reject
   const result2 = await retrieveRelevantKnowledge(supabase, { clientId: "client-1", queryText: "   " });
   assert.equal(result1.ok, false);
   assert.equal(result2.ok, false);
+});
+
+test("embedding model remains text-embedding-3-small", () => {
+  assert.equal(EMBEDDING_MODEL, "text-embedding-3-small");
+});
+
+test("embedding dimensions remain 1536", () => {
+  assert.equal(EMBEDDING_DIMENSIONS, 1536);
+});
+
+// --- Phase 1: buildContextualRetrievalQuery (deterministic, no LLM call) ---
+
+test("1. a standalone factual query remains standalone (no history injected)", () => {
+  const query = buildContextualRetrievalQuery("كم سعر وجبة المشاوي المشكلة؟", [
+    { role: "user", content: "هل يوجد توصيل خارج نابلس؟" },
+    { role: "assistant", content: "لا، لا يوجد توصيل خارج مدينة نابلس حالياً." },
+  ]);
+  assert.equal(query, "كم سعر وجبة المشاوي المشكلة؟");
+});
+
+test("2. a likely follow-up receives the previous user + assistant turn as context", () => {
+  const query = buildContextualRetrievalQuery("طيب بتوصلوا داخل نابلس؟", [
+    { role: "user", content: "هل يوجد توصيل خارج نابلس؟" },
+    { role: "assistant", content: "لا، لا يوجد توصيل خارج مدينة نابلس حالياً." },
+  ]);
+  assert.equal(query, "هل يوجد توصيل خارج نابلس؟ لا، لا يوجد توصيل خارج مدينة نابلس حالياً. طيب بتوصلوا داخل نابلس؟");
+});
+
+test("3. the current message is not duplicated when history already ends with it (the real production shape)", () => {
+  const query = buildContextualRetrievalQuery("طيب بتوصلوا داخل نابلس؟", [
+    { role: "user", content: "هل يوجد توصيل خارج نابلس؟" },
+    { role: "assistant", content: "لا، لا يوجد توصيل خارج مدينة نابلس حالياً." },
+    { role: "user", content: "طيب بتوصلوا داخل نابلس؟" }, // n8n's insert-message precedent
+  ]);
+  assert.equal(query, "هل يوجد توصيل خارج نابلس؟ لا، لا يوجد توصيل خارج مدينة نابلس حالياً. طيب بتوصلوا داخل نابلس؟");
+  // Sanity: the current message string appears exactly once in the query.
+  const occurrences = query.split("طيب بتوصلوا داخل نابلس؟").length - 1;
+  assert.equal(occurrences, 1);
+});
+
+test("4. context is bounded — the current message is preserved in full, the prepended context is truncated to stay under the hard cap", () => {
+  const longPreviousUser = "و".repeat(400) + " سؤال طويل جدا";
+  const longPreviousAssistant = "ب".repeat(400) + " جواب طويل جدا";
+  const current = "طيب وماذا عن هذا؟";
+
+  const query = buildContextualRetrievalQuery(current, [
+    { role: "user", content: longPreviousUser },
+    { role: "assistant", content: longPreviousAssistant },
+  ]);
+
+  assert.ok(query.length <= 500, `expected query length <= 500, got ${query.length}`);
+  assert.ok(query.endsWith(current), "the current message must be preserved intact, never truncated");
+});
+
+test("5. empty history is handled safely — returns the current message unchanged", () => {
+  assert.equal(buildContextualRetrievalQuery("طيب شو رأيك؟", []), "طيب شو رأيك؟");
+});
+
+test("6. malformed/missing history falls back safely to the current message, never throws", () => {
+  const current = "طيب تمام";
+  assert.equal(buildContextualRetrievalQuery(current, null), current);
+  assert.equal(buildContextualRetrievalQuery(current, undefined), current);
+  assert.equal(buildContextualRetrievalQuery(current, "not an array"), current);
+  assert.equal(buildContextualRetrievalQuery(current, [null, { role: "user" }, { role: "assistant", content: 42 }]), current);
+});
+
+test("a very short message is also treated as a likely follow-up, even without a discourse marker", () => {
+  const query = buildContextualRetrievalQuery("ليش؟", [
+    { role: "user", content: "هل يوجد توصيل خارج نابلس؟" },
+    { role: "assistant", content: "لا، لا يوجد توصيل خارج مدينة نابلس حالياً." },
+  ]);
+  assert.equal(query, "هل يوجد توصيل خارج نابلس؟ لا، لا يوجد توصيل خارج مدينة نابلس حالياً. ليش؟");
+});
+
+test("a follow-up marker with no usable prior context still falls back to the current message alone", () => {
+  assert.equal(buildContextualRetrievalQuery("طيب شكرا", []), "طيب شكرا");
+  assert.equal(buildContextualRetrievalQuery("طيب شكرا", [{ role: "user", content: "" }]), "طيب شكرا");
+});
+
+test("an English discourse marker is also recognized (generic, not Arabic-only)", () => {
+  const query = buildContextualRetrievalQuery("what about delivery?", [
+    { role: "user", content: "Do you have a menu?" },
+    { role: "assistant", content: "Yes, here is our menu." },
+  ]);
+  assert.equal(query, "Do you have a menu? Yes, here is our menu. what about delivery?");
 });

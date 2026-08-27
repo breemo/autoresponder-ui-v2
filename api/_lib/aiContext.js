@@ -34,7 +34,7 @@
 // avoided here.
 
 import { REPLY_MODE_VALUES } from "../../src/lib/replyMode.js";
-import { retrieveRelevantKnowledge } from "./knowledgeRetrieval.js";
+import { retrieveRelevantKnowledge, buildContextualRetrievalQuery } from "./knowledgeRetrieval.js";
 
 // platform -> { table, legacy feature slug }. The legacy feature slug is
 // what client_feature_integrations rows are actually keyed by for reply_
@@ -218,12 +218,29 @@ async function loadHistory(supabase, { clientId, conversationId }) {
 // Profile, AI Behavior, and Conversation context are already fully
 // resolved by the time this runs and are completely unaffected by
 // whatever happens in here.
-async function retrieveKnowledgeSafely(supabase, { clientId, conversationId, queryText }) {
+//
+// Phase 1 — Context-Aware Knowledge Retrieval: `history` (already
+// resolved above by loadHistory, the same array the Prompt Builder sees)
+// is used ONLY to build a better retrieval query via the pure, network-
+// free buildContextualRetrievalQuery() — retrieveRelevantKnowledge()
+// itself is completely unchanged, still just embeds+searches whatever
+// query string it's given. Building the contextual query is wrapped in
+// its own try/catch, separate from the RPC's own, so a failure in that
+// step alone can never block retrieval — it just falls back to today's
+// exact behavior (the raw current message).
+async function retrieveKnowledgeSafely(supabase, { clientId, conversationId, queryText, history }) {
   const trimmedQuery = (queryText || "").trim();
   if (!trimmedQuery) return [];
 
+  let effectiveQuery = trimmedQuery;
   try {
-    const result = await retrieveRelevantKnowledge(supabase, { clientId, queryText: trimmedQuery });
+    effectiveQuery = buildContextualRetrievalQuery(trimmedQuery, history) || trimmedQuery;
+  } catch (error) {
+    effectiveQuery = trimmedQuery;
+  }
+
+  try {
+    const result = await retrieveRelevantKnowledge(supabase, { clientId, queryText: effectiveQuery });
     if (!result.ok) {
       console.warn("aiContext: knowledge retrieval unavailable, continuing with relevant_knowledge: []", {
         clientId,
@@ -232,7 +249,12 @@ async function retrieveKnowledgeSafely(supabase, { clientId, conversationId, que
       });
       return [];
     }
-    console.info("aiContext: knowledge retrieval complete", { clientId, conversationId, resultCount: result.results.length });
+    console.info("aiContext: knowledge retrieval complete", {
+      clientId,
+      conversationId,
+      resultCount: result.results.length,
+      queryContextualized: effectiveQuery !== trimmedQuery,
+    });
     return result.results;
   } catch (error) {
     console.warn("aiContext: knowledge retrieval threw, continuing with relevant_knowledge: []", {
@@ -302,7 +324,7 @@ export async function resolveAiContext(supabase, { conversationId, clientId, cur
   });
 
   const history = await loadHistory(supabase, { clientId, conversationId });
-  const relevantKnowledge = await retrieveKnowledgeSafely(supabase, { clientId, conversationId, queryText: currentMessageText });
+  const relevantKnowledge = await retrieveKnowledgeSafely(supabase, { clientId, conversationId, queryText: currentMessageText, history });
 
   const context = {
     client: {

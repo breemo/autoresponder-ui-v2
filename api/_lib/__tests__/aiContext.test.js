@@ -250,3 +250,64 @@ test("cross-client isolation: client A's AI context never contains client B's kn
   // And the RPC itself was always called with client-1's own id, never
   // an id derived from anywhere else.
 });
+
+// --- Phase 1: Context-Aware Knowledge Retrieval (end-to-end) --------------
+//
+// Proves resolveAiContext() actually wires conversation history into the
+// text that gets embedded for retrieval — not just that
+// buildContextualRetrievalQuery() works in isolation (already covered in
+// knowledgeRetrieval.test.js).
+
+test("Phase 1: a conversational follow-up embeds a contextualized query end-to-end, not just the raw current message", async (t) => {
+  let capturedInput = null;
+  globalThis.fetch = async (url, options) => {
+    const body = JSON.parse(options.body);
+    capturedInput = body.input;
+    return { ok: true, json: async () => ({ data: [{ index: 0, embedding: new Array(EMBEDDING_DIMENSIONS).fill(0.01) }] }) };
+  };
+  process.env.OPENAI_API_KEY = "test-key";
+  t.after(restoreFetch);
+
+  const tables = baseTables();
+  tables.messages = [
+    { id: "m1", client_id: "client-1", conversation_id: "conv-1", message: "هل يوجد توصيل خارج نابلس؟", direction: "inbound", created_at: "2026-01-01T00:00:00Z" },
+    { id: "m2", client_id: "client-1", conversation_id: "conv-1", message: "لا، لا يوجد توصيل خارج مدينة نابلس حالياً.", direction: "outbound", created_at: "2026-01-01T00:00:05Z" },
+  ];
+  const supabase = createMockSupabase(tables);
+  supabase.rpc = async () => ({ data: [], error: null });
+
+  const result = await resolveAiContext(supabase, { conversationId: "conv-1", clientId: "client-1", currentMessageText: "طيب بتوصلوا داخل نابلس؟" });
+
+  assert.equal(result.ok, true);
+  assert.equal(
+    capturedInput?.[0],
+    "هل يوجد توصيل خارج نابلس؟ لا، لا يوجد توصيل خارج مدينة نابلس حالياً. طيب بتوصلوا داخل نابلس؟"
+  );
+  // Conversation history itself (for the Prompt Builder) is completely
+  // unaffected by this — still the raw messages, in order.
+  assert.equal(result.context.conversation.history.length, 2);
+  assert.equal(result.context.conversation.current_message_text, "طيب بتوصلوا داخل نابلس؟");
+});
+
+test("Phase 1: a standalone factual query embeds unchanged end-to-end, even with unrelated history present", async (t) => {
+  let capturedInput = null;
+  globalThis.fetch = async (url, options) => {
+    const body = JSON.parse(options.body);
+    capturedInput = body.input;
+    return { ok: true, json: async () => ({ data: [{ index: 0, embedding: new Array(EMBEDDING_DIMENSIONS).fill(0.01) }] }) };
+  };
+  process.env.OPENAI_API_KEY = "test-key";
+  t.after(restoreFetch);
+
+  const tables = baseTables();
+  tables.messages = [
+    { id: "m1", client_id: "client-1", conversation_id: "conv-1", message: "هل يوجد توصيل خارج نابلس؟", direction: "inbound", created_at: "2026-01-01T00:00:00Z" },
+    { id: "m2", client_id: "client-1", conversation_id: "conv-1", message: "لا، لا يوجد توصيل خارج مدينة نابلس حالياً.", direction: "outbound", created_at: "2026-01-01T00:00:05Z" },
+  ];
+  const supabase = createMockSupabase(tables);
+  supabase.rpc = async () => ({ data: [], error: null });
+
+  await resolveAiContext(supabase, { conversationId: "conv-1", clientId: "client-1", currentMessageText: "كم سعر وجبة المشاوي المشكلة؟" });
+
+  assert.equal(capturedInput?.[0], "كم سعر وجبة المشاوي المشكلة؟");
+});
