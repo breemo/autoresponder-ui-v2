@@ -10,6 +10,7 @@ import {
   sanitizeFileName,
   buildMediaObjectPath,
 } from "../src/lib/mediaMessages.js";
+import { signInboundUpload } from "./_lib/mediaIngest.js";
 
 // WhatsApp Media & Attachment Support v1 — API consolidation: this single
 // domain endpoint replaces the former api/media-read-url.js (sign_read) and
@@ -275,6 +276,44 @@ async function handleSignUpload(req, res) {
   }
 }
 
+// POST { action: "sign_inbound_upload", ... } — Customer -> Inbox INBOUND media.
+//
+// Caller: the n8n "Inbound-Media-Core" sub-workflow only (server-to-server).
+// Trust model matches api/ai-tools.js exactly: ONE shared secret, no
+// actor_user_id, no browser. Reuses MEDIA_INGEST_SECRET if set, otherwise
+// AI_TOOLS_SECRET (the credential n8n already holds) so no new configuration
+// is required to launch. Once the secret is verified, conversation_id is the
+// only identity the body carries — client_id/tenant and the Storage object
+// path are derived server-side from that conversation row (see
+// api/_lib/mediaIngest.js signInboundUpload). This never receives file bytes;
+// it returns a signed upload URL the workflow uploads to directly, so
+// SUPABASE_SERVICE_ROLE_KEY stays server-side — identical to handleSignUpload.
+async function handleSignInboundUpload(req, res) {
+  const providedSecret = req.headers["x-media-ingest-secret"] || req.headers["x-ai-tools-secret"];
+  const expectedSecret = process.env.MEDIA_INGEST_SECRET || process.env.AI_TOOLS_SECRET;
+  if (!expectedSecret || !providedSecret || providedSecret !== expectedSecret) {
+    return res.status(401).json({ success: false, message: "Unauthorized" });
+  }
+
+  let supabase;
+  try {
+    supabase = getSupabaseServerClient();
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Server is not configured" });
+  }
+
+  const result = await signInboundUpload(supabase, {
+    conversationId: typeof req.body?.conversation_id === "string" ? req.body.conversation_id : "",
+    messageType: req.body?.message_type,
+    fileName: typeof req.body?.file_name === "string" ? req.body.file_name : "",
+    mimeType: typeof req.body?.mime_type === "string" ? req.body.mime_type : "",
+    sizeBytes: req.body?.size_bytes,
+  });
+
+  const { ok, status, ...rest } = result;
+  return res.status(status).json({ success: ok, ...rest });
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ success: false, message: "Method not allowed" });
@@ -287,6 +326,9 @@ export default async function handler(req, res) {
   }
   if (action === "sign_upload") {
     return handleSignUpload(req, res);
+  }
+  if (action === "sign_inbound_upload") {
+    return handleSignInboundUpload(req, res);
   }
 
   return res.status(400).json({ success: false, message: "Unknown action" });
