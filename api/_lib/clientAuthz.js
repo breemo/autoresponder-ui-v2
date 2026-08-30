@@ -27,6 +27,28 @@ export async function resolveActingMembership(supabase, actorUserId) {
   return { user, membership };
 }
 
+// Resolves the acting user as a PLATFORM ADMIN, strictly server-side.
+// Same trust model as resolveActingMembership: only `actor_user_id` is
+// trusted from the request; `role` is always re-read from the database
+// here. Platform admin = users.role === "admin" (the same check
+// src/App.jsx's <AdminRoute> makes client-side). Returns the user row or
+// null. Used by admin-only, tenant-agnostic endpoints (e.g. platform
+// system settings) that have no client_users membership to resolve.
+export async function resolveActingAdmin(supabase, actorUserId) {
+  if (!actorUserId) return null;
+
+  const { data: user, error: userError } = await supabase
+    .from("users")
+    .select("id, email, name, role, must_change_password")
+    .eq("id", actorUserId)
+    .maybeSingle();
+
+  if (userError || !user || user.role !== "admin") return null;
+  if (user.must_change_password) return null;
+
+  return user;
+}
+
 // An inactive member has no permissions at all, regardless of role/overrides.
 export function actorHasPermission(membership, permission) {
   if (!membership || membership.is_active === false) return false;
