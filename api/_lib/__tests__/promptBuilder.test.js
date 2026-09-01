@@ -355,6 +355,45 @@ test("document text is explicitly framed as untrusted data, not instructions", (
   assert.match(system, /untrusted business content/i);
 });
 
+// --- Grounding fix: retrieved excerpts are authoritative, and no unsupported
+// attribute (weight / species / portion / variant / …) may be added to an
+// item that IS in the context. Diagnosed from a live case where the model
+// had "سمك مشوي موسمي / 60 شيكل / حسب التوفر" and answered "250 جرام فيليه
+// سمك البلطي".
+test("grounding: retrieved KB excerpts are labelled the AUTHORITATIVE source for products/services/prices/durations/policies/offers/availability", () => {
+  const system = buildPromptMessages(
+    makeContext({ relevant_knowledge: [{ document_title: "Menu", category: "menu", content: "سمك مشوي موسمي — 60 شيكل — حسب التوفر" }] })
+  )[0].content;
+  assert.match(system, /AUTHORITATIVE source for this turn's questions about products, services, prices, durations, policies, offers, and availability/i);
+});
+
+test("grounding: model may state ONLY details written in the context; unsupported attributes are explicitly forbidden", () => {
+  const system = buildPromptMessages(
+    makeContext({ relevant_knowledge: [{ document_title: "Menu", category: "menu", content: "سمك مشوي موسمي — 60 شيكل — حسب التوفر" }] })
+  )[0].content;
+  // in the knowledge section
+  assert.match(system, /State ONLY details that are actually written in an excerpt/i);
+  assert.match(system, /no quantity, weight, size, portion, ingredient, material, specification, model \/ type \/ species, variant, or option list/i);
+  assert.match(system, /not even for an item that IS mentioned in the context/i);
+  assert.match(system, /do not infer it or fill it in from general knowledge/i);
+  // in the rules section
+  assert.match(system, /may be stated ONLY using details literally written in the AUTHORITATIVE BUSINESS PROFILE above or a Knowledge Base excerpt below/i);
+  assert.match(system, /any unstated attribute of an item that IS in the context/i);
+  assert.match(system, /When a requested detail is not present in that context, treat it as UNKNOWN/i);
+});
+
+test("grounding: the tightened rule replaced the old loose 'never invent ... not supported' bullet", () => {
+  const system = buildPromptMessages(makeContext())[0].content;
+  assert.doesNotMatch(system, /Never invent a price, menu item, service, product, policy, opening time, booking availability, or contact information not supported by that provided context\./);
+});
+
+test("grounding: existing anti-hallucination behavior is preserved (SUPPORTED TRUE/FALSE/UNKNOWN, no invented business identity)", () => {
+  const system = buildPromptMessages(makeContext())[0].content;
+  assert.match(system, /SUPPORTED TRUE or SUPPORTED FALSE/);
+  assert.match(system, /UNKNOWN: when the provided context is simply silent/);
+  assert.match(system, /Never substitute an invented, unrelated business identity/);
+});
+
 test("prompt-injection rule explicitly names the attack phrases from the spec and instructs the model to never execute them", () => {
   const messages = buildPromptMessages(makeContext());
   const system = messages[0].content;
