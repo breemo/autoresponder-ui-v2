@@ -87,6 +87,13 @@ function buildBehaviorSection(aiBehavior) {
     line("Personality", aiBehavior.personality),
     line("Tone", aiBehavior.reply_tone),
     languageInstruction,
+    // Conciseness + natural register (QW2). Deliberately phrased to DEFER
+    // to the Personality/Tone lines above — a client who configured a
+    // formal persona still gets a formal persona; this only sets the
+    // default when nothing more specific is configured.
+    "Keep replies short: normally one or two sentences for a simple factual question (a price, an address, opening hours, a yes/no). Give a longer answer only when the customer asks for detail or the question genuinely needs it.",
+    "Match the customer's own language and register. When you reply in Arabic, use natural everyday / Levantine conversational wording rather than unnecessarily formal MSA — unless the Personality or Tone above clearly calls for a more formal style.",
+    "Do not open a reply with a greeting unless this is the very first message of the conversation.",
     aiBehavior.special_instructions ? `Special instructions: ${aiBehavior.special_instructions}` : null,
     aiBehavior.booking_instructions ? `Booking instructions: ${aiBehavior.booking_instructions}` : null,
     aiBehavior.escalation_instructions ? `Escalation instructions: ${aiBehavior.escalation_instructions}` : null,
@@ -161,11 +168,15 @@ function buildKnowledgeSection(relevantKnowledge) {
   ].join("\n");
 }
 
-const OUTPUT_FORMAT_SECTION = [
-  "## Output format",
-  "Return ONLY valid JSON in this exact shape, no extra text, no markdown:",
-  '{"reply": "your reply message here", "intent": "one of: greeting, pricing, order, human_request, support, closing, unknown"}',
-].join("\n");
+// NOTE (QW1): there is intentionally NO output-format section here. The
+// live runtime contract is owned by AI-Agent-Core: its `Prepare Agent
+// Context` node appends the `#intent:<taxonomy>` trailer instruction, and
+// its `Resolve Intent` node parses/strips that trailer. Emitting a
+// conflicting "return ONLY valid JSON {reply,intent}" instruction here
+// (with a stale 7-value taxonomy) contradicted that and was the direct
+// cause of occasional raw-JSON replies reaching customers. If a future
+// caller consumes `messages` directly (no AI-Agent-Core wrapper) it must
+// re-introduce its own output-format instruction for that path.
 
 function buildSystemMessage(context) {
   const sections = [
@@ -173,7 +184,6 @@ function buildSystemMessage(context) {
     buildBehaviorSection(context.ai_behavior),
     buildRulesSection(context.client, context.ai_behavior),
     buildKnowledgeSection(context.relevant_knowledge),
-    OUTPUT_FORMAT_SECTION,
   ].filter(Boolean);
   return sections.join("\n\n");
 }

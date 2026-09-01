@@ -386,10 +386,22 @@ test("a malicious excerpt embedded in retrieved knowledge is rendered as plain c
   assert.match(system, /untrusted business content/i);
 });
 
-test("output format contract (reply/intent JSON) is always present", () => {
-  const messages = buildPromptMessages(makeContext());
-  assert.match(messages[0].content, /"reply":/);
-  assert.match(messages[0].content, /"intent":/);
+test("QW1: no JSON output-format instruction leaks into the live system prompt (runtime contract is AI-Agent-Core's #intent trailer)", () => {
+  const system = buildPromptMessages(makeContext())[0].content;
+  assert.doesNotMatch(system, /Return ONLY valid JSON/i);
+  assert.doesNotMatch(system, /## Output format/);
+  assert.doesNotMatch(system, /"reply":\s*"your reply message here"/);
+  assert.doesNotMatch(system, /"intent":\s*"one of/);
+  // the stale 7-value taxonomy (with "pricing") must be gone too
+  assert.doesNotMatch(system, /greeting,\s*pricing,\s*order/);
+});
+
+test("QW2: concise-answer + natural-register behavior is instructed, deferring to configured personality/tone", () => {
+  const system = buildPromptMessages(makeContext())[0].content;
+  assert.match(system, /one or two sentences for a simple factual question/i);
+  assert.match(system, /natural everyday \/ Levantine conversational wording/i);
+  assert.match(system, /unless the Personality or Tone above clearly calls for a more formal style/i);
+  assert.match(system, /Do not open a reply with a greeting unless this is the very first message/i);
 });
 
 test("system prompt never reveals itself when asked to", () => {
