@@ -74,18 +74,29 @@ async function handleSignRead(req, res) {
   // message that matches all three of client_id (server-derived, never
   // trusted from the request), the validated conversation_id string above,
   // and the exact media_path requested.
-  const { data: message, error: messageError } = await supabase
+  //
+  // Take the first match rather than requiring exactly one: the same
+  // media_path can legitimately land on more than one messages row (an
+  // n8n insert retry on the inbound-media ingestion path, a redelivered
+  // provider webhook, or a later message re-referencing the attachment).
+  // Any matching row already proves this actor's client owns this exact
+  // object in this conversation, which is all the authorization needs.
+  // .maybeSingle() previously returned a PGRST116 error for >1 row, which
+  // surfaced as a 500 here and made the attachment render "failed to load"
+  // for every media message in the thread — for any channel.
+  const { data: messages, error: messageError } = await supabase
     .from("messages")
     .select("id")
     .eq("client_id", actor.membership.client_id)
     .eq("conversation_id", conversation_id)
     .eq("media_path", media_path)
-    .maybeSingle();
+    .order("created_at", { ascending: true })
+    .limit(1);
 
   if (messageError) {
     return res.status(500).json({ success: false, message: "فشل التحقق من الوسائط" });
   }
-  if (!message) {
+  if (!messages || messages.length === 0) {
     return res.status(404).json({ success: false, message: "الوسائط غير موجودة ضمن هذا الحساب" });
   }
 

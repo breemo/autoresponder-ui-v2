@@ -188,7 +188,13 @@ function MediaAttachment({ msg, mediaControl, isInbound, conversationId, actorUs
     }
     return (
       <div className={`mb-1.5 flex h-28 items-center justify-center rounded-xl border p-2 text-xs font-semibold ${cardClass} ${mutedClass}`}>
-        {status === "error" ? errorText : t("messagesPage.mediaLoading")}
+        {status === "error" ? (
+          <button type="button" onClick={resolveUrl} className="underline">
+            {errorText} · {t("messagesPage.retry")}
+          </button>
+        ) : (
+          t("messagesPage.mediaLoading")
+        )}
       </div>
     );
   }
@@ -199,7 +205,13 @@ function MediaAttachment({ msg, mediaControl, isInbound, conversationId, actorUs
     }
     return (
       <div className={`mb-1.5 flex items-center gap-2 rounded-xl border p-2 text-xs font-semibold ${cardClass} ${mutedClass}`}>
-        {status === "error" ? errorText : t("messagesPage.mediaLoading")}
+        {status === "error" ? (
+          <button type="button" onClick={resolveUrl} className="underline">
+            {errorText} · {t("messagesPage.retry")}
+          </button>
+        ) : (
+          t("messagesPage.mediaLoading")
+        )}
       </div>
     );
   }
