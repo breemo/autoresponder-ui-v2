@@ -111,6 +111,7 @@ export async function handleConversationsList(req, res) {
       { data: messageRows, error: messageError },
       { data: leadRows, error: leadError },
       { data: conversationStateRows, error: conversationStateError },
+      { data: contactRows, error: contactError },
     ] = await Promise.all([
       supabase
         .from("conversations")
@@ -124,7 +125,7 @@ export async function handleConversationsList(req, res) {
         .order("created_at", { ascending: false }),
       supabase
         .from("contact_channel_identities")
-        .select("id, sender_id, platform, channel_key")
+        .select("id, sender_id, platform, channel_key, display_name")
         .eq("client_id", clientId),
       supabase
         .from("client_whatsapp")
@@ -146,6 +147,13 @@ export async function handleConversationsList(req, res) {
         .from("conversation_state")
         .select("conversation_id, system_assigned_user_id, system_assigned_at, assigned_user_id, assigned_at")
         .eq("client_id", clientId),
+      // Conversation V2 identity: contacts.display_name is the
+      // tenant-level "best-known name" for a customer (lead capture / a
+      // channel profile — see 20260823_conversation_model_redesign_stage_a.sql).
+      supabase
+        .from("contacts")
+        .select("id, display_name")
+        .eq("client_id", clientId),
     ]);
 
     if (conversationError) throw conversationError;
@@ -154,6 +162,7 @@ export async function handleConversationsList(req, res) {
     if (messageError) throw messageError;
     if (leadError) throw leadError;
     if (conversationStateError) throw conversationStateError;
+    if (contactError) throw contactError;
 
     // Keyed by conversation_state.conversation_id (its own current-context
     // snapshot column, not its primary key) — the same lookup shape
@@ -196,6 +205,12 @@ export async function handleConversationsList(req, res) {
       if (lead.conversation_id && !leadMap.has(lead.conversation_id)) leadMap.set(lead.conversation_id, lead);
     }
 
+    const contactNameById = new Map();
+    for (const c of contactRows || []) {
+      const name = typeof c.display_name === "string" ? c.display_name.trim() : "";
+      if (c.id && name) contactNameById.set(c.id, name);
+    }
+
     // Enrichment only: last message preview/time/direction + counts, per
     // conversation_id. messageRows is already newest-first, so the first
     // occurrence seen per conversation_id is the latest message.
@@ -229,6 +244,17 @@ export async function handleConversationsList(req, res) {
       const agg = messageAggByConversation.get(row.id);
       const platform = row.platform || channelIdentity?.platform || "";
       const senderId = channelIdentity?.sender_id || agg?.fallbackSender || "";
+
+      // Generic Conversation V2 customer display name, most-authoritative
+      // first: the contact's tenant-level best-known name, then this
+      // specific channel identity's profile name, then a captured lead
+      // name, then the raw provider sender id / phone as the final
+      // fallback. sender_id stays available on the row regardless.
+      const identityName =
+        typeof channelIdentity?.display_name === "string" ? channelIdentity.display_name.trim() : "";
+      const customerName =
+        contactNameById.get(row.contact_id) || identityName || lead?.name || senderId || "";
+
       const whatsappInstance =
         platform.toLowerCase() === "whatsapp" && channelIdentity?.channel_key
           ? whatsappByChannelKey.get(channelIdentity.channel_key) || null
@@ -271,6 +297,7 @@ export async function handleConversationsList(req, res) {
         last_message_at: agg?.lastAt || row.last_message_at || row.created_at,
         last_direction: agg?.lastDirection || "",
         sender: lead?.name || senderId || agg?.fallbackSender || "",
+        customer_name: customerName,
         lead_name: lead?.name || null,
         lead_phone: lead?.phone || null,
         has_lead: !!lead,

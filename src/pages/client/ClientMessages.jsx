@@ -686,16 +686,6 @@ export default function ClientMessages() {
   const lastLoadedConversationRef = useRef(null);
   const selectedConversationIdRef = useRef(null);
 
-  // Realtime support (no polling): mirrors the currently-known conversation
-  // ids so the INSERT handler can tell "existing conversation, patch it" vs
-  // "brand new conversation, do a single event-driven refetch" apart
-  // without touching React state from inside a setState updater. Also
-  // tracks message ids already processed via Realtime so a duplicate
-  // delivery (e.g. a reconnect) is never applied twice to the list's
-  // messages_count/unread_count.
-  const conversationIdsRef = useRef(new Set());
-  const seenRealtimeMessageIdsRef = useRef(new Set());
-
   // Revokes the previous attachment's object URL (if any) whenever the
   // attachment changes or the component unmounts — avoids leaking memory
   // across repeated select/remove cycles.
@@ -721,12 +711,17 @@ export default function ClientMessages() {
   // shape below unchanged. messages/leads/Storage and every other query
   // in this file are untouched — only this list-loading query moved
   // server-side.
-  async function fetchConversations() {
+  // `silent: true` refetches the list in the background (used by the poll
+  // that stands in for browser Realtime — see the polling effect below)
+  // without toggling the list spinner or the page-level error banner.
+  async function fetchConversations({ silent = false } = {}) {
     if (!clientId || !user?.id) return;
 
     try {
-      setLoadingConversations(true);
-      setError("");
+      if (!silent) {
+        setLoadingConversations(true);
+        setError("");
+      }
 
       const response = await fetch(`/api/conversation?resource=list&actor_user_id=${encodeURIComponent(user.id)}`);
       const data = await response.json().catch(() => ({}));
@@ -758,9 +753,9 @@ export default function ClientMessages() {
       setSelectedConversationId((current) => (current && merged.some((c) => c.conversation_id === current) ? current : merged[0]?.conversation_id || null));
     } catch (err) {
       console.error(err);
-      setError(t("messagesPage.errorFetchConversations"));
+      if (!silent) setError(t("messagesPage.errorFetchConversations"));
     } finally {
-      setLoadingConversations(false);
+      if (!silent) setLoadingConversations(false);
     }
   }
 
@@ -1180,121 +1175,62 @@ export default function ClientMessages() {
     if (clientId) fetchConversations();
   }, [clientId]);
 
-  // Keeps a ref mirror of "which conversation ids are currently known" so
-  // the Realtime handler can decide existing-vs-new synchronously, without
-  // performing a side effect (a refetch) from inside a setState updater.
-  useEffect(() => {
-    conversationIdsRef.current = new Set(conversations.map((c) => c.conversation_id));
-  }, [conversations]);
-
-  // New inbound/outbound message arriving via Realtime (see the
-  // subscription effect below). Handles the three required updates:
-  // append to the open thread if it's the selected conversation, patch the
-  // matching conversation's preview/counts in the list, or — for a
-  // conversation not seen before — a single event-driven refetch (never
-  // polling). message.id is the dedup key throughout: the open-thread
-  // append checks it against the current thread before appending (also
-  // covers a locally-sent reply that arrives here after
-  // refreshMessagesAfterSend's own poll already pulled it in), and
-  // seenRealtimeMessageIdsRef additionally guards the list's incremental
-  // counters against a duplicate Realtime delivery of the same row.
-  function handleRealtimeMessage(msg) {
-    // Defensive: an uncaught exception thrown from inside a Realtime
-    // callback would otherwise surface as an unhandled error at the point
-    // React processes the resulting setState, with nothing here to explain
-    // why. Guarding the whole handler keeps one malformed/unexpected event
-    // payload from ever affecting anything beyond itself.
-    try {
-      if (!msg || !msg.conversation_id) return;
-
-      if (msg.id != null) {
-        if (seenRealtimeMessageIdsRef.current.has(msg.id)) return;
-        seenRealtimeMessageIdsRef.current.add(msg.id);
-      }
-
-      const messageText = getMessageText(msg);
-
-      if (selectedConversationIdRef.current === msg.conversation_id) {
-        setConversationMessages((prev) => {
-          if (prev.some((m) => m.id === msg.id)) return prev;
-          return [...prev, { ...msg, message_text: messageText }];
-        });
-      }
-
-      if (!conversationIdsRef.current.has(msg.conversation_id)) {
-        // Brand-new conversation this session hasn't listed yet — pick it up
-        // with a single refetch triggered by this real event, not a timer.
-        fetchConversations();
-        return;
-      }
-
-      setConversations((prev) => {
-        const idx = prev.findIndex((c) => c.conversation_id === msg.conversation_id);
-        if (idx === -1) return prev;
-
-        const existing = prev[idx];
-        const next = [...prev];
-        next[idx] = {
-          ...existing,
-          last_message: messageText || existing.last_message,
-          last_message_at: msg.created_at || existing.last_message_at,
-          updated_at: msg.created_at || existing.updated_at,
-          last_direction: msg.direction || existing.last_direction,
-          // Same counting rule fetchConversations already uses — only
-          // increment unread_count for a message explicitly marked unread.
-          messages_count: (existing.messages_count || 0) + 1,
-          unread_count: msg.is_read === false ? (existing.unread_count || 0) + 1 : existing.unread_count,
-        };
-        next.sort((a, b) => new Date(b.last_message_at || b.updated_at || 0) - new Date(a.last_message_at || a.updated_at || 0));
-        return next;
-      });
-    } catch (err) {
-      console.error("Realtime message handling failed:", err);
-    }
-  }
-
-  // Realtime subscription: INSERT events on public.messages, scoped to this
-  // client only (tenant isolation — the same boundary every other query in
-  // this file already applies via .eq("client_id", clientId)). No polling
-  // interval anywhere in this file; this channel is the only mechanism that
-  // reveals new messages without a manual refresh. Torn down on unmount and
-  // whenever clientId changes, so a client switch never leaves a stale
-  // subscription listening for another tenant's messages.
+  // New messages: lightweight background polling of the same server-side
+  // endpoints the rest of this page already uses.
   //
-  // Wrapped defensively and given a status callback: none of this can
-  // legitimately throw synchronously during render (the whole effect body
-  // is gated behind `if (!clientId) return`), but if the Supabase project's
-  // `messages` table isn't in the Realtime publication, or the socket
-  // fails to connect, .subscribe()'s status callback is the only way to
-  // find out — previously this failed completely silently, indistinguishable
-  // from "no new messages happened yet".
+  // Why not Supabase Realtime: this app has no Supabase Auth session — it
+  // uses the anon key plus its own app-level auth (see
+  // src/lib/supabaseClient.js and AuthContext), so `auth.uid()` is always
+  // null for the browser client. public.messages RLS denies the anon role
+  // (the same reason the historical message read had to move to the
+  // service-role /api/conversation?resource=messages endpoint in commit
+  // c4764e3), and Supabase Realtime `postgres_changes` only delivers a row
+  // to a client that could SELECT it — so the previous
+  // `.channel(...).on("postgres_changes", { table: "messages" })`
+  // subscription received nothing and new messages never appeared without a
+  // manual refresh. Restoring true Realtime would require either weakening
+  // messages RLS for anon (a tenant-isolation regression — anyone could
+  // read any client's messages) or minting per-user Supabase JWTs, neither
+  // of which exists in this architecture. Polling the two service-role
+  // endpoints keeps the tenant boundary intact.
+  //
+  // Two cadences: the open thread (7s) reveals new inbound/outbound
+  // messages — including media rows, which flow through the exact same
+  // fetchConversationMessages mapping and MediaAttachment renderer as a
+  // historical load; the list (15s) surfaces new conversations, preview
+  // text, counts and lifecycle changes. Both are silent (no spinner, no
+  // error banner) and pause while the tab is hidden. selectedConversationId
+  // is read from its ref so the interval never appends another
+  // conversation's messages into the open thread.
   useEffect(() => {
-    if (!clientId) return;
+    if (!clientId || !user?.id) return;
 
-    let channel;
-    try {
-      channel = supabase
-        .channel(`messages-client-${clientId}`)
-        .on(
-          "postgres_changes",
-          { event: "INSERT", schema: "public", table: "messages", filter: `client_id=eq.${clientId}` },
-          (payload) => handleRealtimeMessage(payload.new)
-        )
-        .subscribe((subStatus, err) => {
-          if (subStatus === "CHANNEL_ERROR" || subStatus === "TIMED_OUT" || err) {
-            console.error("Realtime messages subscription failed:", subStatus, err);
-          }
-        });
-    } catch (err) {
-      console.error("Realtime messages subscription could not be created:", err);
-      return;
-    }
+    const pollMessages = () => {
+      if (document.hidden) return;
+      const convId = selectedConversationIdRef.current;
+      if (convId) fetchConversationMessages(convId, { silent: true });
+    };
+    const pollList = () => {
+      if (document.hidden) return;
+      fetchConversations({ silent: true });
+    };
+    const onVisible = () => {
+      if (document.hidden) return;
+      pollMessages();
+      pollList();
+    };
+
+    const messagesTimer = setInterval(pollMessages, 7000);
+    const listTimer = setInterval(pollList, 15000);
+    document.addEventListener("visibilitychange", onVisible);
 
     return () => {
-      supabase.removeChannel(channel);
+      clearInterval(messagesTimer);
+      clearInterval(listTimer);
+      document.removeEventListener("visibilitychange", onVisible);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientId]);
+  }, [clientId, user?.id]);
 
   const filteredConversations = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1500,7 +1436,7 @@ export default function ClientMessages() {
       <ChannelIcon channel={conv.channel || conv.platform} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="truncate text-sm font-bold text-slate-950">{conv.lead_name || conv.sender || conv.sender_id || t("common.noName")}</p>
+                          <p className="truncate text-sm font-bold text-slate-950">{conv.customer_name || conv.lead_name || conv.sender || conv.sender_id || t("common.noName")}</p>
                           <span className="shrink-0 text-[11px] text-slate-400">{relativeTime(conv.last_message_at || conv.updated_at, t)}</span>
                         </div>
                         <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{conv.last_message || t("messagesPage.noMessageYet")}</p>
@@ -1602,7 +1538,7 @@ export default function ClientMessages() {
                         items already use (see filteredConversations.map
                         above). */}
                     <div className="min-w-0">
-                      <h2 className="truncate text-base font-bold text-slate-950">{selectedLead?.name || selectedConversation.lead_name || selectedConversation.sender || selectedConversation.sender_id || t("common.noName")}</h2>
+                      <h2 className="truncate text-base font-bold text-slate-950">{selectedConversation.customer_name || selectedLead?.name || selectedConversation.lead_name || selectedConversation.sender || selectedConversation.sender_id || t("common.noName")}</h2>
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                         <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">{selectedConversation.channel || selectedConversation.platform || t("messagesPage.unknownChannel")}</span>
                         {multipleWhatsappNumbers && selectedConversation.platform?.toLowerCase() === "whatsapp" && selectedConversation.whatsapp_instance && (
