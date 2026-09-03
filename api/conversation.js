@@ -40,6 +40,10 @@ import { handleHumanReply } from "./_lib/humanReply.js";
 //     -> list notes (former conversation-notes.js GET)
 //   GET  /api/conversation?resource=list&actor_user_id=
 //     -> conversation list (former top-level api/conversations.js)
+//   GET  /api/conversation?resource=messages&actor_user_id=&conversation_id=
+//     -> historical conversation messages (created_at ASC), moved
+//        server-side from ClientMessages.jsx's former direct browser
+//        supabase.from("messages") query
 //   POST /api/conversation
 //     { action: "add_note" | "edit_note" | "delete_note", actor_user_id,
 //       conversation_id?, note_id?, body? }
@@ -308,6 +312,45 @@ async function handleListNotes(req, res, supabase) {
   return res.status(200).json({ success: true, notes: (data || []).map(serializeNote), actor_user_id: actor.user.id });
 }
 
+// GET /api/conversation?resource=messages&actor_user_id=&conversation_id= —
+// historical conversation-message read, moved server-side (Conversation
+// Model V2 read-path cleanup). This replaces the last remaining direct
+// browser `supabase.from("messages")` query in ClientMessages.jsx
+// (fetchConversationMessages): that anon-keyed REST read is subject to
+// `messages` RLS and was silently returning an empty set for the center
+// panel while the service-role conversation-LIST endpoint (which bypasses
+// RLS) correctly counted the same rows. Same authorization convention as
+// every other branch here — INBOX permission, tenant scope re-derived
+// server-side from actor.membership.client_id, never a client_id trusted
+// from the browser. conversation_id stays the V2 conversations.id; this
+// does NOT read conversation_state. Runs on the service-role client (the
+// SUPABASE_SERVICE_ROLE_KEY guard in handler() already applies to every
+// GET in this file), so it returns the real rows regardless of the
+// browser anon key's RLS posture on `messages`.
+async function handleConversationMessages(req, res, supabase) {
+  const actor = await requireActor(req, res, supabase);
+  if (!actor) return;
+
+  const conversationId = req.query?.conversation_id;
+  if (!conversationId) {
+    return res.status(400).json({ success: false, message: "conversation_id is required" });
+  }
+
+  const { data, error } = await supabase
+    .from("messages")
+    .select("*")
+    .eq("client_id", actor.membership.client_id)
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("conversation: failed to load conversation messages:", error);
+    return res.status(500).json({ success: false, message: "فشل في جلب رسائل المحادثة" });
+  }
+
+  return res.status(200).json({ success: true, messages: data || [] });
+}
+
 // POST { action: "add_note", ... } — former api/conversation-notes.js
 // POST action "add", unchanged.
 async function handleAddNote(req, res, supabase) {
@@ -458,6 +501,9 @@ export default async function handler(req, res) {
   if (req.method === "GET") {
     if (req.query?.resource === "notes") {
       return handleListNotes(req, res, supabase);
+    }
+    if (req.query?.resource === "messages") {
+      return handleConversationMessages(req, res, supabase);
     }
     return handleGetCardDetails(req, res, supabase);
   }

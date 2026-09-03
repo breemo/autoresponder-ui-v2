@@ -765,15 +765,25 @@ export default function ClientMessages() {
         setError("");
       }
 
-      const { data, error } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("client_id", clientId)
-        .eq("conversation_id", conversationId)
-        .order("created_at", { ascending: true });
+      // Historical messages are read through the server-side, service-role
+      // endpoint (Conversation Model V2 read-path cleanup) — a direct
+      // browser supabase.from("messages") query here is subject to
+      // `messages` RLS on the anon key and was silently returning an empty
+      // set, so the center panel showed "no messages" for conversations
+      // the (service-role) list endpoint had already counted correctly.
+      // client_id is derived server-side from the actor's membership;
+      // conversation_id stays the V2 conversations.id.
+      const response = await fetch(
+        `/api/conversation?resource=messages&actor_user_id=${encodeURIComponent(user?.id)}&conversation_id=${encodeURIComponent(conversationId)}`
+      );
+      const payload = await response.json().catch(() => ({}));
 
-      if (error) throw error;
-      const rows = (data || []).map((m) => ({ ...m, message_text: getMessageText(m) }));
+      if (!response.ok || payload?.success === false) {
+        throw new Error(payload?.message || t("messagesPage.errorFetchMessages"));
+      }
+
+      const data = payload.messages || [];
+      const rows = data.map((m) => ({ ...m, message_text: getMessageText(m) }));
       setConversationMessages(rows);
       return rows;
     } catch (err) {
