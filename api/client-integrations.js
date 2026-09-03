@@ -58,6 +58,55 @@ async function loadOwnedIntegration(supabase, clientId, featureId) {
   return data;
 }
 
+// Cross-tenant provider-identity guard.
+//
+// A Facebook Page (config.pageId) / Instagram account
+// (config.instagram_account_id) may belong to exactly ONE client.
+// AutoResponder_Final's `client_feature` node resolves the owning tenant
+// for an inbound Meta webhook purely by matching that id against
+// client_feature_integrations, with LIMIT 1:
+//
+//   facebook :  ...?config->>pageId=eq.<channelKey>&features.slug=eq.facebook&limit=1
+//   instagram:  ...?config->>instagram_account_id=eq.<channelKey>&features.slug=eq.instagram&limit=1
+//
+// If the same identity were stored on two clients, that lookup would
+// return whichever row Postgres happens to order first, silently routing
+// one tenant's customer messages to — and answering them with the AI /
+// Welcome config of — a different tenant (observed live for Facebook Page
+// 738298739648065). Nothing else in the config is a routing key.
+//
+// Returns { taken, key } when `config` carries a page/account id already
+// stored on a DIFFERENT client's row. Only the presence of a conflict is
+// reported — never which client holds it.
+const PROVIDER_IDENTITY_KEYS = ["pageId", "instagram_account_id"];
+
+async function findConflictingProviderIdentity(supabase, config, clientId) {
+  for (const key of PROVIDER_IDENTITY_KEYS) {
+    const value = typeof config?.[key] === "string" ? config[key].trim() : "";
+    if (!value) continue;
+    const { data, error } = await supabase
+      .from("client_feature_integrations")
+      .select("id")
+      .eq(`config->>${key}`, value)
+      .neq("client_id", clientId)
+      .limit(1);
+    if (error) throw error;
+    if ((data || []).length > 0) return { taken: true, key };
+  }
+  return { taken: false, key: null };
+}
+
+const PROVIDER_IDENTITY_CONFLICT = {
+  pageId: {
+    code: "FACEBOOK_PAGE_ALREADY_ASSIGNED",
+    message: "هذه الصفحة مرتبطة بحساب عميل آخر بالفعل",
+  },
+  instagram_account_id: {
+    code: "INSTAGRAM_ACCOUNT_ALREADY_ASSIGNED",
+    message: "هذا الحساب مرتبط بعميل آخر بالفعل",
+  },
+};
+
 // Generic per-feature connection-limit check — same shape as the WhatsApp
 // Evolution enforcement in api/create-whatsapp-instance.js, against
 // plan_features.max_connections. Every other channel is currently capped
@@ -175,6 +224,19 @@ export default async function handler(req, res) {
     }
 
     const config = req.body?.config && typeof req.body.config === "object" ? req.body.config : {};
+
+    // A Facebook Page / Instagram account identity may only ever belong
+    // to one client — reject a config that would claim one already
+    // connected to another tenant (see findConflictingProviderIdentity).
+    let conflict;
+    try {
+      conflict = await findConflictingProviderIdentity(supabase, config, clientId);
+    } catch (e) {
+      return res.status(500).json({ success: false, message: "فشل التحقق من هوية القناة" });
+    }
+    if (conflict.taken) {
+      return res.status(409).json({ success: false, ...PROVIDER_IDENTITY_CONFLICT[conflict.key] });
+    }
 
     const { error } = await supabase
       .from("client_feature_integrations")
