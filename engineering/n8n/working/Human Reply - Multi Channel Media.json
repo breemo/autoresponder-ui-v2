@@ -1,0 +1,1042 @@
+{
+  "name": "Human Reply - Multi Channel Media",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "human-reply-Media",
+        "options": {}
+      },
+      "id": "196d270b-6de4-4a5f-9d78-79c84d891049",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -2160,
+        208
+      ],
+      "webhookId": "38d08aa1-f942-4b7a-987a-988fcb61851f"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"SUPABASE_URL\": \"https://rdfqdkzcudcqjattpmpt.supabase.co\",\n  \"SUPABASE_KEY\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJkZnFka3pjdWRjcWphdHRwbXB0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI4OTk0NTUsImV4cCI6MjA3ODQ3NTQ1NX0.o18a417R13oStclFA2smM-6jQ7799H7RcxmhZA6xX74\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1968,
+        208
+      ],
+      "id": "b540cf6c-42f0-4055-9f44-106beb21ec67",
+      "name": "Config"
+    },
+    {
+      "parameters": {
+        "url": "={{\n(() => {\n  const base = $node[\"Config\"].json[\"SUPABASE_URL\"];\n  const clientId = $node[\"get_conversation_v2\"].json[\"client_id\"];\n  const platform = $node[\"get_channel_identity_v2\"].json[\"platform\"];\n  const channelKey = $node[\"get_channel_identity_v2\"].json[\"channel_key\"];\n  const slug = platform === \"whatsapp\" ? \"whatsapp_evolution\" : platform;\n\n  // Multi-account safety: select the integration row that belongs to THIS\n  // conversation's channel identity, not merely the client's first row.\n  // Mirrors AutoResponder_Final's inbound client_feature lookup: facebook\n  // keys on config.pageId, instagram on config.instagram_account_id,\n  // telegram on config.channelKey. WhatsApp Evolution is resolved\n  // per-account elsewhere via get_whatsapp_number (client_id + channel_key)\n  // and is not selected here.\n  let keyFilter = \"\";\n  if (platform === \"facebook\") keyFilter = \"&config->>pageId=eq.\" + encodeURIComponent(channelKey || \"\");\n  else if (platform === \"instagram\") keyFilter = \"&config->>instagram_account_id=eq.\" + encodeURIComponent(channelKey || \"\");\n  else if (platform === \"telegram\") keyFilter = \"&config->>channelKey=eq.\" + encodeURIComponent(channelKey || \"\");\n\n  // Fail safe: for FB/TG/IG a missing channel_key must NOT fall back to an\n  // arbitrary client account — force a zero-row result instead.\n  if ((platform === \"facebook\" || platform === \"instagram\" || platform === \"telegram\") && !channelKey) {\n    keyFilter = \"&id=eq.00000000-0000-0000-0000-000000000000\";\n  }\n\n  return base +\n    \"/rest/v1/client_feature_integrations\" +\n    \"?select=id,client_id,is_active,config,features!inner(slug)\" +\n    \"&client_id=eq.\" + encodeURIComponent(clientId) +\n    \"&features.slug=eq.\" + encodeURIComponent(slug) +\n    keyFilter +\n    \"&is_active=eq.true\" +\n    \"&limit=1\";\n})()\n}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f039464e-88c3-456f-9b6e-7eb787896f07",
+      "name": "get_client_integration",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1712,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"]}}/rest/v1/messages\n\n",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  client_id: $node[\"get_conversation_v2\"].json[\"client_id\"],\n\n  channel:\n    $node[\"get_channel_identity_v2\"].json[\"platform\"],\n\n  sender:\n    $node[\"get_channel_identity_v2\"].json[\"sender_id\"],\n\n  message:\n    $node[\"Webhook\"].json[\"body\"][\"message\"] || \"\",\n\n  direction: \"outbound\",\n\n  reply_source: \"human\",\n\n  conversation_id:\n    $node[\"get_conversation_v2\"].json[\"id\"],\n\n  message_type:\n    $node[\"Webhook\"].json[\"body\"][\"message_type\"] || \"text\",\n\n  media_path:\n    $node[\"Webhook\"].json[\"body\"][\"media_path\"] || null,\n\n  media_mime_type:\n    $node[\"Webhook\"].json[\"body\"][\"media_mime_type\"] || null,\n\n  media_file_name:\n    $node[\"Webhook\"].json[\"body\"][\"media_file_name\"] || null,\n\n  media_size_bytes:\n    $node[\"Webhook\"].json[\"body\"][\"media_size_bytes\"] || null\n}\n}}",
+        "options": {}
+      },
+      "id": "e2f1d257-afed-4f41-8c9d-dbb20cbb48a4",
+      "name": "insert message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        736,
+        592
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "b1JwiXiEiCRpV5gs",
+          "name": "Supabase Service Role"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $node[\"get_channel_identity_v2\"].json[\"platform\"] }}",
+                    "rightValue": "facebook",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "4071c60f-da97-4441-9cb9-7e6b8b50bd8c"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "faceboock"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "496d5243-d50a-4257-8a1c-27be04b49245",
+                    "leftValue": "={{ $node[\"get_channel_identity_v2\"].json[\"platform\"] }}",
+                    "rightValue": "telegram",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "telegram"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ee7da4b9-1774-4c35-b280-0b8e75693a7a",
+                    "leftValue": "={{ $node[\"get_channel_identity_v2\"].json[\"platform\"] }}",
+                    "rightValue": "whatsapp",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "whatsapp"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "b7e4d0c1-3a52-4f8e-9c1d-2a6b7e4d0c11",
+                    "leftValue": "={{ $node[\"get_channel_identity_v2\"].json[\"platform\"] }}",
+                    "rightValue": "instagram",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "instagram"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -1504,
+        432
+      ],
+      "id": "e32c55bf-9ea3-46e8-8408-96637ecf2fcc",
+      "name": "platform_router"
+    },
+    {
+      "parameters": {
+        "url": "={{\n  $node[\"Config\"].json[\"SUPABASE_URL\"] +\n  \"/rest/v1/client_whatsapp\" +\n  \"?select=id,client_id,server_id,instance_name,instance_id,phone,channel_key,status\" +\n  \"&client_id=eq.\" +\n  encodeURIComponent($node[\"get_conversation_v2\"].json[\"client_id\"]) +\n  \"&channel_key=eq.\" +\n  encodeURIComponent($node[\"get_channel_identity_v2\"].json[\"channel_key\"]) +\n  \"&limit=1\"\n}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7166b0d1-b266-4bd6-94fe-1609df1e6fe7",
+      "name": "get_whatsapp_number",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1328,
+        592
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "={{\n  $node[\"Config\"].json[\"SUPABASE_URL\"] +\n  \"/rest/v1/whatsapp_servers\" +\n  \"?select=id,base_url,api_key\" +\n  \"&id=eq.\" +\n  encodeURIComponent($node[\"get_whatsapp_number\"].json[\"server_id\"]) +\n  \"&limit=1\"\n}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6ff80ea7-573f-4ece-a137-f7b57b2e4900",
+      "name": "get_whatsapp_server",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1136,
+        592
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"] + \"/rest/v1/client_whatsapp?select=id,client_id,server_id,instance_name&client_id=eq.\" + encodeURIComponent($node[\"get_conversation_legacy\"].json[\"client_id\"]) + \"&limit=1\"}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c19761cb-af7e-45d5-91eb-3714728fe1fc",
+      "name": "get_whatsapp_integration",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1696,
+        992
+      ],
+      "alwaysOutputData": true,
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $node[\"Webhook\"].json[\"body\"][\"message_type\"] || \"text\" }}",
+                    "rightValue": "text",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "4071c60f-da97-4441-9cb9-7e6b8b50bd8c"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Text"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "496d5243-d50a-4257-8a1c-27be04b49245",
+                    "leftValue": "={{ $node[\"Webhook\"].json[\"body\"][\"message_type\"] || \"text\" }}",
+                    "rightValue": "image",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Image"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -1952,
+        992
+      ],
+      "id": "9370b1fe-5b48-4b69-ac85-0dc1c6f68649",
+      "name": "whatsapp_message_type_router"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.request_url }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ JSON.stringify($json.request_headers) }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.request_body) }}",
+        "options": {}
+      },
+      "id": "a84660b8-938b-4bd0-953c-602cbb1963de",
+      "name": "send_provider_request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -512,
+        592
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $node[\"Webhook\"].json.body || {};\nconst conversation = $node[\"get_conversation_v2\"].json || {};\nconst identity = $node[\"get_channel_identity_v2\"].json || {};\nconst integration = $node[\"get_client_integration\"].json || {};\n\nconst platform = String(\n  identity.platform ||\n  conversation.platform ||\n  \"\"\n).toLowerCase().trim();\n\nconst messageType = String(\n  body.message_type || \"text\"\n).toLowerCase().trim();\n\nconst recipient = String(identity.sender_id || \"\").trim();\nconst text = String(body.message || \"\");\nconst mediaUrl = String(body.media_url || \"\").trim();\n\nif (!conversation.id) {\n  throw new Error(\"Conversation not found\");\n}\n\nif (!identity.id) {\n  throw new Error(\"Channel identity not found\");\n}\n\nif (!recipient) {\n  throw new Error(\"Missing recipient\");\n}\n\nlet requestUrl = \"\";\nlet requestHeaders = {\n  \"Content-Type\": \"application/json\"\n};\nlet requestBody = {};\n\n// =====================================================\n// WHATSAPP - EVOLUTION\n// =====================================================\n\nif (platform === \"whatsapp\") {\n  const waServer = $json || {};\n  const waNumber = $node[\"get_whatsapp_number\"].json || {};\n\n  const instanceName = waNumber.instance_name;\n\n  if (!instanceName) {\n    throw new Error(\"Missing WhatsApp instance_name\");\n  }\n\n  if (!waServer.base_url) {\n    throw new Error(\"Missing WhatsApp server base_url\");\n  }\n\n  if (!waServer.api_key) {\n    throw new Error(\"Missing WhatsApp server api_key\");\n  }\n\n  // Safety check:\n  // the WhatsApp number must match the conversation's channel identity.\n  if (\n    identity.channel_key &&\n    waNumber.channel_key &&\n    String(identity.channel_key) !== String(waNumber.channel_key)\n  ) {\n    throw new Error(\n      \"WhatsApp channel mismatch between conversation identity and selected instance\"\n    );\n  }\n\n  requestHeaders.apikey = waServer.api_key;\n\n  if (messageType === \"text\") {\n    if (!text) {\n      throw new Error(\"WhatsApp text message is empty\");\n    }\n\n    requestUrl =\n      waServer.base_url +\n      \"/message/sendText/\" +\n      encodeURIComponent(instanceName);\n\n    requestBody = {\n      number: recipient,\n      text\n    };\n  }\n\n  else if (messageType === \"image\" || messageType === \"document\") {\n    if (!mediaUrl) {\n      throw new Error(\"Missing media_url\");\n    }\n\n    requestUrl =\n      waServer.base_url +\n      \"/message/sendMedia/\" +\n      encodeURIComponent(instanceName);\n\n    requestBody = {\n      number: recipient,\n      mediatype: messageType,\n      mimetype: body.media_mime_type || undefined,\n      media: mediaUrl,\n      caption: text || \"\"\n    };\n\n    if (body.media_file_name) {\n      requestBody.fileName = body.media_file_name;\n    }\n  }\n\n  else if (messageType === \"audio\") {\n    if (!mediaUrl) {\n      throw new Error(\"Missing media_url\");\n    }\n\n    requestUrl =\n      waServer.base_url +\n      \"/message/sendWhatsAppAudio/\" +\n      encodeURIComponent(instanceName);\n\n    requestBody = {\n      number: recipient,\n      audio: mediaUrl\n    };\n  }\n\n  else {\n    throw new Error(\n      `Unsupported WhatsApp message_type: ${messageType}`\n    );\n  }\n}\n\n// =====================================================\n// TELEGRAM\n// =====================================================\n\nelse if (platform === \"telegram\") {\n  const token =\n    integration.config?.[\"Bot Token\"] ||\n    integration.config?.bot_token ||\n    integration.config?.token;\n\n  if (!token) {\n    throw new Error(\"Missing Telegram Bot Token\");\n  }\n\n  const telegramBase =\n    `https://api.telegram.org/bot${token}/`;\n\n  if (messageType === \"text\") {\n    if (!text) {\n      throw new Error(\"Telegram text message is empty\");\n    }\n\n    requestUrl = telegramBase + \"sendMessage\";\n\n    requestBody = {\n      chat_id: recipient,\n      text\n    };\n  }\n\n  else if (messageType === \"image\") {\n    if (!mediaUrl) {\n      throw new Error(\"Missing media_url\");\n    }\n\n    requestUrl = telegramBase + \"sendPhoto\";\n\n    requestBody = {\n      chat_id: recipient,\n      photo: mediaUrl\n    };\n\n    if (text) {\n      requestBody.caption = text;\n    }\n  }\n\n  else if (messageType === \"document\") {\n    if (!mediaUrl) {\n      throw new Error(\"Missing media_url\");\n    }\n\n    requestUrl = telegramBase + \"sendDocument\";\n\n    requestBody = {\n      chat_id: recipient,\n      document: mediaUrl\n    };\n\n    if (text) {\n      requestBody.caption = text;\n    }\n  }\n\n  else if (messageType === \"audio\") {\n    if (!mediaUrl) {\n      throw new Error(\"Missing media_url\");\n    }\n\n    const mime = String(\n      body.media_mime_type || \"\"\n    ).toLowerCase();\n\n    const telegramPlayableAudio =\n      mime === \"audio/mpeg\" ||\n      mime === \"audio/mp3\" ||\n      mime === \"audio/mp4\" ||\n      mime === \"audio/m4a\" ||\n      mime === \"audio/x-m4a\";\n\n    if (telegramPlayableAudio) {\n      requestUrl = telegramBase + \"sendAudio\";\n\n      requestBody = {\n        chat_id: recipient,\n        audio: mediaUrl\n      };\n    } else {\n      requestUrl = telegramBase + \"sendDocument\";\n\n      requestBody = {\n        chat_id: recipient,\n        document: mediaUrl\n      };\n    }\n\n    if (text) {\n      requestBody.caption = text;\n    }\n  }\n\n  else {\n    throw new Error(\n      `Unsupported Telegram message_type: ${messageType}`\n    );\n  }\n}\n\n// =====================================================\n// FACEBOOK MESSENGER\n// =====================================================\n\nelse if (platform === \"facebook\") {\n  const pageAccessToken =\n    integration.config?.[\"Page Access Token\"] ||\n    integration.config?.page_access_token;\n\n  if (!pageAccessToken) {\n    throw new Error(\"Missing Facebook Page Access Token\");\n  }\n\n  requestUrl =\n    \"https://graph.facebook.com/v18.0/me/messages?access_token=\" +\n    encodeURIComponent(pageAccessToken);\n\n  if (messageType === \"text\") {\n    if (!text) {\n      throw new Error(\"Facebook text message is empty\");\n    }\n\n    requestBody = {\n      recipient: {\n        id: recipient\n      },\n      message: {\n        text\n      }\n    };\n  }\n\n  else if (\n    messageType === \"image\" ||\n    messageType === \"document\" ||\n    messageType === \"audio\"\n  ) {\n    if (!mediaUrl) {\n      throw new Error(\"Missing media_url\");\n    }\n\n    let attachmentType = messageType;\n\n    if (messageType === \"document\") {\n      attachmentType = \"file\";\n    }\n\n    requestBody = {\n      recipient: {\n        id: recipient\n      },\n      message: {\n        attachment: {\n          type: attachmentType,\n          payload: {\n            url: mediaUrl,\n            is_reusable: true\n          }\n        }\n      }\n    };\n  }\n\n  else {\n    throw new Error(\n      `Unsupported Facebook message_type: ${messageType}`\n    );\n  }\n}\n\nelse if (platform === \"instagram\") {\n  const igAccountId = String(\n    integration.config?.instagram_account_id ||\n    integration.config?.[\"Instagram Account ID\"] ||\n    \"\"\n  ).trim();\n\n  const igToken =\n    integration.config?.page_access_token ||\n    integration.config?.[\"Page Access Token\"];\n\n  if (!igAccountId) {\n    throw new Error(\"Missing Instagram account ID\");\n  }\n\n  if (!igToken) {\n    throw new Error(\"Missing Instagram access token\");\n  }\n\n  requestUrl =\n    \"https://graph.instagram.com/v25.0/\" +\n    encodeURIComponent(igAccountId) +\n    \"/messages\";\n\n  requestHeaders = {\n    \"Content-Type\": \"application/json\",\n    \"Authorization\": \"Bearer \" + igToken\n  };\n\n  if (messageType === \"text\") {\n    if (!text) {\n      throw new Error(\"Instagram text message is empty\");\n    }\n\n    requestBody = {\n      recipient: {\n        id: recipient\n      },\n      message: {\n        text\n      }\n    };\n  }\n\n  else if (messageType === \"image\") {\n    if (!mediaUrl) {\n      throw new Error(\"Missing media_url\");\n    }\n\n    requestBody = {\n      recipient: {\n        id: recipient\n      },\n      message: {\n        attachment: {\n          type: \"image\",\n          payload: {\n            url: mediaUrl,\n            is_reusable: true\n          }\n        }\n      }\n    };\n  }\n\n  else if (messageType === \"audio\") {\n    if (!mediaUrl) {\n      throw new Error(\"Missing media_url\");\n    }\n\n    // EXPERIMENTAL: Instagram Messaging audio attachment by URL. Formed\n    // so a live send captures Meta's real Graph API response \u2014 NOT a\n    // claim that Instagram accepts it. Continues through\n    // document_delivery_router's fallback to send_provider_request.\n    requestBody = {\n      recipient: {\n        id: recipient\n      },\n      message: {\n        attachment: {\n          type: \"audio\",\n          payload: {\n            url: mediaUrl,\n            is_reusable: true\n          }\n        }\n      }\n    };\n  }\n\n  else if (messageType === \"document\") {\n    if (!mediaUrl) {\n      throw new Error(\"Missing media_url\");\n    }\n\n    // EXPERIMENTAL: Instagram Messaging has no documented \"file\"\n    // attachment type. Formed deliberately so a live send captures\n    // Meta's actual response \u2014 do NOT read it as proof of support.\n    // document_delivery_router routes Instagram documents here to\n    // send_provider_request, not the WA/TG/FB binary path.\n    requestBody = {\n      recipient: {\n        id: recipient\n      },\n      message: {\n        attachment: {\n          type: \"file\",\n          payload: {\n            url: mediaUrl,\n            is_reusable: true\n          }\n        }\n      }\n    };\n  }\n\n  else {\n    throw new Error(\n      \"Instagram does not support this message type in the current Human Reply implementation\"\n    );\n  }\n}\n\nelse {\n  throw new Error(`Unsupported platform: ${platform}`);\n}\n\n// =====================================================\n// UNIFIED OUTPUT\n// =====================================================\n\nreturn [\n  {\n    json: {\n      ...body,\n\n      platform,\n\n      provider:\n        platform === \"whatsapp\"\n          ? \"evolution\"\n          : platform,\n\n      request_method: \"POST\",\n      request_url: requestUrl,\n      request_headers: requestHeaders,\n      request_body: requestBody,\n\n      conversation_id: conversation.id,\n      channel_identity_id: identity.id,\n      channel_key: identity.channel_key || null,\n      sender_id: recipient,\n\n      message_type: messageType,\n\n      media_path: body.media_path || null,\n      media_mime_type: body.media_mime_type || null,\n      media_file_name: body.media_file_name || null,\n      media_size_bytes: body.media_size_bytes || null\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -912,
+        448
+      ],
+      "id": "44bc92d9-7c1c-44de-a9bd-a639ce8d476c",
+      "name": "build_provider_request"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.message_type }}",
+                    "rightValue": "document",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "4071c60f-da97-4441-9cb9-7e6b8b50bd8c"
+                  },
+                  {
+                    "id": "b9c7e1d0-4a52-4f8e-9c1d-2a6b7e4d0c22",
+                    "leftValue": "={{ $json.platform }}",
+                    "rightValue": "instagram",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEquals",
+                      "name": "filter.operator.notEquals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "document"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -704,
+        448
+      ],
+      "id": "7d0c014f-43e0-419f-b0fb-b96d8d568cb9",
+      "name": "document_delivery_router"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.media_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "e07880df-db6b-4025-a083-73fb3b5e6bf9",
+      "name": "download_media",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -512,
+        336
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "edb309aa-514e-45f6-8451-c72dc12cb3c6",
+                    "leftValue": "={{ $(\"build_provider_request\").item.json.platform }}",
+                    "rightValue": "whatsapp",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "whatsapp"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "0b24cee4-e667-4745-bc96-1850c9003603",
+                    "leftValue": "={{ $(\"build_provider_request\").item.json.platform }}",
+                    "rightValue": "telegram",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "telegram"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "8324f450-34ff-4dc0-9161-8fbc8dbe1f2a",
+                    "leftValue": "={{ $(\"build_provider_request\").item.json.platform }}",
+                    "rightValue": "facebook",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "facebook"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "none"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -272,
+        160
+      ],
+      "id": "c6cd9d8f-fe2c-4ca9-87b3-7deffca854fa",
+      "name": "document_provider_router"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ \"https://api.telegram.org/bot\" + $node[\"get_client_integration\"].json[\"config\"][\"Bot Token\"] + \"/sendDocument\" }}",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $node[\"get_channel_identity_v2\"].json[\"sender_id\"] }}"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "document",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $node[\"Webhook\"].json[\"body\"][\"message\"] || \"\" }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "617e0180-1f30-4474-a959-494a299be84a",
+      "name": "send_telegram_document_binary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        112,
+        176
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $node[\"Webhook\"].json.body || {};\nconst identity = $node[\"get_channel_identity_v2\"].json || {};\nconst waNumber = $node[\"get_whatsapp_number\"].json || {};\nconst waServer = $node[\"get_whatsapp_server\"].json || {};\n\nconst binaryMeta = $binary?.data;\n\nif (!binaryMeta) {\n  throw new Error(\"Missing binary.data\");\n}\n\nif (!identity.sender_id) {\n  throw new Error(\"Missing recipient sender_id\");\n}\n\nif (!waNumber.instance_name) {\n  throw new Error(\"Missing WhatsApp instance_name\");\n}\n\nif (!waServer.base_url) {\n  throw new Error(\"Missing WhatsApp server base_url\");\n}\n\nif (!waServer.api_key) {\n  throw new Error(\"Missing WhatsApp server api_key\");\n}\n\n// Safety check: make sure the selected WhatsApp instance\n// belongs to the current conversation's channel identity.\nif (\n  identity.channel_key &&\n  waNumber.channel_key &&\n  String(identity.channel_key) !== String(waNumber.channel_key)\n) {\n  throw new Error(\n    \"WhatsApp channel mismatch between conversation identity and selected instance\"\n  );\n}\n\nconst buffer = await this.helpers.getBinaryDataBuffer(0, \"data\");\n\nif (!buffer || !buffer.length) {\n  throw new Error(\"Missing binary buffer\");\n}\n\nconst base64 = buffer.toString(\"base64\");\n\nreturn [\n  {\n    json: {\n      request_url:\n        waServer.base_url +\n        \"/message/sendMedia/\" +\n        encodeURIComponent(waNumber.instance_name),\n\n      request_headers: {\n        apikey: waServer.api_key,\n        \"Content-Type\": \"application/json\"\n      },\n\n      request_body: {\n        number: identity.sender_id,\n        mediatype: \"document\",\n\n        mimetype:\n          body.media_mime_type ||\n          binaryMeta.mimeType ||\n          \"application/octet-stream\",\n\n        caption: body.message || \"\",\n\n        media: base64,\n\n        fileName:\n          body.media_file_name ||\n          binaryMeta.fileName ||\n          \"document\"\n      },\n\n      conversation_id:\n        $node[\"get_conversation_v2\"].json[\"id\"],\n\n      channel_identity_id:\n        identity.id,\n\n      channel_key:\n        identity.channel_key || null\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "7ee424af-3f54-4679-adea-716f3a7715b6",
+      "name": "prepare_whatsapp_document_base64"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.request_url }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ JSON.stringify($json.request_headers) }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.request_body) }}",
+        "options": {}
+      },
+      "id": "b831e54b-596c-4015-a600-bdb9014404db",
+      "name": "send_whatsapp_document_base64",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{\n  \"https://graph.facebook.com/v18.0/\" +\n  $node[\"get_client_integration\"].json[\"config\"][\"pageId\"] +\n  \"/message_attachments\"\n}}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $node[\"get_client_integration\"].json[\"config\"][\"Page Access Token\"] }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  message: {\n    attachment: {\n      type: \"file\",\n      payload: {\n        url: $node[\"Webhook\"].json[\"body\"][\"media_url\"],\n        is_reusable: true\n      }\n    }\n  }\n}\n}}",
+        "options": {}
+      },
+      "id": "62c37edc-b2b1-49d6-af62-2b2db44ebafe",
+      "name": "upload_facebook_attachment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        384
+      ],
+      "executeOnce": false,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{\n  \"https://graph.facebook.com/v18.0/me/messages?access_token=\" +\n  $node[\"get_client_integration\"].json[\"config\"][\"Page Access Token\"]\n}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  recipient: {\n    id: $node[\"get_channel_identity_v2\"].json[\"sender_id\"]\n  },\n  message: {\n    attachment: {\n      type: \"file\",\n      payload: {\n        attachment_id: $json[\"attachment_id\"]\n      }\n    }\n  }\n}\n}}",
+        "options": {}
+      },
+      "id": "c5241677-a81d-4917-9647-fff00bb97011",
+      "name": "send_facebook_attachment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        384
+      ],
+      "executeOnce": false,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"] + \"/rest/v1/conversation_state?select=*&conversation_id=eq.\" + $node[\"Webhook\"].json[\"body\"][\"conversation_id\"] + \"&limit=1\"}}\n",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e7df79fe-ebb0-4c41-b301-ca24be126994",
+      "name": "get_conversation_legacy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2192,
+        992
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "={{\n  $node[\"Config\"].json[\"SUPABASE_URL\"] +\n  \"/rest/v1/conversations\" +\n  \"?select=id,client_id,contact_id,channel_identity_id,platform,conversation_status,current_step,assigned_user_id,system_assigned_user_id,closed_at\" +\n  \"&id=eq.\" +\n  encodeURIComponent($node[\"Webhook\"].json[\"body\"][\"conversation_id\"]) +\n  \"&limit=1\"\n}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1f5fe261-5204-40e7-96fb-16d1c94f71b6",
+      "name": "get_conversation_v2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2128,
+        448
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "b1JwiXiEiCRpV5gs",
+          "name": "Supabase Service Role"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{\n  $node[\"Config\"].json[\"SUPABASE_URL\"] +\n  \"/rest/v1/contact_channel_identities\" +\n  \"?select=id,client_id,contact_id,platform,sender_id,channel_key\" +\n  \"&id=eq.\" +\n  encodeURIComponent($json[\"channel_identity_id\"]) +\n  \"&limit=1\"\n}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9da80464-cf86-4605-a97b-859ea271b9a6",
+      "name": "get_channel_identity_v2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1904,
+        448
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "b1JwiXiEiCRpV5gs",
+          "name": "Supabase Service Role"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "get_conversation_v2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_client_integration": {
+      "main": [
+        [
+          {
+            "node": "platform_router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "platform_router": {
+      "main": [
+        [
+          {
+            "node": "build_provider_request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "build_provider_request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "get_whatsapp_number",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "build_provider_request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_whatsapp_number": {
+      "main": [
+        [
+          {
+            "node": "get_whatsapp_server",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_whatsapp_server": {
+      "main": [
+        [
+          {
+            "node": "build_provider_request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "send_provider_request": {
+      "main": [
+        [
+          {
+            "node": "insert message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "build_provider_request": {
+      "main": [
+        [
+          {
+            "node": "document_delivery_router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "document_delivery_router": {
+      "main": [
+        [
+          {
+            "node": "download_media",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "send_provider_request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "download_media": {
+      "main": [
+        [
+          {
+            "node": "document_provider_router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "document_provider_router": {
+      "main": [
+        [
+          {
+            "node": "prepare_whatsapp_document_base64",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "send_telegram_document_binary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "upload_facebook_attachment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "send_telegram_document_binary": {
+      "main": [
+        [
+          {
+            "node": "insert message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "prepare_whatsapp_document_base64": {
+      "main": [
+        [
+          {
+            "node": "send_whatsapp_document_base64",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "send_whatsapp_document_base64": {
+      "main": [
+        [
+          {
+            "node": "insert message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "upload_facebook_attachment": {
+      "main": [
+        [
+          {
+            "node": "send_facebook_attachment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "send_facebook_attachment": {
+      "main": [
+        [
+          {
+            "node": "insert message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_conversation_v2": {
+      "main": [
+        [
+          {
+            "node": "get_channel_identity_v2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_channel_identity_v2": {
+      "main": [
+        [
+          {
+            "node": "get_client_integration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "dfcdf3ae-9928-4090-9ed2-a8b0aea2b9f5",
+  "meta": {
+    "instanceId": "24db91edc562a2f32cf7ac569571eca79e1b048807c8a90e363dcb06af59148c"
+  },
+  "id": "tysM1xXznpgCCp9B",
+  "tags": []
+}
