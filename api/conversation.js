@@ -4,6 +4,7 @@ import { PERMISSIONS } from "../src/lib/permissions.js";
 import { handleConversationsList } from "./_lib/conversationsList.js";
 import { handleConversationLifecycle } from "./_lib/conversationLifecycle.js";
 import { handleHumanReply } from "./_lib/humanReply.js";
+import { handleContactEnrich } from "./_lib/contactEnrich.js";
 
 // Conversation Card V1 — API consolidation Merge #1: this single domain
 // endpoint replaces the former api/conversation-card.js (read-only
@@ -470,6 +471,9 @@ export function resolveConversationRoute(req) {
   if (req.method === "GET" && req.query?.resource === "list") return "list";
   if (req.method === "POST" && LIFECYCLE_ACTIONS.has(req.body?.action)) return "lifecycle";
   if (req.method === "POST" && req.body?.action === "human_reply") return "human_reply";
+  // Server-to-server (shared secret, no actor) — Meta customer profile-name
+  // enrichment called by the inbound n8n workflow. See api/_lib/contactEnrich.js.
+  if (req.method === "POST" && req.body?.action === "enrich_contact") return "enrich_contact";
   return "self";
 }
 
@@ -482,6 +486,7 @@ export default async function handler(req, res) {
   if (route === "list") return handleConversationsList(req, res);
   if (route === "lifecycle") return handleConversationLifecycle(req, res);
   if (route === "human_reply") return handleHumanReply(req, res);
+  if (route === "enrich_contact") return handleContactEnrich(req, res);
 
   let supabase;
   try {

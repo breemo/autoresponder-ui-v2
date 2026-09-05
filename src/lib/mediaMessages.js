@@ -167,6 +167,25 @@ export function canSendMediaOnChannel(channel) {
   return isSupportedMediaChannel(channel);
 }
 
+// Per-channel OUTBOUND media type capability. A channel absent from this
+// map supports all three types. Instagram Messaging (Meta) has no
+// "file"/document attachment type — the Graph API rejects it, and live
+// testing confirmed only images work outbound — so the Document control is
+// hidden for an Instagram conversation. `text` and `image` (and, per
+// Meta's documented attachment types, `audio`) stay available. The Human
+// Reply n8n builder throws a clean error for an Instagram document as the
+// server-side backstop.
+export const CHANNEL_MEDIA_TYPE_SUPPORT = {
+  instagram: { image: true, audio: true, document: false },
+};
+
+export function canSendMediaTypeOnChannel(channel, messageType) {
+  if (!isSupportedMediaChannel(channel)) return false;
+  const caps = CHANNEL_MEDIA_TYPE_SUPPORT[String(channel || "").trim().toLowerCase()];
+  if (!caps) return true;
+  return caps[messageType] !== false;
+}
+
 // ---------------------------------------------------------------------------
 // WhatsApp Media & Attachment Support v1 — Phase B: Storage foundation
 // ---------------------------------------------------------------------------

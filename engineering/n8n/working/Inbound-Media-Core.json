@@ -1,0 +1,685 @@
+{
+  "name": "Inbound-Media-Core",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "9e2d203a-cede-4077-8802-b44fc754156b",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1140,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://jawabai.vercel.app/api/media",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  action: \"sign_inbound_upload\",\n  conversation_id: $json.conversation_id,\n  message_type: $json.message_type,\n  file_name: $json.provider_file_name || ($json.message_type + \"_file\"),\n  mime_type: $json.provider_mime || ($json.message_type === \"image\" ? \"image/jpeg\" : $json.message_type === \"audio\" ? \"audio/ogg\" : \"application/octet-stream\"),\n  size_bytes: Number($json.provider_size_bytes) || 0\n}) }}",
+        "options": {}
+      },
+      "id": "7f75bb52-7c64-4dfb-a2eb-fad3611e1f07",
+      "name": "Sign Upload",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -900,
+        320
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TBATq3Dn0WwGFqLu",
+          "name": "AI Tools Secret"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "3a29553f-daa3-4984-9931-079d24f4ef95",
+                    "leftValue": "={{ $items(\"When Executed by Another Workflow\", 0, 0)[0].json.platform }}",
+                    "rightValue": "whatsapp",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "whatsapp"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "f1b27e65-8a0c-4e51-b14e-2a9d6ee3e33c",
+                    "leftValue": "={{ $items(\"When Executed by Another Workflow\", 0, 0)[0].json.platform }}",
+                    "rightValue": "telegram",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "telegram"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "b2b1aad5-7ea6-4d19-a8a3-00d150dbf298",
+                    "leftValue": "={{ $items(\"When Executed by Another Workflow\", 0, 0)[0].json.platform }}",
+                    "rightValue": "facebook",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "facebook"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "instagram-imc-cond",
+                    "leftValue": "={{ $items(\"When Executed by Another Workflow\", 0, 0)[0].json.platform }}",
+                    "rightValue": "instagram",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "instagram"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "none"
+        }
+      },
+      "id": "46253b25-e677-4db5-bbb1-a1ec4124b780",
+      "name": "Route By Platform",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -680,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const t = $items(\"When Executed by Another Workflow\", 0, 0)[0].json;\n\nlet key = {};\nlet rawMsg = undefined;\ntry { key = JSON.parse(t.wa_message_key || \"{}\"); } catch (e) { key = {}; }\ntry { rawMsg = t.wa_message_raw ? JSON.parse(t.wa_message_raw) : undefined; } catch (e) { rawMsg = undefined; }\n\nconst base = String(t.wa_base_url || \"\").replace(/\\/+$/, \"\");\n\nreturn [{\n  json: {\n    has_inline: String(t.wa_inline_base64 || \"\").length > 0,\n    inline_base64: t.wa_inline_base64 || \"\",\n    url: base + \"/chat/getBase64FromMediaMessage/\" + encodeURIComponent(t.wa_instance || \"\"),\n    apikey: t.wa_api_key || \"\",\n    body: { message: { key: key, message: rawMsg }, convertToMp4: false }\n  }\n}];"
+      },
+      "id": "bf49b7ff-17f7-4cff-b568-513092aac754",
+      "name": "WA Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -460,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "aa3319e5-2b97-4efd-ba73-4e70f1a3fa0b",
+              "leftValue": "={{ $json.has_inline === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "81c8af6a-ca88-4cb7-8940-996702becea6",
+      "name": "WA Has Inline",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -240,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $json.apikey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "id": "5888772d-4b2f-4d2a-8885-e75a45547593",
+      "name": "WA Get Base64",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -20,
+        240
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const prep = $items(\"WA Prep\", 0, 0)[0].json;\nconst t = $items(\"When Executed by Another Workflow\", 0, 0)[0].json;\n\nlet b64 = \"\";\nlet mime = \"\";\nlet fileName = \"\";\n\nif (prep.has_inline) {\n  b64 = prep.inline_base64;\n} else {\n  const resp = $json || {};\n  const d = resp.data && typeof resp.data === \"object\" ? resp.data : {};\n  b64 = resp.base64 || resp.media || d.base64 || d.media || \"\";\n  mime = resp.mimetype || resp.mimeType || d.mimetype || \"\";\n  fileName = resp.fileName || resp.filename || d.fileName || \"\";\n}\n\nmime = mime || t.provider_mime || \"\";\nfileName = fileName || t.provider_file_name || \"\";\n\nif (!b64 || typeof b64 !== \"string\") {\n  return [{ json: { ok: false, error_code: \"PROVIDER_DOWNLOAD_FAILED\", error_detail: \"Evolution returned no media bytes\" } }];\n}\n\nconst buffer = Buffer.from(b64, \"base64\");\nif (!buffer || buffer.length === 0) {\n  return [{ json: { ok: false, error_code: \"PROVIDER_DOWNLOAD_FAILED\", error_detail: \"empty media buffer\" } }];\n}\n\nconst binary = await this.helpers.prepareBinaryData(\n  buffer,\n  fileName || \"file\",\n  mime || \"application/octet-stream\"\n);\n\nreturn [{\n  json: { ok: true, provider_mime: mime, provider_file_name: fileName, provider_size_bytes: buffer.length },\n  binary: { data: binary }\n}];"
+      },
+      "id": "b8342ed8-0a1e-407e-b77a-f9e910caa7ad",
+      "name": "WA To Binary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.telegram.org/bot{{ $items(\"When Executed by Another Workflow\", 0, 0)[0].json.tg_bot_token }}/getFile?file_id={{ encodeURIComponent($items(\"When Executed by Another Workflow\", 0, 0)[0].json.tg_file_id) }}",
+        "options": {}
+      },
+      "id": "b461e6c8-f4a3-478b-a48e-2d28d7e9a07b",
+      "name": "TG Get File",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -460,
+        320
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.telegram.org/file/bot{{ $items(\"When Executed by Another Workflow\", 0, 0)[0].json.tg_bot_token }}/{{ $json.result ? $json.result.file_path : \"\" }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "d202f51b-3861-4010-b457-cf82637285dc",
+      "name": "TG Download",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -220,
+        320
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const t = $items(\"When Executed by Another Workflow\", 0, 0)[0].json;\n\n// ---------------------------------------------------------------------------\n// Normalise the attachment URL. It can arrive with surrounding whitespace /\n// newlines, wrapping quotes, non-breaking spaces, or JSON-escaped slashes\n// when it is threaded through expressions / executeWorkflow string inputs --\n// any of which makes `new URL()` throw and drops a VALID Meta URL into the\n// UNTRUSTED_MEDIA_HOST path (error_detail = \"invalid attachment url\").\n// ---------------------------------------------------------------------------\nlet raw = String(t.fb_attachment_url == null ? \"\" : t.fb_attachment_url);\nraw = raw\n  .replace(/\\\\u002[fF]/g, \"/\")                 // JSON \\u002f  -> /\n  .replace(/\\\\\\//g, \"/\")                        // JSON \\/      -> /\n  .replace(/[\\u0000-\\u0020\\u007F\\u00A0]+/g, \"\") // all controls / spaces / NBSP, anywhere\n  .replace(/^[\"']+/, \"\")\n  .replace(/[\"']+$/, \"\");\n\n// ---------------------------------------------------------------------------\n// Extract the host exactly the way an HTTP client would: the authority\n// segment between \"://\" and the first \"/\", \"?\" or \"#\", minus any\n// \"user:pass@\" and \":port\". Try the standard parser first (it may be\n// unavailable or stricter in this Code sandbox), then fall back to a strict\n// http(s)-only regex so a *valid* URL is never rejected just because the\n// parser threw.\n// ---------------------------------------------------------------------------\nlet host = \"\";\ntry {\n  host = new URL(raw).hostname.toLowerCase();\n} catch (e) {\n  const m = raw.match(/^https?:\\/\\/([^/?#\\s]+)/i);\n  if (m && m[1]) {\n    host = m[1].split(\"@\").pop().split(\":\")[0].toLowerCase().trim();\n  }\n}\n\n// ---------------------------------------------------------------------------\n// Trusted-host allow-list -- UNCHANGED. SSRF guard tightened, not loosened:\n// the host must be a plain domain (letters / digits / dot / hyphen only --\n// no bracketed IPv6, no \"%\", no embedded credentials, no leading/trailing\n// dot) AND end with one of the Meta-owned suffixes.\n// ---------------------------------------------------------------------------\nconst ALLOWED = [\".fbcdn.net\", \".fbsbx.com\", \".facebook.com\", \".cdninstagram.com\", \".whatsapp.net\"];\nconst okHost =\n  !!host &&\n  /^[a-z0-9.-]+$/.test(host) &&\n  !host.startsWith(\".\") &&\n  !host.endsWith(\".\") &&\n  ALLOWED.some((s) => host === s.slice(1) || host.endsWith(s));\n\nif (!okHost) {\n  return [{ json: { ok: false, fb_host_ok: false, error_code: \"UNTRUSTED_MEDIA_HOST\", error_detail: host || (\"unparseable: \" + raw.slice(0, 160)) || \"invalid attachment url\" } }];\n}\n\n// ---------------------------------------------------------------------------\n// access_token append -- behaviour preserved: normalised valid URL + the\n// owning Page Access Token, with correct \"?\" / \"&\" handling, a guard\n// against a trailing \"?\" / \"&\", and a no-op if an access_token is already\n// present.\n// ---------------------------------------------------------------------------\nconst token = String(t.fb_page_token == null ? \"\" : t.fb_page_token).trim();\nlet downloadUrl = raw;\nif (token && !/[?&]access_token=/.test(raw)) {\n  const base = raw.replace(/[?&]+$/, \"\");\n  const sep = base.indexOf(\"?\") === -1 ? \"?\" : \"&\";\n  downloadUrl = base + sep + \"access_token=\" + encodeURIComponent(token);\n}\n\nreturn [{ json: { fb_host_ok: true, fb_url: raw, fb_download_url: downloadUrl } }];"
+      },
+      "id": "6a57f020-77eb-44ce-af18-c266e8842f5e",
+      "name": "FB Host Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -460,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "548e61cb-c6e0-4a01-8eb1-fa88c4926284",
+              "leftValue": "={{ $json.fb_host_ok === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8dae96d4-524b-4647-a56c-85b1f0a7db39",
+      "name": "FB Host OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -240,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $items(\"FB Host Check\", 0, 0)[0].json.fb_download_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "d8dd017a-e92f-4969-a462-e833715b4a98",
+      "name": "FB Download",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -20,
+        500
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const t = $items(\"When Executed by Another Workflow\", 0, 0)[0].json;\nconst sign = $items(\"Sign Upload\", 0, 0)[0].json || {};\n\nif (sign.success !== true || !sign.signed_url) {\n  return [{ json: { ok: false, error_code: sign.code || \"SIGN_UPLOAD_FAILED\", error_detail: sign.message || \"no signed upload url\" } }];\n}\n\nconst messageType = String(t.message_type || \"\");\nconst PER_TYPE = { image: 5 * 1024 * 1024, audio: 10 * 1024 * 1024, document: 20 * 1024 * 1024 };\nconst HARD_MAX = 25 * 1024 * 1024;\n\nconst incoming = $json || {};\nif (incoming.ok === false) {\n  return [{ json: { ok: false, error_code: incoming.error_code || \"PROVIDER_DOWNLOAD_FAILED\", error_detail: incoming.error_detail || null } }];\n}\n\nconst bin = ($binary && $binary.data) ? $binary.data : null;\nif (!bin) {\n  return [{ json: { ok: false, error_code: \"PROVIDER_DOWNLOAD_FAILED\", error_detail: \"no media bytes after download\" } }];\n}\n\nlet buffer;\ntry {\n  buffer = await this.helpers.getBinaryDataBuffer(0, \"data\");\n} catch (e) {\n  return [{ json: { ok: false, error_code: \"PROVIDER_DOWNLOAD_FAILED\", error_detail: \"could not read downloaded bytes\" } }];\n}\nconst size = buffer ? buffer.length : 0;\nif (!size) {\n  return [{ json: { ok: false, error_code: \"PROVIDER_DOWNLOAD_FAILED\", error_detail: \"empty media\" } }];\n}\n\n// MIME resolution -- prefer a SPECIFIC provider-declared type over the\n// download's Content-Type. api.telegram.org/file often serves media as\n// application/octet-stream, which previously failed the family check for\n// image/voice/audio. A generic octet-stream is treated as \"unknown\", not\n// as a mismatch.\nconst GENERIC = new Set([\"\", \"application/octet-stream\", \"binary/octet-stream\", \"application/binary\", \"application/download\", \"*/*\"]);\nconst specific = (m) => {\n  const s = String(m || \"\").split(\";\")[0].trim().toLowerCase();\n  return GENERIC.has(s) ? \"\" : s;\n};\nlet mime =\n  specific(incoming.provider_mime) ||   // WhatsApp (enriched in WA To Binary)\n  specific(t.provider_mime) ||          // Telegram (from the message object) / WA\n  specific(bin.mimeType) ||             // download Content-Type (if specific)\n  String(bin.mimeType || \"\").split(\";\")[0].trim().toLowerCase() ||\n  \"\";\nif (messageType === \"image\" && !mime) mime = \"image/jpeg\";\nif (messageType === \"audio\" && !mime) mime = \"audio/ogg\";\nif (!mime) mime = \"application/octet-stream\";\n\nfunction sanitizeFileName(name) {\n  const b = String(name || \"\").split(/[/\\\\]/).pop() || \"file\";\n  const c = b.replace(/[^a-zA-Z0-9._-]+/g, \"_\").replace(/_{2,}/g, \"_\").slice(0, 120);\n  return c || \"file\";\n}\n// Best-available filename. The parent's provider_file_name is the most\n// authoritative (real Telegram document/audio/video name, or a meaningful\n// telegram_<type>_<id> fallback). n8n's own auto-name for a downloaded\n// binary looks like \"file_6.mp4\" (it comes from the Telegram file server's\n// internal path segment) -- never use that as the \"original\" name.\nconst isAutoName = (s) => /^file_\\d+(\\.[a-z0-9]{1,8})?$/i.test(String(s || \"\").trim());\nfunction pickName() {\n  for (const cand of arguments) {\n    const s = String(cand || \"\").trim();\n    if (s && !isAutoName(s)) return s;\n  }\n  return \"\";\n}\n// MIME -> extension. A real filename (Telegram's, or the download's\n// Content-Disposition header) always carries an extension, so a picked\n// name WITHOUT one is not trustworthy (a Meta CDN hash, or the empty\n// segment before \"/?params\") -> deterministic \"<type>_file.<ext>\".\n// NEVER derive the extension by slicing the MIME subtype\n// (\"application/vnd.openxmlformats-...-presentation\" is .pptx, not\n// \".vndopenx\").\nconst MIME_EXT = {\n  \"application/pdf\": \"pdf\",\n  \"application/msword\": \"doc\",\n  \"application/vnd.openxmlformats-officedocument.wordprocessingml.document\": \"docx\",\n  \"application/vnd.ms-excel\": \"xls\",\n  \"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\": \"xlsx\",\n  \"application/vnd.ms-powerpoint\": \"ppt\",\n  \"application/vnd.openxmlformats-officedocument.presentationml.presentation\": \"pptx\",\n  \"text/plain\": \"txt\", \"text/csv\": \"csv\", \"application/csv\": \"csv\",\n  \"text/tab-separated-values\": \"tsv\", \"application/rtf\": \"rtf\", \"text/rtf\": \"rtf\",\n  \"application/json\": \"json\", \"text/markdown\": \"md\",\n  \"application/zip\": \"zip\", \"application/x-zip-compressed\": \"zip\",\n  \"application/gzip\": \"gz\", \"application/x-7z-compressed\": \"7z\",\n  \"application/x-rar-compressed\": \"rar\", \"application/vnd.rar\": \"rar\",\n  \"image/jpeg\": \"jpg\", \"image/pjpeg\": \"jpg\", \"image/png\": \"png\", \"image/gif\": \"gif\",\n  \"image/webp\": \"webp\", \"image/bmp\": \"bmp\", \"image/tiff\": \"tiff\",\n  \"image/heic\": \"heic\", \"image/heif\": \"heif\", \"image/svg+xml\": \"svg\",\n  \"audio/mpeg\": \"mp3\", \"audio/mp3\": \"mp3\", \"audio/mp4\": \"m4a\", \"audio/x-m4a\": \"m4a\",\n  \"audio/aac\": \"aac\", \"audio/ogg\": \"ogg\", \"audio/opus\": \"ogg\", \"audio/wav\": \"wav\",\n  \"audio/x-wav\": \"wav\", \"audio/webm\": \"webm\", \"audio/flac\": \"flac\", \"audio/amr\": \"amr\",\n  \"video/mp4\": \"mp4\", \"video/quicktime\": \"mov\", \"video/webm\": \"webm\",\n  \"video/3gpp\": \"3gp\", \"video/x-matroska\": \"mkv\"\n};\nfunction extFromMime(m) {\n  const s = String(m || \"\").split(\";\")[0].trim().toLowerCase();\n  if (MIME_EXT[s]) return MIME_EXT[s];\n  const sub = (s.split(\"/\")[1] || \"\").replace(/^x-/, \"\").replace(/\\+.*$/, \"\").replace(/[^a-z0-9]/gi, \"\");\n  if (sub && sub.length <= 5 && !/octet|stream|binary|download/.test(sub)) return sub;\n  return \"\";\n}\nconst pickedName = sanitizeFileName(\n  pickName(t.provider_file_name, incoming.provider_file_name, bin.fileName)\n);\nlet fileName;\nif (pickedName && /\\.[a-z0-9]{1,8}$/i.test(pickedName)) {\n  fileName = pickedName;\n} else {\n  const fallbackExt =\n    extFromMime(mime) ||\n    (messageType === \"image\" ? \"jpg\" : messageType === \"audio\" ? \"ogg\" : \"bin\");\n  fileName = messageType + \"_file.\" + fallbackExt;\n}\n\nconst perType = PER_TYPE[messageType];\nif (size > HARD_MAX || (perType && size > perType)) {\n  return [{ json: { ok: false, error_code: \"FILE_TOO_LARGE\", error_detail: \"size \" + size + \" exceeds limit for \" + messageType } }];\n}\n\n// Family check: only fail on a DIFFERENT concrete family (e.g. a text/html\n// error page returned instead of an image). A generic octet-stream is not a\n// mismatch -- accept it under the declared message_type.\nconst fam = mime.split(\"/\")[0];\nconst genericFam = mime === \"application/octet-stream\" || mime === \"binary/octet-stream\";\nif (messageType === \"image\" && !genericFam && fam !== \"image\") {\n  return [{ json: { ok: false, error_code: \"MIME_MISMATCH\", error_detail: mime } }];\n}\nif (messageType === \"audio\" && !genericFam && fam !== \"audio\") {\n  return [{ json: { ok: false, error_code: \"MIME_MISMATCH\", error_detail: mime } }];\n}\n\nbin.mimeType = mime;\nbin.fileName = fileName;\n\nreturn [{\n  json: {\n    ok: true,\n    message_type: messageType,\n    media_mime_type: mime,\n    media_file_name: fileName,\n    media_size_bytes: size,\n    media_path: sign.path,\n    signed_url: sign.signed_url\n  },\n  binary: { data: bin }\n}];"
+      },
+      "id": "9eb6b153-c7fb-4a4f-9434-26042b206f48",
+      "name": "Post-Download Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "3ad7b199-6da3-459a-b489-2ba6be7f02ee",
+              "leftValue": "={{ $json.ok === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "09deb733-973b-4640-8ccc-fb3a285025fb",
+      "name": "Upload OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        700,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $json.signed_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-upsert",
+              "value": "false"
+            },
+            {
+              "name": "cache-control",
+              "value": "max-age=3600"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {}
+      },
+      "id": "f5f51f47-49ec-45ef-b33e-de83b0b8cada",
+      "name": "Storage Put",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        920,
+        220
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const v = $items(\"Post-Download Validate\", 0, 0)[0].json;\nconst putResp = $json || {};\n\nconst putOk = !!(putResp && (putResp.Key || putResp.key || putResp.Id || putResp.id || putResp.path || putResp.fullPath));\nif (!putOk) {\n  return [{ json: { ok: false, error_code: \"STORAGE_UPLOAD_FAILED\", error_detail: JSON.stringify(putResp).slice(0, 300) } }];\n}\n\nreturn [{\n  json: {\n    ok: true,\n    message_type: v.message_type,\n    media_path: v.media_path,\n    media_mime_type: v.media_mime_type,\n    media_file_name: v.media_file_name,\n    media_size_bytes: v.media_size_bytes\n  }\n}];"
+      },
+      "id": "7b123371-1b5f-44c4-9a3a-614d7df51426",
+      "name": "Build Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $json || {};\nreturn [{\n  json: {\n    ok: false,\n    error_code: j.error_code || \"MEDIA_INGEST_FAILED\",\n    error_detail: j.error_detail || j.message || null\n  }\n}];"
+      },
+      "id": "22dcb5d5-f7a6-48fb-a586-5cc5f4034fd2",
+      "name": "Build Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        440
+      ]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Sign Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign Upload": {
+      "main": [
+        [
+          {
+            "node": "Route By Platform",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route By Platform": {
+      "main": [
+        [
+          {
+            "node": "WA Prep",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "TG Get File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "FB Host Check",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "FB Host Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WA Prep": {
+      "main": [
+        [
+          {
+            "node": "WA Has Inline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WA Has Inline": {
+      "main": [
+        [
+          {
+            "node": "WA To Binary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "WA Get Base64",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WA Get Base64": {
+      "main": [
+        [
+          {
+            "node": "WA To Binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WA To Binary": {
+      "main": [
+        [
+          {
+            "node": "Post-Download Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TG Get File": {
+      "main": [
+        [
+          {
+            "node": "TG Download",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TG Download": {
+      "main": [
+        [
+          {
+            "node": "Post-Download Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FB Host Check": {
+      "main": [
+        [
+          {
+            "node": "FB Host OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FB Host OK": {
+      "main": [
+        [
+          {
+            "node": "FB Download",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FB Download": {
+      "main": [
+        [
+          {
+            "node": "Post-Download Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post-Download Validate": {
+      "main": [
+        [
+          {
+            "node": "Upload OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload OK": {
+      "main": [
+        [
+          {
+            "node": "Storage Put",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Storage Put": {
+      "main": [
+        [
+          {
+            "node": "Build Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

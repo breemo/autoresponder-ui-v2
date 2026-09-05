@@ -11,6 +11,7 @@ import {
   formatFileSize,
   validateMediaFile,
   canSendMediaOnChannel,
+  canSendMediaTypeOnChannel,
 } from "../../lib/mediaMessages.js";
 
 // Media controls — WhatsApp Media & Attachment Support v1. `type` maps each
@@ -1140,6 +1141,11 @@ export default function ClientMessages() {
       setSendError(t("messagesPage.mediaSendingUnavailable"));
       return;
     }
+    // Per-channel type support (e.g. Instagram has no outbound document).
+    if (attachment && !canSendMediaTypeOnChannel(selectedChannelValue, attachment.type)) {
+      setSendError(t("messagesPage.mediaSendingUnavailable"));
+      return;
+    }
 
     sendingRef.current = true;
     setSending(true);
@@ -1400,6 +1406,13 @@ export default function ClientMessages() {
   // (whatsapp/facebook/telegram today). Any other/unknown channel value
   // stays false here.
   const canSendMedia = canSendMediaOnChannel(selectedConversation?.channel || selectedConversation?.platform);
+  // Per-channel media-type support: Instagram has no outbound document
+  // type (Meta), so its Document control is not rendered at all. Other
+  // channels keep every control.
+  const selectedChannelValue = selectedConversation?.channel || selectedConversation?.platform;
+  const availableMediaControls = MEDIA_CONTROLS.filter((c) =>
+    canSendMediaTypeOnChannel(selectedChannelValue, c.type)
+  );
 
   const stats = useMemo(() => ({
     total: conversations.length,
@@ -1820,7 +1833,7 @@ export default function ClientMessages() {
                       channel renders the same disabled "coming soon" state
                       as before. */}
                   <div className="flex shrink-0 items-center gap-1.5">
-                    {MEDIA_CONTROLS.map(({ key, type, labelKey, icon: Icon }) => (
+                    {availableMediaControls.map(({ key, type, labelKey, icon: Icon }) => (
                       <React.Fragment key={key}>
                         <input
                           ref={(el) => {
