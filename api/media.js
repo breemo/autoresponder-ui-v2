@@ -11,6 +11,7 @@ import {
   buildMediaObjectPath,
 } from "../src/lib/mediaMessages.js";
 import { signInboundUpload } from "./_lib/mediaIngest.js";
+import { loadConversationGate, humanTakeoverBlock } from "./_lib/conversationOwnership.js";
 
 // WhatsApp Media & Attachment Support v1 — API consolidation: this single
 // domain endpoint replaces the former api/media-read-url.js (sign_read) and
@@ -206,37 +207,27 @@ async function handleSignUpload(req, res) {
     return res.status(403).json({ success: false, message: "Forbidden" });
   }
 
-  // Conversation must exist and belong to this actor's own client. Mirrors
-  // api/human-reply.js exactly: client_id is never trusted from the
-  // request, only ever actor.membership.client_id. conversation_id is
-  // selected back out explicitly (not just filtered on) so the object path
-  // below can be built from this validated row instead of the raw request
-  // value.
-  const { data: state, error: stateError } = await supabase
-    .from("conversation_state")
-    .select("conversation_id, conversation_status, assigned_user_id")
-    .eq("client_id", actor.membership.client_id)
-    .eq("conversation_id", conversation_id)
-    .maybeSingle();
-
-  if (stateError) {
+  // Conversation must exist and belong to this actor's own client, and —
+  // if it is in the human queue — the actor must be its assigned employee.
+  // Read from public.conversations (authoritative since Conversation
+  // Lifecycle V2), the same source the Inbox composer and the send-reply
+  // endpoint use, so this attach-media gate can never disagree with them.
+  // conversation_id is taken from the resolved gate (not the raw request)
+  // so the object path below is built from a validated value. See
+  // api/_lib/conversationOwnership.js.
+  let gate;
+  try {
+    gate = await loadConversationGate(supabase, actor.membership.client_id, conversation_id);
+  } catch (e) {
     return res.status(500).json({ success: false, message: "فشل التحقق من حالة المحادثة" });
   }
-  if (!state) {
+  if (!gate.found) {
     return res.status(404).json({ success: false, message: "المحادثة غير موجودة ضمن هذا الحساب" });
   }
 
-  // Human Takeover ownership — identical rule to api/human-reply.js. An
-  // attachment destined for a waiting_human conversation is still "acting
-  // on" it, so only its assigned employee (or nobody yet, which blocks
-  // everyone) may request an upload URL for it.
-  if (state.conversation_status === "waiting_human" && state.assigned_user_id !== actor.user.id) {
-    return res.status(403).json({
-      success: false,
-      message: state.assigned_user_id
-        ? "هذه المحادثة مستلمة بواسطة موظف آخر"
-        : "يجب استلام المحادثة أولاً",
-    });
+  const block = humanTakeoverBlock(gate, actor.user.id);
+  if (block) {
+    return res.status(403).json({ success: false, message: block.message });
   }
 
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -248,13 +239,13 @@ async function handleSignUpload(req, res) {
   }
 
   // Trust boundary made explicit: past this point, the object path is built
-  // from state.conversation_id — the value just read back from the
-  // validated conversation_state row — never from the raw request
-  // conversation_id above, even though the two are equal in the success
-  // case (the .eq() filter above guarantees that).
+  // from gate.conversation_id — the value just read back from the validated
+  // conversation row — never from the raw request conversation_id above,
+  // even though the two are equal in the success case (the .eq() filter
+  // inside loadConversationGate guarantees that).
   const objectPath = buildMediaObjectPath({
     clientId: actor.membership.client_id,
-    conversationId: state.conversation_id,
+    conversationId: gate.conversation_id,
     fileName: sanitizeFileName(file_name),
   });
 

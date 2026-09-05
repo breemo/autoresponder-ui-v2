@@ -1,6 +1,7 @@
 import { getSupabaseServerClient } from "./supabaseServer.js";
 import { resolveActingMembership, actorHasPermission } from "./clientAuthz.js";
 import { PERMISSIONS } from "../../src/lib/permissions.js";
+import { loadConversationGate, humanTakeoverBlock } from "./conversationOwnership.js";
 import {
   MESSAGE_TYPES,
   MEDIA_MESSAGE_TYPES,
@@ -120,26 +121,25 @@ export async function handleHumanReply(req, res) {
   // (waiting_human) can only be replied to by its assigned employee — and
   // if nobody has claimed it yet (assigned_user_id null), nobody may reply
   // until someone does. A conversation not in that state has no owner
-  // concept and stays unrestricted (unchanged pre-existing behavior — a
-  // human can already reply on a normal active/AI-driven conversation).
-  const { data: state, error: stateError } = await supabase
-    .from("conversation_state")
-    .select("conversation_status, assigned_user_id")
-    .eq("client_id", actor.membership.client_id)
-    .eq("conversation_id", conversation_id)
-    .maybeSingle();
-
-  if (stateError) {
+  // concept and stays unrestricted (unchanged behaviour — a human can
+  // already reply on a normal active/AI-driven conversation).
+  //
+  // Read from public.conversations (authoritative since Conversation
+  // Lifecycle V2), the exact same source the Inbox composer's enable/
+  // disable state and the claim/close endpoints use — reading a stale
+  // conversation_state mirror here is what made the two disagree and
+  // surface a false "يجب استلام المحادثة أولاً". See
+  // api/_lib/conversationOwnership.js.
+  let gate;
+  try {
+    gate = await loadConversationGate(supabase, actor.membership.client_id, conversation_id);
+  } catch (e) {
     return res.status(500).json({ success: false, message: "فشل التحقق من حالة المحادثة" });
   }
 
-  if (state?.conversation_status === "waiting_human" && state.assigned_user_id !== actor.user.id) {
-    return res.status(403).json({
-      success: false,
-      message: state.assigned_user_id
-        ? "هذه المحادثة مستلمة بواسطة موظف آخر"
-        : "يجب استلام المحادثة أولاً",
-    });
+  const block = humanTakeoverBlock(gate, actor.user.id);
+  if (block) {
+    return res.status(403).json({ success: false, message: block.message });
   }
 
   // No subscription/entitlement check here — see the architecture note

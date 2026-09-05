@@ -69,6 +69,25 @@ function directionLabel(direction, t) {
   return direction || "—";
 }
 
+// True when a real (server) message row is the persisted form of a pending
+// optimistic echo — an outbound row, at/after the echo's own timestamp,
+// with the same text (or, for a media-only send, the same type + file).
+// Used both to hide the echo the instant the real row arrives and to drop
+// it from pendingOutbound. A 5s slack absorbs client/server clock skew.
+function outboundRowMatchesPending(row = {}, pending = {}) {
+  if (!["out", "outbound"].includes(row.direction)) return false;
+  const rowAt = new Date(row.created_at).getTime();
+  const pendAt = new Date(pending.created_at).getTime();
+  if (!Number.isFinite(rowAt) || !Number.isFinite(pendAt) || rowAt < pendAt - 5000) return false;
+  const rowText = (row.message_text ?? getMessageText(row) ?? "").trim();
+  const pendText = (pending.message ?? "").trim();
+  if (pendText) return rowText === pendText;
+  return (
+    row.message_type === pending.message_type &&
+    (!pending.media_file_name || row.media_file_name === pending.media_file_name)
+  );
+}
+
 const platformStyles = {
   facebook: "border-blue-100 bg-blue-50 text-blue-700",
   telegram: "border-sky-100 bg-sky-50 text-sky-700",
@@ -624,6 +643,13 @@ export default function ClientMessages() {
   const [conversations, setConversations] = useState([]);
   const [selectedConversationId, setSelectedConversationId] = useState(null);
   const [conversationMessages, setConversationMessages] = useState([]);
+  // Optimistic echo of a just-sent human reply. The server (n8n) is the
+  // source of truth — it delivers the message AND inserts the row — but
+  // that round trip can take a few seconds, so the employee's own message
+  // is shown immediately and removed again the moment the real row shows
+  // up in a poll (matched by outboundRowMatchesPending). Cleared on
+  // conversation switch. Never inserted into `messages`.
+  const [pendingOutbound, setPendingOutbound] = useState([]);
   const [selectedLead, setSelectedLead] = useState(null);
   // True only when this client has more than one distinct WhatsApp
   // channel_key among its current conversations — see fetchConversations.
@@ -1123,6 +1149,22 @@ export default function ClientMessages() {
     const previousCount = conversationMessages.length;
     const pendingAttachment = attachment;
 
+    // Optimistic echo — shown immediately, reconciled away by the poll when
+    // the real n8n-inserted row arrives (or removed here on send failure).
+    const echoId = `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const echo = {
+      id: echoId,
+      conversation_id: conversationId,
+      direction: "outbound",
+      message: trimmed,
+      message_text: trimmed,
+      message_type: pendingAttachment ? pendingAttachment.type : MESSAGE_TYPES.TEXT,
+      media_file_name: pendingAttachment ? pendingAttachment.file.name : null,
+      created_at: new Date().toISOString(),
+      _pending: true,
+    };
+    setPendingOutbound((prev) => [...prev, echo]);
+
     try {
       // Upload-on-send only (never on selection) — see
       // uploadAttachmentToStorage. If /api/conversation (human_reply) then fails, the
@@ -1157,6 +1199,9 @@ export default function ClientMessages() {
       refreshMessagesAfterSend(conversationId, previousCount);
     } catch (err) {
       console.error(err);
+      // The send failed — drop the echo so the composer's error banner is
+      // the only signal, and the employee can retry.
+      setPendingOutbound((prev) => prev.filter((p) => p.id !== echoId));
       setSendError(err.message || t("messagesPage.errorSendRetry"));
     } finally {
       sendingRef.current = false;
@@ -1194,10 +1239,10 @@ export default function ClientMessages() {
   // of which exists in this architecture. Polling the two service-role
   // endpoints keeps the tenant boundary intact.
   //
-  // Two cadences: the open thread (7s) reveals new inbound/outbound
+  // Two cadences: the open thread (5s) reveals new inbound/outbound
   // messages — including media rows, which flow through the exact same
   // fetchConversationMessages mapping and MediaAttachment renderer as a
-  // historical load; the list (15s) surfaces new conversations, preview
+  // historical load; the list (12s) surfaces new conversations, preview
   // text, counts and lifecycle changes. Both are silent (no spinner, no
   // error banner) and pause while the tab is hidden. selectedConversationId
   // is read from its ref so the interval never appends another
@@ -1220,8 +1265,8 @@ export default function ClientMessages() {
       pollList();
     };
 
-    const messagesTimer = setInterval(pollMessages, 7000);
-    const listTimer = setInterval(pollList, 15000);
+    const messagesTimer = setInterval(pollMessages, 5000);
+    const listTimer = setInterval(pollList, 12000);
     document.addEventListener("visibilitychange", onVisible);
 
     return () => {
@@ -1263,12 +1308,13 @@ export default function ClientMessages() {
     selectedConversationIdRef.current = selectedConversationId;
 
     // Switching conversations abandons any in-progress draft/error/
-    // attachment for the previous one rather than carrying it over to the
-    // newly selected chat.
+    // attachment/optimistic echo for the previous one rather than carrying
+    // it over to the newly selected chat.
     setDraft("");
     setSendError("");
     setAttachment(null);
     setCardOpen(false);
+    setPendingOutbound([]);
 
     if (selectedConversationId) {
       fetchConversationMessages(selectedConversationId);
@@ -1278,6 +1324,35 @@ export default function ClientMessages() {
       setSelectedLead(null);
     }
   }, [selectedConversationId]);
+
+  // Reconcile optimistic echoes against what the poll actually returned:
+  // drop an echo once its persisted row is in conversationMessages, and
+  // expire any straggler after 45s so a silently-dropped n8n insert can
+  // never leave a phantom bubble accumulating across sends.
+  useEffect(() => {
+    if (pendingOutbound.length === 0) return;
+    const now = Date.now();
+    setPendingOutbound((prev) => {
+      const next = prev.filter(
+        (p) =>
+          !conversationMessages.some((m) => outboundRowMatchesPending(m, p)) &&
+          now - new Date(p.created_at).getTime() < 45000
+      );
+      return next.length === prev.length ? prev : next;
+    });
+  }, [conversationMessages, pendingOutbound.length]);
+
+  // What the message pane actually renders: the server rows plus any
+  // still-unconfirmed echo for THIS conversation (a matched echo is hidden
+  // here immediately, even in the render before the reconcile effect runs).
+  const visibleMessages = useMemo(() => {
+    const stillPending = pendingOutbound.filter(
+      (p) =>
+        p.conversation_id === selectedConversationId &&
+        !conversationMessages.some((m) => outboundRowMatchesPending(m, p))
+    );
+    return stillPending.length ? [...conversationMessages, ...stillPending] : conversationMessages;
+  }, [conversationMessages, pendingOutbound, selectedConversationId]);
 
   function handleMessagesScroll() {
     const el = messagesScrollRef.current;
@@ -1292,14 +1367,14 @@ export default function ClientMessages() {
   // leave their scroll position alone.
   useEffect(() => {
     const el = messagesScrollRef.current;
-    if (!el || conversationMessages.length === 0) return;
+    if (!el || visibleMessages.length === 0) return;
     const conversationChanged = lastLoadedConversationRef.current !== selectedConversationId;
     lastLoadedConversationRef.current = selectedConversationId;
     if (conversationChanged || isNearBottomRef.current) {
       el.scrollTop = el.scrollHeight;
       isNearBottomRef.current = true;
     }
-  }, [conversationMessages, selectedConversationId]);
+  }, [visibleMessages, selectedConversationId]);
 
   const selectedConversation = filteredConversations.find((c) => c.conversation_id === selectedConversationId) || null;
   const conversationStatus = selectedConversation?.conversation_status || "active";
@@ -1547,7 +1622,7 @@ export default function ClientMessages() {
                           </span>
                         )}
                         <span className={`rounded-full border px-3 py-1 text-xs font-bold ${statusStyles[selectedConversation.conversation_status] || "bg-slate-100 text-slate-600 border-slate-200"}`}>{selectedConversation.conversation_status || "active"}</span>
-                        <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-600">{t("messagesPage.messagesCountSuffix", { count: conversationMessages.length })}</span>
+                        <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-600">{t("messagesPage.messagesCountSuffix", { count: visibleMessages.length })}</span>
                       </div>
                     </div>
                   </div>
@@ -1642,11 +1717,11 @@ export default function ClientMessages() {
               <div ref={messagesScrollRef} onScroll={handleMessagesScroll} className="min-h-0 flex-1 overflow-y-auto bg-slate-50/40 p-3">
                 {loadingMessages ? (
                   <div className="p-8 text-center text-sm text-slate-500">{t("messagesPage.loadingMessages")}</div>
-                ) : conversationMessages.length === 0 ? (
+                ) : visibleMessages.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-400">{t("messagesPage.noMessagesForConversation")}</div>
                 ) : (
                   <div className="space-y-2.5">
-                    {conversationMessages.map((msg) => {
+                    {visibleMessages.map((msg) => {
                       const isInbound = ["inbound", "in"].includes(msg.direction);
                       // isMediaMessageType(undefined/null) is false, so every
                       // historical row (message_type never set) takes the
@@ -1657,12 +1732,12 @@ export default function ClientMessages() {
                       const mediaControl = isMedia ? MEDIA_CONTROLS.find((c) => c.type === msg.message_type) : null;
                       return (
                         <div key={msg.id} className={`flex ${isInbound ? "justify-start" : "justify-end"}`}>
-                          <div className={`max-w-[58%] rounded-2xl px-3.5 py-2.5 shadow-sm ${isInbound ? "rounded-tr-lg border border-slate-200 bg-white text-slate-800" : "rounded-tl-lg bg-indigo-600/95 text-white shadow-indigo-100"}`}>
+                          <div className={`max-w-[58%] rounded-2xl px-3.5 py-2.5 shadow-sm ${isInbound ? "rounded-tr-lg border border-slate-200 bg-white text-slate-800" : "rounded-tl-lg bg-indigo-600/95 text-white shadow-indigo-100"} ${msg._pending ? "opacity-70" : ""}`}>
                             <div className="mb-1.5 flex items-center gap-2">
                               <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${isInbound ? "bg-slate-100 text-slate-500" : "bg-white/15 text-white"}`}>{directionLabel(msg.direction, t)}</span>
-                              <span className={`text-[11px] ${isInbound ? "text-slate-400" : "text-indigo-100"}`}>{formatDate(msg.created_at, i18n.language)}</span>
+                              <span className={`text-[11px] ${isInbound ? "text-slate-400" : "text-indigo-100"}`}>{msg._pending ? t("messagesPage.sending") : formatDate(msg.created_at, i18n.language)}</span>
                             </div>
-                            {isMedia && (
+                            {isMedia && !msg._pending && (
                               <MediaAttachment
                                 msg={msg}
                                 mediaControl={mediaControl}
@@ -1672,8 +1747,8 @@ export default function ClientMessages() {
                                 t={t}
                               />
                             )}
-                            {(!isMedia || captionText) && (
-                              <div className="whitespace-pre-wrap break-words text-sm leading-6">{isMedia ? captionText : captionText || "—"}</div>
+                            {(!isMedia || captionText || msg._pending) && (
+                              <div className="whitespace-pre-wrap break-words text-sm leading-6">{isMedia ? (captionText || msg.media_file_name || "") : captionText || "—"}</div>
                             )}
                           </div>
                         </div>
