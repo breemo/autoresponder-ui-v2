@@ -1,25 +1,25 @@
 {
-  "name": "AutoResponder_Final",
+  "name": "AutoResponder_WhatsApp_V2_TEST",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "inbound/:platform/:channelKey",
+        "path": "inbound/whatsapp-evolution-v2/:channelKey",
         "options": {}
       },
-      "id": "6e4e1df9-6aa7-4c65-bed3-274e2de36f07",
+      "id": "439e9100-f42a-4ae1-b53c-7bf6f8302780",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        -400,
-        528
+        0,
+        0
       ],
-      "webhookId": "751ecf29-1acd-43b7-8c80-bd8f9929f656"
+      "webhookId": "51a0c132-bbff-4483-8e69-0cb29a4abe36"
     },
     {
       "parameters": {
-        "url": "={{\n  $node[\"Config\"].json[\"SUPABASE_URL\"] +\n  \"/rest/v1/client_feature_integrations\" +\n  \"?select=id,client_id,feature_id,is_active,config,features!inner(slug),clients(welcome_message,default_reply,closing_message)\" +\n  \"&\" +\n  (\n    $node[\"Code in JavaScript1\"].json[\"platform\"] === \"facebook\"\n      ? \"config->>pageId=eq.\"\n      : $node[\"Code in JavaScript1\"].json[\"platform\"] === \"instagram\"\n      ? \"config->>instagram_account_id=eq.\"\n      : \"config->>channelKey=eq.\"\n  ) +\n  encodeURIComponent($node[\"Code in JavaScript1\"].json[\"channelKey\"]) +\n  \"&features.slug=eq.\" +\n  encodeURIComponent($node[\"Code in JavaScript1\"].json[\"platform\"]) +\n  \"&limit=1\"\n}}",
+        "url": "={{\n  $node[\"Config\"].json[\"SUPABASE_URL\"] +\n  \"/rest/v1/client_feature_integrations\" +\n  \"?select=id,client_id,feature_id,is_active,config,features!inner(slug),clients(welcome_message,default_reply,closing_message)\" +\n  \"&client_id=eq.\" + encodeURIComponent($node[\"Code in JavaScript1\"].json[\"client_id\"]) +\n  \"&features.slug=eq.whatsapp_evolution\" +\n  \"&limit=1\"\n}}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -35,13 +35,13 @@
         },
         "options": {}
       },
-      "id": "597388eb-778d-4356-9e6a-9dc3ff004823",
+      "id": "e06818c9-dee2-4557-946f-85f5096ff934",
       "name": "client_feature",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        608,
-        528
+        1008,
+        0
       ]
     },
     {
@@ -68,13 +68,13 @@
         "jsonBody": "={{ JSON.stringify($json) }}",
         "options": {}
       },
-      "id": "0ad4fc19-9e35-4fd1-af6f-aaec86263622",
+      "id": "2938859f-ebf7-42ef-bd97-a627fbb1f66c",
       "name": "insert message",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2800,
-        848
+        1264,
+        272
       ],
       "credentials": {
         "httpHeaderAuth": {
@@ -111,13 +111,13 @@
         "jsonBody": "={{\n(() => {\n  // Deterministic safeguard for resolve_conversation()'s 2h inactivity\n  // timeout: persist conversations.last_message_at from the inbound\n  // message row just inserted by `insert message`, so timing stays\n  // correct even if the DB AFTER INSERT trigger did not take effect.\n  // Prefer the persisted row's real created_at; fall back to the\n  // insert instant. Does NOT change lifecycle/handover behaviour.\n  const resp = $node[\"insert message\"].json;\n  const row = Array.isArray(resp) ? (resp[0] || {}) : (resp || {});\n  const ts = row.created_at || new Date().toISOString();\n  return { last_message_at: ts };\n})()\n}}",
         "options": {}
       },
-      "id": "5004363a-60b0-466a-b9c3-a44e2c79643d",
+      "id": "1ee3d0bb-3e39-4415-8be5-78c2127bf583",
       "name": "bump_conversation_last_message_at",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        3072,
-        816
+        1264,
+        400
       ],
       "credentials": {
         "httpHeaderAuth": {
@@ -148,52 +148,14 @@
         },
         "options": {}
       },
-      "id": "b5d5bc89-41a1-46c9-bcdb-c808c5cc94c7",
+      "id": "72698af1-c2e1-4e56-b857-3e13df48663f",
       "name": "auto_replies",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4896,
-        1904
+        256,
+        1232
       ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{\"https://api.telegram.org/bot\" + $items(\"state_payload\", 0, 0)[0].json.config[\"Bot Token\"] + \"/sendMessage\"}}",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "chat_id",
-              "value": "={{$items('state_payload', 0, 0)[0].json.sender_id}}"
-            },
-            {
-              "name": "text",
-              "value": "={{$items('state_payload', 0, 0)[0].json.reply}}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "3bf08498-a1f9-4b31-ad0c-89313ec6e29f",
-      "name": "send auto reply Telegram",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        7888,
-        1152
-      ],
-      "alwaysOutputData": true
     },
     {
       "parameters": {
@@ -219,13 +181,13 @@
         "jsonBody": "={\n  \"client_id\": \"{{$node[\"state_payload\"].json[\"client_id\"]}}\",\n  \"channel\": \"{{$node[\"state_payload\"].json[\"platform\"]}}\",\n  \"sender\": \"{{$node[\"state_payload\"].json[\"sender_id\"]}}\",\n  \"message\": \"{{$node[\"state_payload\"].json[\"reply\"].replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"').replace(/\\n/g, '\\\\n')}}\",\n  \"direction\": \"outbound\",\n\"reply_source\": \"{{$node[\"state_payload\"].json[\"reply_source\"]}}\",\n\"conversation_id\": \"{{$node[\"state_payload\"].json[\"conversation_id\"]}}\"\n}",
         "options": {}
       },
-      "id": "43b8ea40-c377-4d45-bc1d-75bcf81c4b68",
+      "id": "34e5521d-a744-45aa-8c63-525ae3ea142b",
       "name": "insert auto reply",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        8304,
-        1344
+        4064,
+        1072
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -241,58 +203,15 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=https://graph.facebook.com/v18.0/me/messages?access_token={{$node[\"client_feature\"].json[\"config\"][\"Page Access Token\"]}}",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "recipient.id",
-              "value": "={{$node[\"state_payload\"].json[\"sender_id\"]}}"
-            },
-            {
-              "name": "message.text",
-              "value": "={{$node[\"state_payload\"].json[\"message\"][\"text\"]}}"
-            },
-            {
-              "name": "message.quick_replies",
-              "value": "={{$node[\"state_payload\"].json[\"message\"][\"quick_replies\"]}}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "7556ddaf-897f-44e4-b64c-837ac1346b0a",
-      "name": "send auto reply Facebook Graph API",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        7920,
-        1328
-      ],
-      "executeOnce": false,
-      "alwaysOutputData": true
-    },
-    {
-      "parameters": {
-        "jsCode": "const platform = String($json.params?.platform || \"\").toLowerCase();\nconst channelKey = String($json.params?.channelKey || \"\");\n\nlet text = \"\";\nlet sender_id = \"\";\nlet quick_reply_payload = null;\nlet is_echo = false;\nlet sender_name = \"\";   // WhatsApp pushName / Telegram first_name (webhook-provided)\n\n// Customer -> Inbox inbound media\nlet has_media = false;\nlet media_message_type = \"\";   // image | document | audio\nlet media_mime_type = \"\";\nlet media_file_name = \"\";\nlet fb_attachment_url = \"\";\nlet tg_file_id = \"\";\nlet media_size_bytes = 0;\n\nfunction mapFbType(tp) {\n  if (tp === \"image\") return \"image\";\n  if (tp === \"audio\") return \"audio\";\n  if (tp === \"video\") return \"document\";\n  if (tp === \"file\") return \"document\";\n  return \"\";\n}\n\nif (platform === \"telegram\") {\n  const msg =\n    $json.body?.message ||\n    $json.body?.edited_message ||\n    $json.body?.channel_post ||\n    {};\n\n  text = msg.text || msg.caption || \"\";\n  sender_id = String(msg.chat?.id || \"\");\n  sender_name = String(msg.from?.first_name || msg.from?.username || \"\").trim();\n\n  const mid = String(msg.message_id || \"0\");\n\n  // best-effort extension from a Telegram-provided mime type\n  const extFromMime = (m) => {\n    m = String(m || \"\").split(\";\")[0].trim().toLowerCase();\n    const MAP = {\n      \"image/jpeg\": \"jpg\", \"image/pjpeg\": \"jpg\", \"image/png\": \"png\",\n      \"image/webp\": \"webp\", \"image/gif\": \"gif\", \"image/heic\": \"heic\",\n      \"audio/ogg\": \"ogg\", \"audio/opus\": \"ogg\", \"audio/mpeg\": \"mp3\",\n      \"audio/mp4\": \"m4a\", \"audio/x-m4a\": \"m4a\", \"audio/aac\": \"aac\",\n      \"audio/wav\": \"wav\", \"audio/x-wav\": \"wav\", \"audio/flac\": \"flac\",\n      \"video/mp4\": \"mp4\", \"video/quicktime\": \"mov\", \"video/webm\": \"webm\",\n      \"video/x-matroska\": \"mkv\",\n      \"application/pdf\": \"pdf\", \"application/zip\": \"zip\",\n      \"application/gzip\": \"tgs\",\n      \"application/vnd.openxmlformats-officedocument.wordprocessingml.document\": \"docx\",\n      \"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\": \"xlsx\",\n      \"application/msword\": \"doc\", \"application/vnd.ms-excel\": \"xls\",\n      \"text/plain\": \"txt\", \"text/csv\": \"csv\",\n    };\n    if (MAP[m]) return MAP[m];\n    const sub = (m.split(\"/\")[1] || \"\").replace(/^x-/, \"\");\n    return /^[a-z0-9]{1,8}$/.test(sub) ? sub : \"\";\n  };\n  // keep an original name if it already has an extension, else add one\n  const keepOrName = (original, fallbackBase, mime, fallbackExt) => {\n    const o = String(original || \"\").trim();\n    if (o) return o;\n    const e = extFromMime(mime) || fallbackExt || \"bin\";\n    return fallbackBase + \".\" + e;\n  };\n\n  // Telegram fills a compat `document` object on animation messages too,\n  // so `animation` MUST be checked before `document`.\n  if (Array.isArray(msg.photo) && msg.photo.length) {\n    const largest = msg.photo[msg.photo.length - 1];\n    has_media = true;\n    media_message_type = \"image\";\n    tg_file_id = String(largest.file_id || \"\");\n    media_mime_type = \"image/jpeg\";           // Telegram photos are always JPEG\n    media_file_name = \"telegram_photo_\" + mid + \".jpg\";\n    media_size_bytes = Number(largest.file_size) || 0;\n  } else if (msg.animation) {\n    has_media = true;\n    media_message_type = \"document\";          // GIF / looping mp4 -> stored as a file\n    tg_file_id = String(msg.animation.file_id || \"\");\n    media_mime_type = msg.animation.mime_type || \"video/mp4\";\n    media_file_name = keepOrName(msg.animation.file_name, \"telegram_animation_\" + mid, media_mime_type, \"mp4\");\n    media_size_bytes = Number(msg.animation.file_size) || 0;\n  } else if (msg.document) {\n    has_media = true;\n    media_message_type = \"document\";\n    tg_file_id = String(msg.document.file_id || \"\");\n    media_mime_type = msg.document.mime_type || \"\";\n    media_file_name = keepOrName(msg.document.file_name, \"telegram_document_\" + mid, media_mime_type, \"bin\");\n    media_size_bytes = Number(msg.document.file_size) || 0;\n  } else if (msg.video) {\n    has_media = true;\n    media_message_type = \"document\";          // no dedicated video message_type\n    tg_file_id = String(msg.video.file_id || \"\");\n    media_mime_type = msg.video.mime_type || \"video/mp4\";\n    media_file_name = keepOrName(msg.video.file_name, \"telegram_video_\" + mid, media_mime_type, \"mp4\");\n    media_size_bytes = Number(msg.video.file_size) || 0;\n  } else if (msg.audio) {\n    has_media = true;\n    media_message_type = \"audio\";\n    tg_file_id = String(msg.audio.file_id || \"\");\n    media_mime_type = msg.audio.mime_type || \"audio/mpeg\";\n    let base = \"telegram_audio_\" + mid;\n    const performer = String(msg.audio.performer || \"\").trim();\n    const title = String(msg.audio.title || \"\").trim();\n    if (title) base = performer ? (performer + \" - \" + title) : title;\n    media_file_name = keepOrName(msg.audio.file_name, base, media_mime_type, \"mp3\");\n    media_size_bytes = Number(msg.audio.file_size) || 0;\n  } else if (msg.voice) {\n    has_media = true;\n    media_message_type = \"audio\";\n    tg_file_id = String(msg.voice.file_id || \"\");\n    media_mime_type = String(msg.voice.mime_type || \"audio/ogg\").split(\";\")[0].trim();\n    media_file_name = \"telegram_voice_\" + mid + \".\" + (extFromMime(media_mime_type) || \"ogg\");\n    media_size_bytes = Number(msg.voice.file_size) || 0;\n  }\n  // NOT handled this phase (reported separately, never mis-classified as text):\n  //   msg.video_note (round video)  /  msg.sticker  -> fall through -> dropped\n}\n\nif (platform === \"facebook\" || platform === \"instagram\") {\n  const entry = $json.body?.entry?.[0];\n  const fbMessage = entry?.messaging?.[0];\n\n  const pageId = String(entry?.id || \"\");\n  const senderId = String(fbMessage?.sender?.id || \"\");\n\n  is_echo = fbMessage?.message?.is_echo === true;\n\n  if (is_echo || senderId === pageId || senderId === channelKey) {\n    return [];\n  }\n\n  text = fbMessage?.message?.text || \"\";\n  sender_id = senderId;\n  quick_reply_payload = fbMessage?.message?.quick_reply?.payload || null;\n\n  const atts = fbMessage?.message?.attachments;\n  if (Array.isArray(atts) && atts.length) {\n    const att = atts.find((a) => a && [\"image\", \"audio\", \"video\", \"file\"].includes(a.type));\n    const url = att?.payload?.url || \"\";\n    const mt = mapFbType(att?.type);\n    if (att && url && mt) {\n      has_media = true;\n      media_message_type = mt;\n      fb_attachment_url = url;\n      media_mime_type = \"\"; // resolved from the download response in Inbound-Media-Core\n      // Original filename, best-effort. Meta's file-attachment webhook\n      // has no dedicated name field, but some payloads carry\n      // payload.title / payload.name, and a Messenger CDN URL sometimes\n      // ends in a real \"name.ext\" segment. Anything without a real\n      // extension is junk (a hash, or the empty segment before\n      // \"/?params\") -> leave media_file_name empty so Inbound-Media-Core\n      // uses the download's Content-Disposition header / a proper\n      // MIME->extension map instead of fabricating \"<type>_attachment\".\n      const hasRealExt = (s) => /\\.[a-z0-9]{1,8}$/i.test(String(s || \"\").trim());\n      let picked = \"\";\n      const titleCand = att.payload && (att.payload.title || att.payload.name);\n      if (hasRealExt(titleCand)) {\n        picked = String(titleCand).trim();\n      } else {\n        try {\n          const segs = new URL(url).pathname.split(\"/\").filter(Boolean);\n          const last = segs.length ? decodeURIComponent(segs[segs.length - 1]) : \"\";\n          if (hasRealExt(last)) picked = last;\n        } catch (e) {}\n      }\n      media_file_name = picked;\n    }\n  }\n}\n\n// Ignore only when there is neither text nor media (delivery/read receipts,\n// non-message Telegram updates, etc). Normal text messages are unchanged.\nif (!text && !has_media) {\n  return [];\n}\n\nreturn {\n  platform,\n  channelKey,\n  text,\n  sender_id,\n  quick_reply_payload,\n  is_echo,\n  sender_name,\n\n  has_media,\n  media_message_type,\n  media_mime_type,\n  media_file_name,\n  media_size_bytes,\n  fb_attachment_url,\n  tg_file_id,\n\n  raw_body: $json.body || $json\n};"
+        "jsCode": "const platform = \"whatsapp\";\n\nconst channelKey = String(\n  $json.params?.channelKey ||\n  $json.body?.channel_key ||\n  \"\"\n).trim();\n\nconst body = $json.body || {};\n\nconst text = String(body.message || \"\").trim();\nconst senderId = String(body.sender_id || \"\").trim();\nconst clientId = String(body.client_id || \"\").trim();\n\n// Customer -> Inbox inbound media (forwarded by Evolution Events working copy)\nconst hasMedia = body.has_media === true;\nconst mediaMessageType = String(body.media_message_type || \"\");\n\n// WhatsApp GROUP messages must be ignored completely.\nif (senderId.endsWith(\"@g.us\")) {\n  return [];\n}\n\nif (!channelKey) {\n  throw new Error(\"Missing WhatsApp channelKey\");\n}\n\nif (!clientId) {\n  throw new Error(\"Missing client_id\");\n}\n\nif (!senderId) {\n  throw new Error(\"Missing sender_id\");\n}\n\n// A media-only inbound message (no caption) MUST NOT be dropped.\n// Ignore only when there is neither text NOR media.\nif (!text && !hasMedia) {\n  return [];\n}\n\nreturn [\n  {\n    json: {\n      platform,\n      channelKey,\n\n      text,\n      sender_id: senderId,\n\n      client_id: clientId,\n      whatsapp_number_id: body.whatsapp_number_id || null,\n\n      instance_name: body.instance_name || \"\",\n      instance_id: body.instance_id || \"\",\n      display_name: body.display_name || \"\",\n      phone: body.phone || \"\",\n\n      message_id: body.message_id || \"\",\n      message_type: body.message_type || \"text\",\n\n      quick_reply_payload: body.quick_reply_payload || null,\n      is_echo: false,\n\n      sender_name: String(body.sender_name || \"\").trim(),\n\n      // Customer -> Inbox inbound media (Inbound-Media-Core input)\n      has_media: hasMedia,\n      media_message_type: hasMedia ? mediaMessageType : \"\",\n      media_mime_type: body.media_mime_type || \"\",\n      media_file_name: body.media_file_name || \"\",\n      wa_message_key: body.wa_message_key || null,\n      wa_message_raw: body.wa_message_raw || null,\n      wa_inline_base64: body.wa_inline_base64 || \"\",\n\n      raw_body: body\n    }\n  }\n];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -208,
-        528
+        208,
+        0
       ],
-      "id": "606409e5-2197-474f-9a60-4bab5d5edf26",
+      "id": "36c1bde7-7825-4cbc-a52d-9a92b34365b3",
       "name": "Code in JavaScript1"
     },
     {
@@ -302,10 +221,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5088,
-        1904
+        528,
+        1232
       ],
-      "id": "72977ec4-0203-4f84-96b5-26f77dccb574",
+      "id": "6802ab24-bb23-4204-b5a3-34217f883270",
       "name": "Code in JavaScript"
     },
     {
@@ -317,82 +236,11 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        0,
-        528
+        416,
+        0
       ],
-      "id": "88641099-52e6-44a5-ba78-78070f11552e",
+      "id": "722df6a9-363f-441b-b72d-87808a04dd19",
       "name": "Config"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{'https://n8n-production-fcd4.up.railway.app/webhook/751ecf29-1acd-43b7-8c80-bd8f9929f656/inbound/facebook/' + $json.body.entry[0].messaging[0].recipient.id}}\n\n\n",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{$json.body}}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        432,
-        48
-      ],
-      "id": "84072e0c-19ab-4588-9c1b-16fc930dae60",
-      "name": "HTTP Request"
-    },
-    {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "facebook-verify",
-        "options": {
-          "responseCode": {
-            "values": {}
-          }
-        }
-      },
-      "id": "07af561a-53e8-48c9-a2e2-ebc8ac714da3",
-      "name": "facebook-webhook (POST)",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [
-        -400,
-        64
-      ],
-      "webhookId": "751ecf29-1acd-43b7-8c80-bd8f9929f656"
-    },
-    {
-      "parameters": {
-        "respondWith": "text",
-        "responseBody": "={{$json.query[\"hub.challenge\"]}}",
-        "options": {
-          "responseCode": 200
-        }
-      },
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.5,
-      "position": [
-        -208,
-        320
-      ],
-      "id": "bb43ae49-30a2-4634-a6b8-f4b363934656",
-      "name": "Respond to Webhook1"
-    },
-    {
-      "parameters": {
-        "path": "facebook-verify",
-        "responseMode": "responseNode",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2.1,
-      "position": [
-        -400,
-        320
-      ],
-      "id": "58ea8a26-29f3-4065-88e5-c5956c90907f",
-      "name": "Webhook GET",
-      "webhookId": "8c121907-6dbc-4fc7-81dd-a9456890557e"
     },
     {
       "parameters": {
@@ -422,10 +270,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        5088,
-        1488
+        544,
+        1008
       ],
-      "id": "07def999-4a8b-4d44-8823-87bb944019ae",
+      "id": "10880bed-b6fe-40c0-9e63-8b44bff6494c",
       "name": "If plan_supports_ai"
     },
     {
@@ -488,28 +336,28 @@
         },
         "options": {}
       },
-      "id": "c8cd27ee-d0d7-4471-a5e9-e56f87dffcfc",
+      "id": "3c6aeb63-a7ed-4901-8b81-6ebdd957c33b",
       "name": "upsert_conversation_state",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        7312,
-        1328
+        3248,
+        1072
       ],
       "alwaysOutputData": true,
       "notesInFlow": false
     },
     {
       "parameters": {
-        "jsCode": "const base = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst integration = $items(\"client_feature\", 0, 0)[0].json;\n\n// Supabase RPC may arrive from the HTTP Request node either as\n// a returned object or as a one-row array depending on n8n handling.\nconst resolverItem = $items(\"resolve_conversation_v2\", 0, 0)[0]?.json;\n\nconst resolver = Array.isArray(resolverItem)\n  ? resolverItem[0]\n  : resolverItem;\n\nif (!resolver) {\n  throw new Error(\"Conversation Resolver returned no result\");\n}\n\nif (!resolver.conversation_id) {\n  throw new Error(\"Conversation Resolver returned no conversation_id\");\n}\n\nconst quickPayload = base.quick_reply_payload || null;\n\n// Welcome is tied to a NEW CONVERSATION (2h-inactivity timeout, manual\n// close, or first-ever) via the resolver's is_new_conversation signal.\nconst shouldSendWelcome = resolver.is_new_conversation === true;\n\nreturn [\n  {\n    json: {\n      // Channel / sender\n      platform: base.platform,\n      channelKey: base.channelKey,\n      text: base.text,\n      sender_id: base.sender_id,\n      quick_reply_payload: quickPayload,\n\n      // Client / integration\n      client_id: integration.client_id,\n      config: integration.config || {},\n\n      // Conversation Model V2\n      contact_id: resolver.contact_id,\n      channel_identity_id: resolver.channel_identity_id,\n      conversation_id: resolver.conversation_id,\n\n      conversation_status: resolver.conversation_status || \"active\",\n      current_step: resolver.current_step || null,\n\n      // Resolver metadata\n      resolution: resolver.resolution || null,\n      resolver_event_type: resolver.event_type || null,\n\n      is_new_contact: resolver.is_new_contact === true,\n      is_new_channel_identity:\n        resolver.is_new_channel_identity === true,\n      is_new_conversation:\n        resolver.is_new_conversation === true,\n\n      // Welcome fires once per new conversation.\n      should_send_welcome: shouldSendWelcome,\n\n      welcome_message:\n        integration.welcome_message ||\n        integration.client?.welcome_message ||\n        integration.clients?.welcome_message ||\n        null,\n    },\n  },\n];"
+        "jsCode": "const base = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst integration = $items(\"client_feature\", 0, 0)[0].json;\n\n// Supabase RPC may arrive from the HTTP Request node either as\n// a returned object or as a one-row array depending on n8n handling.\nconst resolverItem = $items(\"resolve_conversation_v2\", 0, 0)[0]?.json;\n\nconst resolver = Array.isArray(resolverItem)\n  ? resolverItem[0]\n  : resolverItem;\n\nif (!resolver) {\n  throw new Error(\"Conversation Resolver returned no result\");\n}\n\nif (!resolver.conversation_id) {\n  throw new Error(\"Conversation Resolver returned no conversation_id\");\n}\n\nconst quickPayload = base.quick_reply_payload || null;\n\n// Welcome is tied to a NEW CONVERSATION (2h-inactivity timeout, manual\n// close, or first-ever) via the resolver's is_new_conversation signal.\nconst shouldSendWelcome = resolver.is_new_conversation === true;\n\nreturn [\n  {\n    json: {\n      // Channel / sender\n      platform: base.platform,\n      channelKey: base.channelKey,\n      text: base.text,\n      sender_id: base.sender_id,\n      quick_reply_payload: quickPayload,\n\n      // Client / integration\n      client_id: integration.client_id,\n      config: integration.config || {},\n\n      // New Conversation Model\n      contact_id: resolver.contact_id,\n      channel_identity_id: resolver.channel_identity_id,\n      conversation_id: resolver.conversation_id,\n\n      conversation_status: resolver.conversation_status || \"active\",\n      current_step: resolver.current_step || null,\n\n      // Resolver metadata\n      resolution: resolver.resolution || null,\n      resolver_event_type: resolver.event_type || null,\n\n      is_new_contact: resolver.is_new_contact === true,\n      is_new_channel_identity:\n        resolver.is_new_channel_identity === true,\n      is_new_conversation:\n        resolver.is_new_conversation === true,\n\n      // Welcome fires once per new conversation.\n      should_send_welcome: shouldSendWelcome,\n\n      welcome_message:\n        integration.welcome_message ||\n        integration.client?.welcome_message ||\n        integration.clients?.welcome_message ||\n        null,\n    },\n  },\n];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1808,
-        528
+        2208,
+        0
       ],
-      "id": "c297faf3-6dca-4e55-b46e-434e57877db9",
+      "id": "61e8da66-9833-4ae5-a5e5-306b4c80cbb3",
       "name": "prepare_conversation"
     },
     {
@@ -519,10 +367,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        6128,
-        1632
+        1952,
+        912
       ],
-      "id": "11b9569d-468b-4add-a3fe-cfc9f7a4345e",
+      "id": "8c512ebb-4d75-4580-9a2b-0ef8985440bf",
       "name": "merge_for_state",
       "alwaysOutputData": true
     },
@@ -533,10 +381,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5488,
-        1664
+        1392,
+        1072
       ],
-      "id": "c59281ba-6bd4-41c6-80de-c2dd9291b30d",
+      "id": "b70b5422-15cb-421d-9f52-1c0bc0a190c7",
       "name": "auto-normalize"
     },
     {
@@ -567,10 +415,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        5296,
-        1904
+        736,
+        1232
       ],
-      "id": "4055f7ff-f1d0-4a00-983b-9a162532eed3",
+      "id": "d4fb4e9a-7cbb-4518-9492-e5f42b4e1b7d",
       "name": "If have auto reply"
     },
     {
@@ -580,10 +428,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5696,
-        1920
+        1392,
+        1312
       ],
-      "id": "9d1b52fa-9142-4b62-aea6-62d58bfdf4bf",
+      "id": "13cfb120-1d9c-492b-aaa6-39c750b683f0",
       "name": "default normalize"
     },
     {
@@ -614,10 +462,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        3408,
-        1072
+        2000,
+        256
       ],
-      "id": "02b462ba-7a19-4385-8da2-e580ee33d7a4",
+      "id": "37cf69d1-fcdb-497b-9137-e1401fe22460",
       "name": "check_human_stop"
     },
     {
@@ -683,10 +531,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        5488,
-        2064
+        1024,
+        1440
       ],
-      "id": "218a3a68-e10b-49f4-8f73-7c4595e2ad33",
+      "id": "1456f9d7-3cf3-40fc-80eb-7416045d1721",
       "name": "check_need_human"
     },
     {
@@ -699,23 +547,23 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        5696,
-        2080
+        1968,
+        1424
       ],
-      "id": "bd884a92-0648-4d3c-b798-d909c41c9d38",
+      "id": "8546cdc0-7469-4ad6-a0e0-eab0cc949885",
       "name": "human_reply"
     },
     {
       "parameters": {
-        "jsCode": "const replyText = $json.reply ?? $json.reply_text ?? \"\";\n\nconst status = $json.conversation_status ?? $json.next_status ?? \"active\";\n\nconst step = $json.current_step ?? $json.next_step ?? null;\n\nconst quickReplies =\n  $json.quick_replies ??\n  $items(\"format_quick_replies\", 0, 0)[0]?.json?.quick_replies ??\n  null;\n\nconst message = {\n  text: replyText\n};\n\nconst blockedSteps = [\n  \"waiting_for_contact\",\n  \"reopen_confirm\"\n];\n\nconst canShowQuickReplies =\n  status !== \"closed\" &&\n  step !== \"done\" &&\n  !blockedSteps.includes(step) &&\n  Array.isArray(quickReplies) &&\n  quickReplies.length > 0;\n\n\nif (canShowQuickReplies) {\n  message.quick_replies = quickReplies;\n}\n\nconst replySource =\n  $json.reply_source ||\n  ($json.intent === \"order\" ? \"ai\" : null) ||\n  ($json.intent === \"human_request\" ? \"system\" : null) ||\n  \"system\";\n\nconst replyFrom = $json.reply_from;\n\nconsole.log($json);\nreturn [{\n  json: {\n    debug_reply_source: replySource,\n    debug_original_reply_source: $json.reply_source,\n\n    debug_reply_from: replyFrom,\n    debug_original_reply_from: $json.reply_from,\n    \n    ...$json,\n    reply: replyText,\n    message,\n    conversation_status: status,\n    current_step: step,\n    quick_replies: canShowQuickReplies ? quickReplies : null,\n    reply_source: replySource,\n    reply_from: replyFrom,\n  }\n}];\n"
+        "jsCode": "const replyText = $json.reply ?? $json.reply_text ?? \"\";\n\nconst status = $json.conversation_status ?? $json.next_status ?? \"active\";\n\nconst step = $json.current_step ?? $json.next_step ?? null;\n\nconst quickReplies =\n  $json.quick_replies ??\n  $items(\"format_quick_replies\", 0, 0)[0]?.json?.quick_replies ??\n  null;\n\nconst message = {\n  text: replyText\n};\n\nconst blockedSteps = [\n  \"waiting_for_contact\"\n];\n\nconst canShowQuickReplies =\n  status !== \"closed\" &&\n  step !== \"done\" &&\n  !blockedSteps.includes(step) &&\n  Array.isArray(quickReplies) &&\n  quickReplies.length > 0;\n\n\nif (canShowQuickReplies) {\n  message.quick_replies = quickReplies;\n}\n\nconst replySource =\n  $json.reply_source ||\n  ($json.intent === \"order\" ? \"ai\" : null) ||\n  ($json.intent === \"human_request\" ? \"system\" : null) ||\n  \"system\";\n\nconst replyFrom = $json.reply_from;\n\nconsole.log($json);\nreturn [{\n  json: {\n    debug_reply_source: replySource,\n    debug_original_reply_source: $json.reply_source,\n\n    debug_reply_from: replyFrom,\n    debug_original_reply_from: $json.reply_from,\n    \n    ...$json,\n    reply: replyText,\n    message,\n    conversation_status: status,\n    current_step: step,\n    quick_replies: canShowQuickReplies ? quickReplies : null,\n    reply_source: replySource,\n    reply_from: replyFrom,\n  }\n}];\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        6576,
-        1552
+        2352,
+        800
       ],
-      "id": "0357a7ab-fe5e-4703-8dee-6f2521a9fe79",
+      "id": "aa6f425d-76bf-4e4d-8f94-e33768ed1bef",
       "name": "state_payload",
       "alwaysOutputData": true
     },
@@ -737,27 +585,27 @@
         },
         "options": {}
       },
-      "id": "06aa55ff-f124-4987-9ccd-d8786e733a9b",
+      "id": "5dc7efed-2978-49c8-b2db-6ba8283d8bd0",
       "name": "get_quick_replies",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1200,
-        528
+        1616,
+        0
       ],
       "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "// A usable quick-reply row needs a non-empty title AND a non-empty payload.\n// Facebook rejects a text quick reply with no title ((#100) Title is\n// required for this quick reply content type). get_quick_replies has\n// alwaysOutputData, so a client with NO configured quick replies arrives\n// here as a single empty {} item -- filtering it (and any malformed row)\n// out makes quick_replies correctly come back as [].\nconst isValidRow = (r) =>\n  r &&\n  typeof r === \"object\" &&\n  typeof r.title === \"string\" && r.title.trim() !== \"\" &&\n  typeof r.payload === \"string\" && r.payload.trim() !== \"\";\n\nconst rows = $input.all().map(i => i.json).filter(isValidRow);\n\nconst base = $items(\"Code in JavaScript1\", 0, 0)[0]?.json || {};\nconst lastPayload = base.quick_reply_payload || null;\n\nlet hiddenPayloads = [];\nlet selectedRow = null;\n\nif (lastPayload) {\n  selectedRow = rows.find(r => r.payload === lastPayload) || null;\n\n  // إذا الخيار المختار هو تواصل بشري → لا تعرض أي خيارات بعدها\n  if (selectedRow?.action_type === \"human_request\") {\n    return [{\n      json: {\n        quick_replies: [],\n        last_payload: lastPayload,\n        hidden_payloads: [],\n        selected_action_type: selectedRow.action_type\n      }\n    }];\n  }\n\n  hiddenPayloads = [\n    lastPayload,\n    ...(Array.isArray(selectedRow?.hide_after_payloads)\n      ? selectedRow.hide_after_payloads\n      : [])\n  ];\n}\n\nconst filteredRows = rows.filter(r => {\n  if (!lastPayload) return true;\n  return !hiddenPayloads.includes(r.payload);\n});\n\nconst quick_replies = filteredRows.map(r => ({\n  content_type: \"text\",\n  title: r.title,\n  payload: r.payload\n}));\n\nreturn [{\n  json: {\n    quick_replies,\n    last_payload: lastPayload,\n    hidden_payloads: hiddenPayloads,\n    selected_action_type: selectedRow?.action_type || null\n  }\n}];"
+        "jsCode": "const rows = $input.all().map(i => i.json);\n\nconst base = $items(\"Code in JavaScript1\", 0, 0)[0]?.json || {};\nconst lastPayload = base.quick_reply_payload || null;\n\nlet hiddenPayloads = [];\nlet selectedRow = null;\n\nif (lastPayload) {\n  selectedRow = rows.find(r => r.payload === lastPayload) || null;\n\n  // إذا الخيار المختار هو تواصل بشري → لا تعرض أي خيارات بعدها\n  if (selectedRow?.action_type === \"human_request\") {\n    return [{\n      json: {\n        quick_replies: [],\n        last_payload: lastPayload,\n        hidden_payloads: [],\n        selected_action_type: selectedRow.action_type\n      }\n    }];\n  }\n\n  hiddenPayloads = [\n    lastPayload,\n    ...(Array.isArray(selectedRow?.hide_after_payloads)\n      ? selectedRow.hide_after_payloads\n      : [])\n  ];\n}\n\nconst filteredRows = rows.filter(r => {\n  if (!lastPayload) return true;\n  return !hiddenPayloads.includes(r.payload);\n});\n\nconst quick_replies = filteredRows.map(r => ({\n  content_type: \"text\",\n  title: r.title,\n  payload: r.payload\n}));\n\nreturn [{\n  json: {\n    quick_replies,\n    last_payload: lastPayload,\n    hidden_payloads: hiddenPayloads,\n    selected_action_type: selectedRow?.action_type || null\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1408,
-        528
+        1808,
+        0
       ],
-      "id": "da294cbd-0555-4b28-a507-4e190d48d815",
+      "id": "133ebb44-5b81-401b-9d59-8b033a93fc40",
       "name": "format_quick_replies"
     },
     {
@@ -778,13 +626,13 @@
         },
         "options": {}
       },
-      "id": "fce258c0-8d57-4f71-9439-3bc92fef5f97",
+      "id": "79f76281-0ae7-4e94-a6be-bf5d754d9f43",
       "name": "get_active_subscription",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        800,
-        528
+        1216,
+        0
       ],
       "alwaysOutputData": true
     },
@@ -818,7 +666,7 @@
               }
             },
             {
-              "id": "7f1604e3-a7e5-41ce-a29a-aa92c5afb988",
+              "id": "fa6daa65-76ab-4588-8141-72e3a9b7e1ce",
               "leftValue": "={{ \n  !$json.end_date || \n  $json.end_date.slice(0, 10) >= $now.toISODate()\n}}",
               "rightValue": "",
               "operator": {
@@ -835,10 +683,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        1008,
-        528
+        1408,
+        0
       ],
-      "id": "a8293de3-13bf-4c25-a82d-8bbca8a3d5fa",
+      "id": "7eddedbe-8e04-4ded-873b-9d25e362c2fe",
       "name": "validate_subscription"
     },
     {
@@ -871,13 +719,13 @@
         "jsonBody": "={\n  \"ai_replies_used\": {{\n    $node[\"state_payload\"].json[\"reply_from\"] === \"ai\"\n      ? Number($node[\"get_active_subscription\"].json.ai_replies_used) + 1\n      : Number($node[\"get_active_subscription\"].json.ai_replies_used)\n  }},\n\n  \"auto_replies_used\": {{\n    $node[\"state_payload\"].json[\"reply_from\"] === \"auto\"\n      ? Number($node[\"get_active_subscription\"].json.auto_replies_used) + 1\n      : Number($node[\"get_active_subscription\"].json.auto_replies_used)\n  }}\n}",
         "options": {}
       },
-      "id": "edbb9f9a-dd4d-4894-b2f4-76a228705de3",
+      "id": "25493b7f-df2d-4194-a13c-e64f99a28a68",
       "name": "update_usage",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        8656,
-        1360
+        4256,
+        1072
       ],
       "alwaysOutputData": true
     },
@@ -908,270 +756,101 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        5888,
-        1664
+        1728,
+        1072
       ],
-      "id": "d5d0aef3-8a0b-47cb-871c-cb4c6a247ac3",
+      "id": "f768b329-81fb-4a34-9417-4547d6d617c5",
       "name": "If have auto credit"
     },
     {
       "parameters": {
-        "rules": {
-          "values": [
+        "url": "={{\n  $node[\"Config\"].json[\"SUPABASE_URL\"] +\n  \"/rest/v1/client_whatsapp\" +\n  \"?select=id,client_id,server_id,instance_name\" +\n  \"&id=eq.\" +\n  encodeURIComponent($node[\"Code in JavaScript1\"].json[\"whatsapp_number_id\"]) +\n  \"&limit=1\"\n}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
             {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{$json.body.object}}",
-                    "rightValue": "whatsapp_business_account",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    },
-                    "id": "b56e179e-e7da-41a1-adac-e7120587f0a2"
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "whatsapp"
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
             },
             {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "22b8f8e5-6ce7-4265-b4ec-571006961111",
-                    "leftValue": "={{$json.body.object}}",
-                    "rightValue": "page",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals",
-                      "name": "filter.operator.equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "facebook"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "instagram-ig-cond",
-                    "leftValue": "={{$json.body.object}}",
-                    "rightValue": "instagram",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals",
-                      "name": "filter.operator.equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "instagram"
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
             }
           ]
         },
         "options": {}
       },
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 3.4,
+      "id": "a1ae6008-3af5-4514-894f-04364eb89d74",
+      "name": "Get WhatsApp Number Send",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [
-        -208,
-        64
+        3456,
+        1072
       ],
-      "id": "4a60d400-edb2-462f-b35f-9b91dfab46cd",
-      "name": "Switch"
+      "alwaysOutputData": true,
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "url": "={{\n  $node[\"Config\"].json[\"SUPABASE_URL\"] +\n  \"/rest/v1/whatsapp_servers\" +\n  \"?select=id,base_url,api_key\" +\n  \"&id=eq.\" +\n  encodeURIComponent($json.server_id) +\n  \"&limit=1\"\n}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7c47b4b1-6235-4d01-9b90-8907ddb2f71a",
+      "name": "Get WhatsApp Server Send",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3664,
+        1072
+      ],
+      "alwaysOutputData": true,
+      "notesInFlow": false
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{\n'https://n8n-production-fcd4.up.railway.app/webhook/751ecf29-1acd-43b7-8c80-bd8f9929f656/inbound/whatsapp/' +\n$json.body.entry[0].changes[0].value.metadata.phone_number_id\n}}",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{$json.body}}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        640,
-        -176
-      ],
-      "id": "2860c2c1-cb52-4e13-b389-b970f5919689",
-      "name": "HTTP Request - whatsapp"
-    },
-    {
-      "parameters": {
-        "rules": {
-          "values": [
+        "url": "={{\n  $json.base_url +\n  \"/message/sendText/\" +\n  encodeURIComponent(\n    $node[\"Code in JavaScript1\"].json[\"instance_name\"]\n  )\n}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
             {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{$node[\"state_payload\"].json[\"platform\"]}}",
-                    "rightValue": "telegram",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    },
-                    "id": "b56e179e-e7da-41a1-adac-e7120587f0a2"
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "telegram"
+              "name": "apikey",
+              "value": "={{ $json.api_key }}"
             },
             {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "22b8f8e5-6ce7-4265-b4ec-571006961111",
-                    "leftValue": "={{$node[\"state_payload\"].json[\"platform\"]}}",
-                    "rightValue": "whatsapp",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals",
-                      "name": "filter.operator.equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "whatsapp"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "84551895-e372-4a28-994b-b76b3b8dfcbd",
-                    "leftValue": "={{$node[\"state_payload\"].json[\"platform\"]}}",
-                    "rightValue": "facebook",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals",
-                      "name": "filter.operator.equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "facebook"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "instagram-ig-cond",
-                    "leftValue": "={{$node[\"state_payload\"].json[\"platform\"]}}",
-                    "rightValue": "instagram",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals",
-                      "name": "filter.operator.equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "instagram"
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
         },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  {\n    number: $node[\"Code in JavaScript1\"].json[\"sender_id\"],\n    text: $node[\"state_payload\"].json[\"reply\"]\n  }\n}}",
         "options": {}
       },
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 3.4,
+      "id": "5c3b175d-0310-40fa-afc8-de3fafb35d0e",
+      "name": "send auto reply Evolution",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [
-        7568,
-        1296
+        3856,
+        1072
       ],
-      "id": "b00ea13c-c784-4007-a611-e7b756aec6bc",
-      "name": "platform"
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "f8d3e591-5cf1-4a41-bd73-03835ddad780",
-              "leftValue": "={{ $json.body.entry[0].changes[0].value.messages !== undefined }}",
-              "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        432,
-        -176
-      ],
-      "id": "4880e395-d77f-4d44-a12e-16d6f8a4e946",
-      "name": "If"
+      "alwaysOutputData": true
     },
     {
       "parameters": {
@@ -1201,10 +880,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        3200,
-        1072
+        1696,
+        256
       ],
-      "id": "42a334ff-459d-4bb2-978c-3d37b55c37f2",
+      "id": "3c4f88ef-a3da-42f6-9037-dd12244e631a",
       "name": "check_integration_active"
     },
     {
@@ -1219,7 +898,7 @@
           "conditions": [
             {
               "id": "8e4721f8-cc3d-41b2-8d3e-4bef92136604",
-              "leftValue": "={{\n  $node[\"prepare_conversation\"].json[\"is_new_conversation\"] === true\n}}",
+              "leftValue": "={{\n  $node[\"prepare_conversation\"].json[\"should_send_welcome\"] === true\n}}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -1235,10 +914,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        4912,
-        992
+        256,
+        800
       ],
-      "id": "772bec64-060a-4ac6-b145-245440dff5cb",
+      "id": "e86b905f-df9e-4c9a-994a-814eed161bb4",
       "name": "If new conversation"
     },
     {
@@ -1260,7 +939,7 @@
             {
               "id": "835b45ef-02ef-44c1-a141-0a0b1bb61fc3",
               "name": "current_step",
-              "value": "={{ null }}",
+              "value": "=manual_followup",
               "type": "string"
             },
             {
@@ -1319,10 +998,10 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        5104,
-        992
+        544,
+        800
       ],
-      "id": "0afef8f9-43f5-456e-b6e3-1151813c564d",
+      "id": "dd163ea6-d2a0-48a3-a582-1083b019dd4d",
       "name": "Prepare Welcome Only Reply"
     },
     {
@@ -1346,16 +1025,16 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{\n{\n  \"p_client_id\": $items(\"client_feature\", 0, 0)[0].json.client_id,\n  \"p_platform\": $items(\"Code in JavaScript1\", 0, 0)[0].json.platform,\n  \"p_sender_id\": $items(\"Code in JavaScript1\", 0, 0)[0].json.sender_id,\n  \"p_channel_key\": $items(\"Code in JavaScript1\", 0, 0)[0].json.channelKey\n}\n}}",
+        "jsonBody": "={{\n{\n  \"p_client_id\": $items(\"Code in JavaScript1\", 0, 0)[0].json.client_id,\n  \"p_platform\": $items(\"Code in JavaScript1\", 0, 0)[0].json.platform,\n  \"p_sender_id\": $items(\"Code in JavaScript1\", 0, 0)[0].json.sender_id,\n  \"p_channel_key\": $items(\"Code in JavaScript1\", 0, 0)[0].json.channelKey\n}\n}}",
         "options": {}
       },
-      "id": "ad13b5e1-ad04-4a45-b96c-a2063bb54c93",
+      "id": "2bd1775a-bfc1-4882-9b92-773d4dde7afb",
       "name": "resolve_conversation_v2",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1600,
-        528
+        2016,
+        0
       ],
       "credentials": {
         "httpHeaderAuth": {
@@ -1395,10 +1074,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        6784,
-        1552
+        2576,
+        800
       ],
-      "id": "adb593b1-c8c4-4195-b318-a81be2854b15",
+      "id": "0c9ec0ab-3ed5-484d-be46-bf270c96ee4d",
       "name": "sync_conversation_v2",
       "credentials": {
         "httpHeaderAuth": {
@@ -1410,41 +1089,6 @@
           "name": "Custom Auth account"
         }
       }
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "b3d5d719-2195-495a-bea1-d4f5d5ddae0d",
-              "leftValue": "={{ $node[\"prepare_conversation\"].json[\"is_new_conversation\"] === true }}",
-              "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        7024,
-        1728
-      ],
-      "id": "506ed2a9-5f96-44c0-b5f4-493ded73837a",
-      "name": "needs_legacy_reset",
-      "alwaysOutputData": false
     },
     {
       "parameters": {
@@ -1477,10 +1121,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        7248,
-        1056
+        3072,
+        784
       ],
-      "id": "5eaefc4c-4522-40de-8428-ab569312a7b2",
+      "id": "3dc4a9be-447d-404a-932f-28f646797012",
       "name": "reset_legacy_state_if_needed",
       "alwaysOutputData": true,
       "credentials": {
@@ -1492,106 +1136,64 @@
     },
     {
       "parameters": {
-        "rules": {
-          "values": [
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
             {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "9c331e96-5057-43a6-86e1-8950a000d83f",
-                    "leftValue": "={{ ($node[\"client_feature\"].json?.config?.reply_mode || \"\").toString().toLowerCase() }}",
-                    "rightValue": "welcome_only",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "welcome_only"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "bb968a92-c26d-4236-b529-dd5d23735264",
-                    "leftValue": "={{ ($node[\"client_feature\"].json?.config?.reply_mode || \"\").toString().toLowerCase() }}",
-                    "rightValue": "ai",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "ai"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "7849d02b-55cc-4a74-b8a9-2062f7a5f5c2",
-                    "leftValue": "={{ true }}",
-                    "rightValue": "",
-                    "operator": {
-                      "type": "boolean",
-                      "operation": "true",
-                      "singleValue": true
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "auto"
+              "id": "b3d5d719-2195-495a-bea1-d4f5d5ddae0d",
+              "leftValue": "={{ $node[\"prepare_conversation\"].json[\"is_new_conversation\"] === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
             }
-          ]
+          ],
+          "combinator": "and"
         },
         "options": {}
       },
-      "id": "81ecca3a-79ab-4923-a287-b92ccc32dde4",
-      "name": "Reply Mode Router",
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 3.4,
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
       "position": [
-        4688,
-        1328
-      ]
+        2784,
+        800
+      ],
+      "id": "1e0f7a0a-f378-4438-ad3f-b7588b4bb4fc",
+      "name": "needs_legacy_reset",
+      "alwaysOutputData": false
     },
     {
       "parameters": {
-        "jsCode": "const base = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst integration = $items(\"client_feature\", 0, 0)[0].json;\nconst prep = $items(\"prepare_conversation\", 0, 0)[0].json;\n\nlet messageId = null;\n\ntry {\n  messageId = $items(\"insert message\", 0, 0)[0]?.json?.id || null;\n} catch (e) {\n  messageId = null;\n}\n\n// Scoped closing_confirm follow-up: when a SUBSTANTIVE message cancels a\n// pending \"closing_confirm\" (see closing_confirm_gate), the AI must not see\n// the stale step this turn — otherwise it may re-render the close-confirm\n// prompt/buttons. Only this exact case is overridden; every other step is\n// passed through unchanged.\nlet stepForTurn = prep.current_step || null;\ntry {\n  const ccDecision = ($items(\"closing_confirm_gate\", 0, 0)[0] || {}).json?.decision || null;\n  if (ccDecision === \"substantive\" && stepForTurn === \"closing_confirm\") {\n    stepForTurn = null;\n  }\n} catch (e) {}\n\nreturn [{\n  json: {\n    conversation_id: prep.conversation_id,\n    client_id: prep.client_id || integration.client_id,\n    current_message: base.text || \"\",\n    message_id: messageId,\n    current_step: stepForTurn,\n    channel: base.platform || \"whatsapp\"\n  }\n}];"
+        "jsCode": "const base = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst integration = $items(\"client_feature\", 0, 0)[0].json;\nconst prep = $items(\"prepare_conversation\", 0, 0)[0].json;\n\nlet messageId = null;\n\ntry {\n  messageId = $items(\"insert message\", 0, 0)[0]?.json?.id || null;\n} catch (e) {\n  messageId = null;\n}\n\n// Scoped closing_confirm follow-up: when a SUBSTANTIVE message cancels a\n// pending \"closing_confirm\" (see closing_confirm_gate), the AI must not see\n// the stale step this turn — otherwise it may re-render the close-confirm\n// prompt/buttons. Only this exact case is overridden; every other step is\n// passed through unchanged.\nlet stepForTurn = prep.current_step || null;\ntry {\n  const ccDecision = ($items(\"closing_confirm_gate\", 0, 0)[0] || {}).json?.decision || null;\n  if (ccDecision === \"substantive\" && stepForTurn === \"closing_confirm\") {\n    stepForTurn = null;\n  }\n} catch (e) {}\n\nreturn [{\n  json: {\n    conversation_id: prep.conversation_id,\n    client_id: prep.client_id || integration.client_id,\n    current_message: base.text || \"\",\n    message_id: messageId,\n    current_step: stepForTurn,\n    channel: \"whatsapp\"\n  }\n}];"
       },
-      "id": "0ceba59e-d6bc-4d61-a535-abc5bd1cb8fb",
-      "name": "Prepare AI Core Input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5296,
-        1440
-      ]
+        800,
+        912
+      ],
+      "id": "868d677b-5c60-4cfd-a413-997b438578f4",
+      "name": "Prepare AI Core Input"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst integration = $items(\"client_feature\", 0, 0)[0].json;\nconst prep = $items(\"prepare_conversation\", 0, 0)[0].json;\n\nconst clients = integration.clients || integration.client || {};\n\n// --- Robust AI-Agent-Core result parsing -----------------------------\n// AI-Agent-Core (Build Result) normally returns a flat object:\n//   { reply, intent, action, quick_reply_action, conversation_status, ... }\n// But the model sometimes answers as a JSON blob instead of plain text +\n// a trailing \"#intent:\" marker; Resolve Intent then JSON.stringify()s it,\n// so `reply` can arrive as a raw JSON STRING (or an object, or wrapped in\n// response/result/output/data). None of that may reach the customer.\nfunction asObject(v) {\n  if (v && typeof v === \"object\" && !Array.isArray(v)) return v;\n  if (typeof v === \"string\") {\n    const s = v.trim();\n    if (s.startsWith(\"{\") && s.endsWith(\"}\")) {\n      try {\n        const p = JSON.parse(s);\n        if (p && typeof p === \"object\" && !Array.isArray(p)) return p;\n      } catch (e) {}\n    }\n  }\n  return null;\n}\n\n// Drill through known nesting wrappers to the object that carries `reply`.\nfunction unwrap(v) {\n  let cur = asObject(v) || (v && typeof v === \"object\" ? v : {});\n  const seen = new Set();\n  for (let i = 0; i < 6; i++) {\n    if (!cur || typeof cur !== \"object\" || seen.has(cur)) break;\n    seen.add(cur);\n    const carries =\n      cur.reply !== undefined || cur.text !== undefined ||\n      cur.message !== undefined || cur.intent !== undefined ||\n      cur.conversation_status !== undefined;\n    if (carries) break;\n    const inner =\n      asObject(cur.response) || asObject(cur.result) || asObject(cur.data) ||\n      asObject(cur.json) || asObject(cur.output) || asObject(cur.body);\n    if (!inner) break;\n    cur = inner;\n  }\n  return cur || {};\n}\n\nconst c = unwrap($json);\nconst embedded = asObject(c.reply) || {};\n\n// Resolve the final plain reply text.\nfunction resolveReplyText(node) {\n  let r = node.reply;\n  const rObj = asObject(r);\n  if (rObj) r = rObj.reply ?? rObj.text ?? rObj.message ?? \"\";\n  if (r == null || r === \"\") r = node.text ?? node.message ?? \"\";\n  if (r && typeof r === \"object\") r = r.reply ?? r.text ?? r.message ?? \"\";\n  let s = String(r == null ? \"\" : r).trim();\n  const sObj = asObject(s);\n  if (sObj) s = String(sObj.reply ?? sObj.text ?? sObj.message ?? \"\").trim();\n  // strip a trailing \"#intent: xxx\" marker that leaked past Resolve Intent\n  s = s.replace(/\\s*#intent:\\s*[a-z_]+\\s*$/i, \"\").trim();\n  return s;\n}\n\nconst parsedReply = resolveReplyText(c);\n\nconst coreIntent =\n  (c.intent && c.intent !== \"unknown\") ? c.intent\n  : (embedded.intent || c.intent || \"unknown\");\nconst coreAction = c.action != null ? c.action : (embedded.action ?? null);\nconst coreQuickAction = c.quick_reply_action || embedded.quick_reply_action || null;\n\n// --- Non-downgrade lifecycle resolution -------------------------------\n// /api/ai-tools owns authoritative conversation lifecycle. The parent may\n// only HOLD or ADVANCE lifecycle state -- never write conversation_status\n// back to a LOWER state than what it observed (prep) or what the Core\n// reported (core).\nconst LIFECYCLE_RANK = { active: 0, waiting_human: 1, closed: 2 };\nconst prepStatus = prep.conversation_status || \"active\";\nlet coreStatus = c.conversation_status || embedded.conversation_status || null;\n\nif (!coreStatus && (coreIntent === \"human_request\" || coreAction === \"human_handover\")) {\n  coreStatus = \"waiting_human\";\n}\n\nconst conversationStatus = [prepStatus, coreStatus]\n  .filter((s) => s && LIFECYCLE_RANK[s] !== undefined)\n  .reduce((acc, s) => (LIFECYCLE_RANK[s] > LIFECYCLE_RANK[acc] ? s : acc), \"active\");\n\nconst currentStep =\n  c.current_step !== undefined && c.current_step !== null\n    ? c.current_step\n    : (prep.current_step || null);\n\nlet quickReplies = null;\nif (coreQuickAction === \"closing_confirm\") {\n  quickReplies = [\n    { content_type: \"text\", title: \"نعم\", payload: \"CLOSE_CONVERSATION\" },\n    { content_type: \"text\", title: \"كمل المحادثة\", payload: \"CONTINUE_CONVERSATION\" }\n  ];\n}\n\nconst reply =\n  parsedReply ||\n  clients.default_reply ||\n  integration.default_reply ||\n  \"شكراً لتواصلك معنا 🙏 سيتم الرد عليك بأقرب وقت ممكن\";\n\nreturn [{\n  json: {\n    platform: base.platform,\n    channelKey: base.channelKey,\n    text: base.text,\n    sender_id: base.sender_id,\n    client_id: integration.client_id,\n    config: integration.config || {},\n\n    conversation_id: prep.conversation_id,\n\n    reply,\n    intent: coreIntent || \"unknown\",\n    action: coreAction,\n\n    next_step: currentStep,\n    current_step: currentStep,\n    conversation_status: conversationStatus,\n\n    quick_replies: quickReplies,\n\n    lead_name: null,\n    lead_phone: null,\n\n    reply_source: \"ai\",\n    reply_from: \"ai\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        912
+      ],
+      "id": "ccfd9c5e-3294-4e2c-9e75-1d5638a97a93",
+      "name": "normalize_core_result"
     },
     {
       "parameters": {
@@ -1679,62 +1281,15 @@
         },
         "options": {}
       },
-      "id": "e737e940-d34e-4344-b432-9f130b3a856d",
-      "name": "Execute Sub-workflow",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        5488,
-        1440
+        1008,
+        912
       ],
+      "id": "e59a5f25-43dd-47e4-8e76-e53821586662",
+      "name": "Execute Sub-workflow",
       "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "jsCode": "const base = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst integration = $items(\"client_feature\", 0, 0)[0].json;\nconst prep = $items(\"prepare_conversation\", 0, 0)[0].json;\n\nconst clients = integration.clients || integration.client || {};\n\n// --- Robust AI-Agent-Core result parsing -----------------------------\n// AI-Agent-Core (Build Result) normally returns a flat object:\n//   { reply, intent, action, quick_reply_action, conversation_status, ... }\n// But the model sometimes answers as a JSON blob instead of plain text +\n// a trailing \"#intent:\" marker; Resolve Intent then JSON.stringify()s it,\n// so `reply` can arrive as a raw JSON STRING (or an object, or wrapped in\n// response/result/output/data). None of that may reach the customer.\nfunction asObject(v) {\n  if (v && typeof v === \"object\" && !Array.isArray(v)) return v;\n  if (typeof v === \"string\") {\n    const s = v.trim();\n    if (s.startsWith(\"{\") && s.endsWith(\"}\")) {\n      try {\n        const p = JSON.parse(s);\n        if (p && typeof p === \"object\" && !Array.isArray(p)) return p;\n      } catch (e) {}\n    }\n  }\n  return null;\n}\n\n// Drill through known nesting wrappers to the object that carries `reply`.\nfunction unwrap(v) {\n  let cur = asObject(v) || (v && typeof v === \"object\" ? v : {});\n  const seen = new Set();\n  for (let i = 0; i < 6; i++) {\n    if (!cur || typeof cur !== \"object\" || seen.has(cur)) break;\n    seen.add(cur);\n    const carries =\n      cur.reply !== undefined || cur.text !== undefined ||\n      cur.message !== undefined || cur.intent !== undefined ||\n      cur.conversation_status !== undefined;\n    if (carries) break;\n    const inner =\n      asObject(cur.response) || asObject(cur.result) || asObject(cur.data) ||\n      asObject(cur.json) || asObject(cur.output) || asObject(cur.body);\n    if (!inner) break;\n    cur = inner;\n  }\n  return cur || {};\n}\n\nconst c = unwrap($json);\nconst embedded = asObject(c.reply) || {};\n\n// Resolve the final plain reply text.\nfunction resolveReplyText(node) {\n  let r = node.reply;\n  const rObj = asObject(r);\n  if (rObj) r = rObj.reply ?? rObj.text ?? rObj.message ?? \"\";\n  if (r == null || r === \"\") r = node.text ?? node.message ?? \"\";\n  if (r && typeof r === \"object\") r = r.reply ?? r.text ?? r.message ?? \"\";\n  let s = String(r == null ? \"\" : r).trim();\n  const sObj = asObject(s);\n  if (sObj) s = String(sObj.reply ?? sObj.text ?? sObj.message ?? \"\").trim();\n  // strip a trailing \"#intent: xxx\" marker that leaked past Resolve Intent\n  s = s.replace(/\\s*#intent:\\s*[a-z_]+\\s*$/i, \"\").trim();\n  return s;\n}\n\nconst parsedReply = resolveReplyText(c);\n\nconst coreIntent =\n  (c.intent && c.intent !== \"unknown\") ? c.intent\n  : (embedded.intent || c.intent || \"unknown\");\nconst coreAction = c.action != null ? c.action : (embedded.action ?? null);\nconst coreQuickAction = c.quick_reply_action || embedded.quick_reply_action || null;\n\n// --- Non-downgrade lifecycle resolution -------------------------------\n// /api/ai-tools owns authoritative conversation lifecycle. The parent may\n// only HOLD or ADVANCE lifecycle state -- never write conversation_status\n// back to a LOWER state than what it observed (prep) or what the Core\n// reported (core).\nconst LIFECYCLE_RANK = { active: 0, waiting_human: 1, closed: 2 };\nconst prepStatus = prep.conversation_status || \"active\";\nlet coreStatus = c.conversation_status || embedded.conversation_status || null;\n\nif (!coreStatus && (coreIntent === \"human_request\" || coreAction === \"human_handover\")) {\n  coreStatus = \"waiting_human\";\n}\n\nconst conversationStatus = [prepStatus, coreStatus]\n  .filter((s) => s && LIFECYCLE_RANK[s] !== undefined)\n  .reduce((acc, s) => (LIFECYCLE_RANK[s] > LIFECYCLE_RANK[acc] ? s : acc), \"active\");\n\nconst currentStep =\n  c.current_step !== undefined && c.current_step !== null\n    ? c.current_step\n    : (prep.current_step || null);\n\nlet quickReplies = null;\nif (coreQuickAction === \"closing_confirm\") {\n  quickReplies = [\n    { content_type: \"text\", title: \"نعم\", payload: \"CLOSE_CONVERSATION\" },\n    { content_type: \"text\", title: \"كمل المحادثة\", payload: \"CONTINUE_CONVERSATION\" }\n  ];\n}\n\nconst reply =\n  parsedReply ||\n  clients.default_reply ||\n  integration.default_reply ||\n  \"شكراً لتواصلك معنا 🙏 سيتم الرد عليك بأقرب وقت ممكن\";\n\nreturn [{\n  json: {\n    platform: base.platform,\n    channelKey: base.channelKey,\n    text: base.text,\n    sender_id: base.sender_id,\n    client_id: integration.client_id,\n    config: integration.config || {},\n\n    conversation_id: prep.conversation_id,\n\n    reply,\n    intent: coreIntent || \"unknown\",\n    action: coreAction,\n\n    next_step: currentStep,\n    current_step: currentStep,\n    conversation_status: conversationStatus,\n\n    quick_replies: quickReplies,\n\n    lead_name: null,\n    lead_phone: null,\n\n    reply_source: \"ai\",\n    reply_from: \"ai\"\n  }\n}];"
-      },
-      "id": "72095434-5d32-4f74-a22a-b61641c5596b",
-      "name": "normalize_core_result",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        5696,
-        1440
-      ]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "bc5cd7f7-3064-4d3a-b44c-780e8944e43b",
-              "leftValue": "={{ $node[\"prepare_conversation\"].json[\"is_new_conversation\"] === true && ($node[\"client_feature\"].json?.config?.reply_mode || \"\").toString().toLowerCase() !== \"welcome_only\" }}",
-              "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "806e5a4b-7020-4184-a481-fdc9f77c7cf2",
-      "name": "Welcome Gate",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        3552,
-        1328
-      ]
     },
     {
       "parameters": {
@@ -1750,19 +1305,19 @@
                 },
                 "conditions": [
                   {
-                    "leftValue": "={{$node[\"prepare_conversation\"].json[\"platform\"]}}",
-                    "rightValue": "telegram",
+                    "id": "b7f43003-dfa7-454c-b99a-4f705d11ef36",
+                    "leftValue": "={{ ($node[\"client_feature\"].json?.config?.reply_mode || \"\").toString().toLowerCase() }}",
+                    "rightValue": "welcome_only",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
-                    },
-                    "id": "eed35acc-77f7-4a2b-b3bf-133431f5882b"
+                    }
                   }
                 ],
                 "combinator": "and"
               },
               "renameOutput": true,
-              "outputKey": "telegram"
+              "outputKey": "welcome_only"
             },
             {
               "conditions": {
@@ -1774,20 +1329,19 @@
                 },
                 "conditions": [
                   {
-                    "id": "5d5cd918-f68a-4b19-b088-ef1c1faec0d4",
-                    "leftValue": "={{$node[\"prepare_conversation\"].json[\"platform\"]}}",
-                    "rightValue": "whatsapp",
+                    "id": "696a6766-eb59-4912-b04e-e0fedaab6f13",
+                    "leftValue": "={{ ($node[\"client_feature\"].json?.config?.reply_mode || \"\").toString().toLowerCase() }}",
+                    "rightValue": "ai",
                     "operator": {
                       "type": "string",
-                      "operation": "equals",
-                      "name": "filter.operator.equals"
+                      "operation": "equals"
                     }
                   }
                 ],
                 "combinator": "and"
               },
               "renameOutput": true,
-              "outputKey": "whatsapp"
+              "outputKey": "ai"
             },
             {
               "conditions": {
@@ -1799,167 +1353,156 @@
                 },
                 "conditions": [
                   {
-                    "id": "9f910e76-e769-40ed-a524-56c77fa47ed3",
-                    "leftValue": "={{$node[\"prepare_conversation\"].json[\"platform\"]}}",
-                    "rightValue": "facebook",
+                    "id": "7c2f53bf-fdf6-45f3-9e8d-1bf972cc0d91",
+                    "leftValue": "={{ true }}",
+                    "rightValue": "",
                     "operator": {
-                      "type": "string",
-                      "operation": "equals",
-                      "name": "filter.operator.equals"
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
                     }
                   }
                 ],
                 "combinator": "and"
               },
               "renameOutput": true,
-              "outputKey": "facebook"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "instagram-ig-cond",
-                    "leftValue": "={{$node[\"prepare_conversation\"].json[\"platform\"]}}",
-                    "rightValue": "instagram",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals",
-                      "name": "filter.operator.equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "instagram"
+              "outputKey": "auto"
             }
           ]
         },
         "options": {}
       },
+      "id": "83d4a399-b2a6-40ec-9f4e-f0afc91c4193",
+      "name": "Reply Mode Router",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
       "position": [
-        3808,
-        864
-      ],
-      "id": "06e2df66-73b0-4416-ab0a-cb511c71404a",
-      "name": "Welcome Platform Switch"
+        -16,
+        816
+      ]
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "={{\"https://api.telegram.org/bot\" + $node[\"prepare_conversation\"].json[\"config\"][\"Bot Token\"] + \"/sendMessage\"}}",
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "86058e2e-1739-4c03-bd79-02e57c489f29",
+              "leftValue": "={{ $node[\"prepare_conversation\"].json[\"is_new_conversation\"] === true && ($node[\"client_feature\"].json?.config?.reply_mode || \"\").toString().toLowerCase() !== \"welcome_only\" }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cec06b08-94ba-4548-b8c0-1c607b71beaf",
+      "name": "Welcome Gate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1264,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{\n  $node[\"Config\"].json[\"SUPABASE_URL\"] +\n  \"/rest/v1/client_whatsapp\" +\n  \"?select=id,client_id,server_id,instance_name\" +\n  \"&id=eq.\" +\n  encodeURIComponent($node[\"Code in JavaScript1\"].json[\"whatsapp_number_id\"]) +\n  \"&limit=1\"\n}}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "chat_id",
-              "value": "={{$node[\"prepare_conversation\"].json[\"sender_id\"]}}"
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
             },
             {
-              "name": "text",
-              "value": "={{$node[\"prepare_conversation\"].json[\"welcome_message\"]}}"
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
             }
           ]
         },
         "options": {}
       },
-      "id": "5071543a-da29-44d6-ad36-05ea0875aa99",
-      "name": "Send Welcome Telegram",
+      "id": "f62320ac-dc9c-4ba8-9a29-9532dbe80b46",
+      "name": "WA Welcome Get Number",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4032,
-        576
+        1792,
+        512
       ],
-      "alwaysOutputData": true
+      "alwaysOutputData": true,
+      "notesInFlow": false
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=https://graph.facebook.com/v23.0/{{$node[\"client_feature\"].json[\"config\"][\"channelKey\"]}}/messages",
+        "url": "={{\n  $node[\"Config\"].json[\"SUPABASE_URL\"] +\n  \"/rest/v1/whatsapp_servers\" +\n  \"?select=id,base_url,api_key\" +\n  \"&id=eq.\" +\n  encodeURIComponent($json.server_id) +\n  \"&limit=1\"\n}}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
-              "name": "Content-Type",
-              "value": "application/json"
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{$node[\"client_feature\"].json[\"config\"][\"API Key\"]}}"
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "29eec4af-c337-4f19-a4bf-690168505802",
+      "name": "WA Welcome Get Server",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2016,
+        512
+      ],
+      "alwaysOutputData": true,
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{\n  $json.base_url +\n  \"/message/sendText/\" +\n  encodeURIComponent(\n    $node[\"Code in JavaScript1\"].json[\"instance_name\"]\n  )\n}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $json.api_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{$node[\"Webhook\"].json.body.entry[0].changes[0].value.contacts[0].wa_id}}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"{{$node[\"prepare_conversation\"].json[\"welcome_message\"]}}\"\n  }\n}",
+        "jsonBody": "={{\n  {\n    number: $node[\"Code in JavaScript1\"].json[\"sender_id\"],\n    text: $node[\"prepare_conversation\"].json[\"welcome_message\"]\n  }\n}}",
         "options": {}
       },
-      "id": "398fb81d-7cc6-4c16-8907-f8f0ea28f147",
-      "name": "Send Welcome WhatsApp",
+      "id": "88350e1b-200b-4ba6-9b69-0d2dabd402bb",
+      "name": "Send Welcome (Evolution)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4032,
-        784
+        2224,
+        512
       ],
-      "executeOnce": false,
-      "alwaysOutputData": true
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "=https://graph.facebook.com/v18.0/me/messages?access_token={{$node[\"client_feature\"].json[\"config\"][\"Page Access Token\"]}}",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "recipient.id",
-              "value": "={{$node[\"prepare_conversation\"].json[\"sender_id\"]}}"
-            },
-            {
-              "name": "message.text",
-              "value": "={{$node[\"prepare_conversation\"].json[\"welcome_message\"]}}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "5ceddd89-56f2-4544-9f8f-57138035def6",
-      "name": "Send Welcome Facebook",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        4048,
-        1008
-      ],
-      "executeOnce": false,
       "alwaysOutputData": true
     },
     {
@@ -1986,13 +1529,13 @@
         "jsonBody": "={\n  \"client_id\": \"{{$node[\"prepare_conversation\"].json[\"client_id\"]}}\",\n  \"channel\": \"{{$node[\"prepare_conversation\"].json[\"platform\"]}}\",\n  \"sender\": \"{{$node[\"prepare_conversation\"].json[\"sender_id\"]}}\",\n  \"message\": \"{{(String($node[\"prepare_conversation\"].json[\"welcome_message\"] || \"\")).replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"').replace(/\\n/g, '\\\\n')}}\",\n  \"direction\": \"outbound\",\n\"reply_source\": \"system\",\n\"conversation_id\": \"{{$node[\"prepare_conversation\"].json[\"conversation_id\"]}}\"\n}",
         "options": {}
       },
-      "id": "71bc8f66-d43d-401a-ab59-56c22185ea2b",
+      "id": "b4330144-c11f-41e2-ac21-ea60ec29cba7",
       "name": "Insert Welcome Message",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4224,
-        752
+        2432,
+        576
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -2017,7 +1560,7 @@
           },
           "conditions": [
             {
-              "id": "0e2d8c80-bc10-4b51-b461-d8ea20cd0f76",
+              "id": "a0e0e470-0e4b-44a8-a88b-34f5be133f9f",
               "leftValue": "={{ $items(\"Code in JavaScript1\", 0, 0)[0].json.has_media === true }}",
               "rightValue": "",
               "operator": {
@@ -2031,26 +1574,84 @@
         },
         "options": {}
       },
-      "id": "121bda48-27c1-4819-ba66-eb565580f4af",
+      "id": "1bd0bb57-0244-48f0-82a1-5f43a26e9db0",
       "name": "If Inbound Has Media",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        2000,
-        848
+        0,
+        320
       ]
     },
     {
       "parameters": {
-        "jsCode": "const cj1 = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst prep = $items(\"prepare_conversation\", 0, 0)[0].json;\nconst cfg = prep.config || {};\nconst platform = cj1.platform;\nconst reg = $items(\"Parse Workflow Registry\", 0, 0)[0]?.json || {}; // central n8n workflow registry\n\nreturn [{\n  json: {\n    platform: platform,\n    message_type: cj1.media_message_type || \"\",\n    client_id: prep.client_id,\n    conversation_id: prep.conversation_id,\n    provider_mime: cj1.media_mime_type || \"\",\n    provider_file_name: cj1.media_file_name || \"\",\n    provider_size_bytes: Number(cj1.media_size_bytes) || 0,\n    caption: cj1.text || \"\",\n    wa_base_url: \"\",\n    wa_api_key: \"\",\n    wa_instance: \"\",\n    wa_message_key: \"{}\",\n    wa_message_raw: \"\",\n    wa_inline_base64: \"\",\n    tg_bot_token: platform === \"telegram\" ? String(cfg[\"Bot Token\"] || cfg.bot_token || cfg.token || \"\") : \"\",\n    tg_file_id: platform === \"telegram\" ? String(cj1.tg_file_id || \"\") : \"\",\n    fb_attachment_url: (platform === \"facebook\" || platform === \"instagram\") ? String(cj1.fb_attachment_url || \"\") : \"\",\n    fb_page_token: (platform === \"facebook\" || platform === \"instagram\") ? String(cfg[\"Page Access Token\"] || cfg.page_access_token || \"\") : \"\",\n    inbound_media_core_workflow_id: reg.inbound_media_core_workflow_id || \"\"\n  }\n}];"
+        "url": "={{\n  $node[\"Config\"].json[\"SUPABASE_URL\"] +\n  \"/rest/v1/client_whatsapp\" +\n  \"?select=id,client_id,server_id,instance_name\" +\n  \"&id=eq.\" +\n  encodeURIComponent($node[\"Code in JavaScript1\"].json[\"whatsapp_number_id\"]) +\n  \"&limit=1\"\n}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
       },
-      "id": "c265c77e-5995-493f-8b43-74be150a5ad9",
+      "id": "c8e88d61-65e9-4ac0-8ca2-4edda35fc7c1",
+      "name": "Inbound Media - Get WA Number",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        192,
+        240
+      ],
+      "alwaysOutputData": true,
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "url": "={{\n  $node[\"Config\"].json[\"SUPABASE_URL\"] +\n  \"/rest/v1/whatsapp_servers\" +\n  \"?select=id,base_url,api_key\" +\n  \"&id=eq.\" +\n  encodeURIComponent($json.server_id) +\n  \"&limit=1\"\n}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9057e0e0-7ac5-4f2e-a5b5-6aa51ffed69c",
+      "name": "Inbound Media - Get WA Server",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        240
+      ],
+      "alwaysOutputData": true,
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const cj1 = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst prep = $items(\"prepare_conversation\", 0, 0)[0].json;\nconst waSrv = $json || {}; // Inbound Media - Get WA Server output row\nconst reg = $items(\"Parse Workflow Registry\", 0, 0)[0]?.json || {}; // central n8n workflow registry\n\nreturn [{\n  json: {\n    platform: \"whatsapp\",\n    message_type: cj1.media_message_type || \"\",\n    client_id: cj1.client_id,\n    conversation_id: prep.conversation_id,\n    provider_mime: cj1.media_mime_type || \"\",\n    provider_file_name: cj1.media_file_name || \"\",\n    provider_size_bytes: 0,\n    caption: cj1.text || \"\",\n    wa_base_url: waSrv.base_url || \"\",\n    wa_api_key: waSrv.api_key || \"\",\n    wa_instance: cj1.instance_name || \"\",\n    wa_message_key: cj1.wa_message_key ? JSON.stringify(cj1.wa_message_key) : \"{}\",\n    wa_message_raw: cj1.wa_message_raw ? JSON.stringify(cj1.wa_message_raw) : \"\",\n    wa_inline_base64: cj1.wa_inline_base64 || \"\",\n    tg_bot_token: \"\",\n    tg_file_id: \"\",\n    fb_attachment_url: \"\",\n    inbound_media_core_workflow_id: reg.inbound_media_core_workflow_id || \"\"\n  }\n}];"
+      },
+      "id": "e2989c44-c94f-4344-ba5b-9d5634536b8c",
       "name": "Prepare Media Core Input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2208,
-        784
+        592,
+        240
       ]
     },
     {
@@ -2079,8 +1680,7 @@
             "wa_inline_base64": "={{ $json.wa_inline_base64 }}",
             "tg_bot_token": "={{ $json.tg_bot_token }}",
             "tg_file_id": "={{ $json.tg_file_id }}",
-            "fb_attachment_url": "={{ $json.fb_attachment_url }}",
-            "fb_page_token": "={{ $json.fb_page_token }}"
+            "fb_attachment_url": "={{ $json.fb_attachment_url }}"
           },
           "matchingColumns": [],
           "schema": [
@@ -2253,16 +1853,6 @@
               "type": "string",
               "canBeUsedToMatch": true,
               "removed": false
-            },
-            {
-              "id": "fb_page_token",
-              "displayName": "fb_page_token",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
             }
           ],
           "attemptToConvertTypes": false,
@@ -2270,13 +1860,13 @@
         },
         "options": {}
       },
-      "id": "317a7692-21fa-4f42-b576-155b4e82794d",
+      "id": "c4190f7b-ac46-4c15-b9c5-5e7dabaacdfa",
       "name": "Ingest Inbound Media",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        2400,
-        784
+        800,
+        240
       ],
       "onError": "continueRegularOutput"
     },
@@ -2286,26 +1876,26 @@
         "jsonOutput": "{\n  \"has_media\": false\n}",
         "options": {}
       },
-      "id": "f65ece4a-79b7-4ce7-a820-a84d17372554",
+      "id": "cc943fae-9568-4b20-95f1-a8994a271015",
       "name": "No Inbound Media",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        2208,
-        992
+        192,
+        432
       ]
     },
     {
       "parameters": {
         "jsCode": "const cj1 = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst cf = $items(\"client_feature\", 0, 0)[0].json;\nconst prep = $items(\"prepare_conversation\", 0, 0)[0].json;\nconst incoming = $json || {};\n\nconst mediaOk = !!(incoming && incoming.ok === true && incoming.media_path);\n\nconst row = {\n  client_id: cf.client_id || cj1.client_id,\n  channel: cj1.platform,\n  sender: cj1.sender_id,\n  message: cj1.text || \"\",\n  direction: \"inbound\",\n  conversation_id: prep.conversation_id\n};\n\nif (mediaOk) {\n  row.message_type = incoming.message_type || \"document\";\n  row.media_path = incoming.media_path;\n  row.media_mime_type = incoming.media_mime_type || null;\n  row.media_file_name = incoming.media_file_name || null;\n  row.media_size_bytes = incoming.media_size_bytes || null;\n} else {\n  // No media, or media ingest failed. Never fabricate a successful\n  // attachment. Preserve the caption/text; a media-only message whose\n  // download failed still creates one inbound row so the event is not lost.\n  row.message_type = \"text\";\n  if (cj1.has_media === true) {\n    console.log(\"inbound_media_ingest_failed \" + JSON.stringify({\n      conversation_id: prep.conversation_id,\n      platform: cj1.platform,\n      media_message_type: cj1.media_message_type || null,\n      error_code: (incoming && incoming.error_code) || \"NO_CORE_RESULT\",\n      error_detail: (incoming && (incoming.error_detail || incoming.message)) || null\n    }));\n  }\n}\n\nreturn [{ json: row }];"
       },
-      "id": "c54cd32f-7262-4466-83df-ec3a5aa18540",
+      "id": "48d5006b-5bcd-4154-bda9-6b6138e28a58",
       "name": "Build Inbound Message Row",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2608,
-        848
+        1008,
+        432
       ]
     },
     {
@@ -2328,13 +1918,13 @@
         },
         "options": {}
       },
-      "id": "8152f482-d3e1-4dc7-8551-c88f50287db7",
+      "id": "abea501c-8f45-4f3b-9d13-ccf31a35ef41",
       "name": "Get Workflow Registry",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        208,
-        528
+        608,
+        0
       ],
       "credentials": {
         "httpCustomAuth": {
@@ -2348,13 +1938,13 @@
       "parameters": {
         "jsCode": "const rows = $input.all().map((i) => i.json).filter(Boolean);\n\n// Central n8n workflow registry (Admin -> Settings -> System). Failure-safe:\n// if the read errored or a key is missing, the value stays \"\" and the\n// Execute Workflow node degrades via its own onError handler.\nconst m = {\n  ai_agent_core_workflow_id: \"\",\n  inbound_media_core_workflow_id: \"\"\n};\n\nfor (const r of rows) {\n  if (r && typeof r.key === \"string\" && Object.prototype.hasOwnProperty.call(m, r.key)) {\n    m[r.key] = typeof r.value === \"string\" ? r.value.trim() : \"\";\n  }\n}\n\nreturn [{ json: m }];"
       },
-      "id": "ca8e3ee5-d0b6-4bda-9f5b-b7ad6c840535",
+      "id": "3c1ef037-44f6-4fdf-9ae1-1c7a4eaccbc7",
       "name": "Parse Workflow Registry",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        400,
-        528
+        816,
+        0
       ]
     },
     {
@@ -2368,7 +1958,7 @@
           },
           "conditions": [
             {
-              "id": "7d98b17d-d910-43ac-b553-5e58db433f50",
+              "id": "c3a8b2d5-1f4e-4b7c-9d2a-6e8f3b5c7d91",
               "leftValue": "={{ ($items(\"Code in JavaScript1\", 0, 0)[0].json.has_media === true) && (String($items(\"Code in JavaScript1\", 0, 0)[0].json.text || \"\").trim().length === 0) }}",
               "rightValue": "",
               "operator": {
@@ -2382,130 +1972,26 @@
         },
         "options": {}
       },
-      "id": "9311c4e8-4913-40ec-ad4a-30149410c0e7",
+      "id": "49bfce55-dfce-4fdb-8f1c-731c7bfc71e6",
       "name": "If Media Only Stop",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        3248,
-        816
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{'https://n8n-production-fcd4.up.railway.app/webhook/751ecf29-1acd-43b7-8c80-bd8f9929f656/inbound/instagram/' + $json.body.entry[0].messaging[0].recipient.id}}",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{$json.body}}",
-        "options": {}
-      },
-      "id": "8f61839d-3a03-4f37-af79-17ce373e77ef",
-      "name": "HTTP Request - instagram",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        432,
+        1408,
         256
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "=https://graph.instagram.com/v25.0/{{$node[\"client_feature\"].json[\"config\"][\"instagram_account_id\"]}}/messages",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{$node[\"client_feature\"].json[\"config\"][\"page_access_token\"]}}"
-            }
-          ]
-        },
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "recipient.id",
-              "value": "={{$node[\"prepare_conversation\"].json[\"sender_id\"]}}"
-            },
-            {
-              "name": "message.text",
-              "value": "={{$node[\"prepare_conversation\"].json[\"welcome_message\"]}}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "a0608bbc-7aaf-4ea5-abd3-62457ee08751",
-      "name": "Send Welcome Instagram",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        4080,
-        1232
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "=https://graph.instagram.com/v25.0/{{$node[\"client_feature\"].json[\"config\"][\"instagram_account_id\"]}}/messages",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{$node[\"client_feature\"].json[\"config\"][\"page_access_token\"]}}"
-            }
-          ]
-        },
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "recipient.id",
-              "value": "={{$node[\"state_payload\"].json[\"sender_id\"]}}"
-            },
-            {
-              "name": "message.text",
-              "value": "={{$node[\"state_payload\"].json[\"message\"][\"text\"]}}"
-            },
-            {
-              "name": "message.quick_replies",
-              "value": "={{$node[\"state_payload\"].json[\"message\"][\"quick_replies\"]}}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "d443f1f9-56e6-48da-b913-b8f78e560c3e",
-      "name": "send auto reply Instagram Graph API",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        7952,
-        1584
       ]
     },
     {
       "parameters": {
         "jsCode": "// Deterministic closing-confirm gate.\n// Runs right after the human hard-stop and BEFORE Welcome / Reply Mode /\n// AI processing, and ONLY acts when the conversation is already at\n// current_step === \"closing_confirm\". Emits exactly one of:\n//   confirm     -> customer confirmed -> close deterministically (no AI)\n//   continue    -> customer declined / \"keep going\" -> clear the step (no AI)\n//   substantive -> a real message during closing_confirm -> normal AI path\n//   normal      -> not at closing_confirm -> normal path, untouched\n// Matching is CONSERVATIVE: the whole normalized message must consist only\n// of a small approved affirmative/negative/sign-off vocabulary. No\n// substring test, no AI classification.\nconst prep = $items(\"prepare_conversation\", 0, 0)[0].json || {};\nconst base = $items(\"Code in JavaScript1\", 0, 0)[0].json || {};\n\nconst step = prep.current_step || null;\nconst payload = prep.quick_reply_payload || base.quick_reply_payload || null;\n\nif (step !== \"closing_confirm\") {\n  return [{ json: { decision: \"normal\" } }];\n}\n\nconst CONTINUE_REPLY = {\n  decision: \"continue\",\n  reply: \"تمام 👍 كمّل رسالتك.\",\n  conversation_status: \"active\",\n  current_step: null,\n  intent: \"unknown\",\n  action: null,\n  reply_source: \"system\",\n  reply_from: \"system\",\n  quick_replies: []\n};\n\n// Quick-reply button payloads are unambiguous.\nif (payload === \"CLOSE_CONVERSATION\") {\n  return [{ json: { decision: \"confirm\", _cc: \"payload\" } }];\n}\nif (payload === \"CONTINUE_CONVERSATION\") {\n  return [{ json: { ...CONTINUE_REPLY, _cc: \"payload\" } }];\n}\n\nconst norm = String(base.text || \"\")\n  .toLowerCase()\n  .replace(/\\u0640/g, \"\")\n  .replace(/[\\u064B-\\u0652\\u0670]/g, \"\")\n  .replace(/[إأآ]/g, \"ا\")\n  .replace(/ى/g, \"ي\")\n  .replace(/ة/g, \"ه\")\n  .replace(/ؤ/g, \"و\")\n  .replace(/ئ/g, \"ي\")\n  .replace(/[^\\p{L}\\p{N}\\s]/gu, \" \")\n  .replace(/\\s+/g, \" \")\n  .trim();\n\nconst tokens = norm ? norm.split(\" \") : [];\n\nconst AFFIRM = new Set([\n  \"نعم\",\"ايه\",\"اه\",\"ايوه\",\"ايوا\",\"اجل\",\"اكيد\",\"موافق\",\"جاهز\",\"تمام\",\"تم\",\n  \"خلص\",\"ماشي\",\"حاضر\",\"اوك\",\"اوكي\",\"اوكيه\",\n  \"yes\",\"yeah\",\"yep\",\"yup\",\"ok\",\"okay\",\"sure\",\"done\"\n]);\nconst NEGATE = new Set([\n  \"لا\",\"كمل\",\"كملي\",\"استني\",\"استنا\",\"انتظر\",\"لحظه\",\"دقيقه\",\"بعدين\",\"مش\",\"لسه\",\"لسا\",\n  \"no\",\"wait\",\"later\",\"not\"\n]);\nconst FILLER = new Set([\n  \"شكرا\",\"مشكور\",\"مشكوره\",\"تسلم\",\"تسلمو\",\"يسلمو\",\"يعطيك\",\"العافيه\",\"الله\",\n  \"المحادثه\",\"المحادثة\",\"الحديث\",\"حبيبي\",\"اخي\",\"استاذ\",\n  \"thanks\",\"thank\",\"you\",\"the\",\"chat\",\"please\"\n]);\n\nif (tokens.length === 0 || tokens.length > 5) {\n  return [{ json: { decision: \"substantive\", _cc: \"len\" } }];\n}\n\nconst hasAffirm = tokens.some((t) => AFFIRM.has(t));\nconst hasNegate = tokens.some((t) => NEGATE.has(t));\nconst allKnown = tokens.every((t) => AFFIRM.has(t) || NEGATE.has(t) || FILLER.has(t));\n\nif (allKnown && hasAffirm && !hasNegate) {\n  return [{ json: { decision: \"confirm\", _cc: \"typed\" } }];\n}\nif (allKnown && hasNegate && !hasAffirm) {\n  return [{ json: { ...CONTINUE_REPLY, _cc: \"typed\" } }];\n}\n\nreturn [{ json: { decision: \"substantive\", _cc: \"mixed\" } }];"
       },
-      "id": "a7f1c2d3-e4b5-4c6d-8e9f-0a1b2c3d4e01",
+      "id": "b8e2d3c4-f5a6-4b7c-9d8e-1f2a3b4c5d01",
       "name": "closing_confirm_gate",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3600,
-        1180
+        2208,
+        256
       ]
     },
     {
@@ -2589,13 +2075,13 @@
         },
         "options": {}
       },
-      "id": "a7f1c2d3-e4b5-4c6d-8e9f-0a1b2c3d4e02",
+      "id": "b8e2d3c4-f5a6-4b7c-9d8e-1f2a3b4c5d02",
       "name": "closing_confirm_switch",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
       "position": [
-        3800,
-        1180
+        2416,
+        256
       ]
     },
     {
@@ -2622,13 +2108,13 @@
         "jsonBody": "={\n  \"action\": \"close_conversation\",\n  \"conversation_id\": \"{{ $node[\"prepare_conversation\"].json[\"conversation_id\"] }}\",\n  \"confirmed\": true\n}",
         "options": {}
       },
-      "id": "a7f1c2d3-e4b5-4c6d-8e9f-0a1b2c3d4e03",
+      "id": "b8e2d3c4-f5a6-4b7c-9d8e-1f2a3b4c5d03",
       "name": "closing_confirm_close",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3800,
-        1320
+        2416,
+        400
       ],
       "credentials": {
         "httpHeaderAuth": {
@@ -2641,13 +2127,13 @@
       "parameters": {
         "jsCode": "// Deterministic close confirmed. The lifecycle write already happened in\n// closing_confirm_close (POST /api/ai-tools close_conversation confirmed:true\n// -> waiting_human + closing_confirmed). This only carries a warm closing\n// reply into the existing send pipeline (merge_for_state -> state_payload\n// -> sync_conversation_v2 -> ... -> send -> insert auto reply). reply_from\n// \"system\" so update_usage consumes no AI/auto quota. quick_replies [] so\n// state_payload attaches no buttons.\nreturn [{\n  json: {\n    reply: \"تمام، شكراً لتواصلك معنا 🙏 سعدنا بخدمتك، وإحنا موجودين إذا احتجت أي شي.\",\n    conversation_status: \"waiting_human\",\n    current_step: \"closing_confirmed\",\n    intent: \"closing\",\n    action: \"close_confirmed\",\n    reply_source: \"system\",\n    reply_from: \"system\",\n    quick_replies: []\n  }\n}];"
       },
-      "id": "a7f1c2d3-e4b5-4c6d-8e9f-0a1b2c3d4e04",
+      "id": "b8e2d3c4-f5a6-4b7c-9d8e-1f2a3b4c5d04",
       "name": "closing_confirm_close_reply",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4000,
-        1320
+        2624,
+        400
       ]
     },
     {
@@ -2671,18 +2157,18 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"action\": \"enrich_contact\",\n  \"channel_identity_id\": \"{{ $node[\"prepare_conversation\"].json[\"channel_identity_id\"] }}\",\n  \"sender_id\": \"{{ $node[\"prepare_conversation\"].json[\"sender_id\"] }}\",\n  \"platform\": \"{{ $node[\"prepare_conversation\"].json[\"platform\"] }}\",\n  \"is_new_conversation\": {{ $node[\"prepare_conversation\"].json[\"is_new_conversation\"] }},\n  \"webhook_name\": {{ JSON.stringify($node[\"Code in JavaScript1\"].json[\"sender_name\"] || \"\") }}\n}",
+        "jsonBody": "={\n  \"action\": \"enrich_contact\",\n  \"channel_identity_id\": \"{{ $node[\"prepare_conversation\"].json[\"channel_identity_id\"] }}\",\n  \"sender_id\": \"{{ $node[\"prepare_conversation\"].json[\"sender_id\"] }}\",\n  \"platform\": \"whatsapp\",\n  \"is_new_conversation\": {{ $node[\"prepare_conversation\"].json[\"is_new_conversation\"] }},\n  \"webhook_name\": {{ JSON.stringify($node[\"Code in JavaScript1\"].json[\"sender_name\"] || \"\") }}\n}",
         "options": {
           "timeout": 4000
         }
       },
-      "id": "e1c0a2b4-5d6e-4f70-8a91-c0ffee0e0001",
+      "id": "e1c0a2b4-5d6e-4f70-8a91-c0ffee0e0002",
       "name": "enrich_contact_name",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2016,
-        336
+        2416,
+        -176
       ],
       "credentials": {
         "httpHeaderAuth": {
@@ -2723,28 +2209,6 @@
         [
           {
             "node": "If Media Only Stop",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "send auto reply Telegram": {
-      "main": [
-        [
-          {
-            "node": "insert auto reply",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "send auto reply Facebook Graph API": {
-      "main": [
-        [
-          {
-            "node": "insert auto reply",
             "type": "main",
             "index": 0
           }
@@ -2806,28 +2270,6 @@
         ]
       ]
     },
-    "facebook-webhook (POST)": {
-      "main": [
-        [
-          {
-            "node": "Switch",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Webhook GET": {
-      "main": [
-        [
-          {
-            "node": "Respond to Webhook1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "If plan_supports_ai": {
       "main": [
         [
@@ -2850,7 +2292,7 @@
       "main": [
         [
           {
-            "node": "platform",
+            "node": "Get WhatsApp Number Send",
             "type": "main",
             "index": 0
           }
@@ -3107,62 +2549,33 @@
         ]
       ]
     },
-    "Switch": {
+    "Get WhatsApp Number Send": {
       "main": [
         [
           {
-            "node": "If",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "HTTP Request",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "HTTP Request - instagram",
+            "node": "Get WhatsApp Server Send",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "platform": {
+    "Get WhatsApp Server Send": {
       "main": [
         [
           {
-            "node": "send auto reply Telegram",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [],
-        [
-          {
-            "node": "send auto reply Facebook Graph API",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "send auto reply Instagram Graph API",
+            "node": "send auto reply Evolution",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "If": {
+    "send auto reply Evolution": {
       "main": [
         [
           {
-            "node": "HTTP Request - whatsapp",
+            "node": "insert auto reply",
             "type": "main",
             "index": 0
           }
@@ -3224,6 +2637,17 @@
         ]
       ]
     },
+    "reset_legacy_state_if_needed": {
+      "main": [
+        [
+          {
+            "node": "upsert_conversation_state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "needs_legacy_reset": {
       "main": [
         [
@@ -3242,11 +2666,33 @@
         ]
       ]
     },
-    "reset_legacy_state_if_needed": {
+    "Prepare AI Core Input": {
       "main": [
         [
           {
-            "node": "upsert_conversation_state",
+            "node": "Execute Sub-workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "normalize_core_result": {
+      "main": [
+        [
+          {
+            "node": "merge_for_state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Sub-workflow": {
+      "main": [
+        [
+          {
+            "node": "normalize_core_result",
             "type": "main",
             "index": 0
           }
@@ -3278,44 +2724,11 @@
         ]
       ]
     },
-    "Prepare AI Core Input": {
-      "main": [
-        [
-          {
-            "node": "Execute Sub-workflow",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Execute Sub-workflow": {
-      "main": [
-        [
-          {
-            "node": "normalize_core_result",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "normalize_core_result": {
-      "main": [
-        [
-          {
-            "node": "merge_for_state",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Welcome Gate": {
       "main": [
         [
           {
-            "node": "Welcome Platform Switch",
+            "node": "WA Welcome Get Number",
             "type": "main",
             "index": 0
           }
@@ -3329,61 +2742,29 @@
         ]
       ]
     },
-    "Welcome Platform Switch": {
+    "WA Welcome Get Number": {
       "main": [
         [
           {
-            "node": "Send Welcome Telegram",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Send Welcome WhatsApp",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Send Welcome Facebook",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Send Welcome Instagram",
+            "node": "WA Welcome Get Server",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Send Welcome Telegram": {
+    "WA Welcome Get Server": {
       "main": [
         [
           {
-            "node": "Insert Welcome Message",
+            "node": "Send Welcome (Evolution)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Send Welcome WhatsApp": {
-      "main": [
-        [
-          {
-            "node": "Insert Welcome Message",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Send Welcome Facebook": {
+    "Send Welcome (Evolution)": {
       "main": [
         [
           {
@@ -3409,7 +2790,7 @@
       "main": [
         [
           {
-            "node": "Prepare Media Core Input",
+            "node": "Inbound Media - Get WA Number",
             "type": "main",
             "index": 0
           }
@@ -3417,6 +2798,28 @@
         [
           {
             "node": "No Inbound Media",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Inbound Media - Get WA Number": {
+      "main": [
+        [
+          {
+            "node": "Inbound Media - Get WA Server",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Inbound Media - Get WA Server": {
+      "main": [
+        [
+          {
+            "node": "Prepare Media Core Input",
             "type": "main",
             "index": 0
           }
@@ -3500,28 +2903,6 @@
           }
         ]
       ]
-    },
-    "Send Welcome Instagram": {
-      "main": [
-        [
-          {
-            "node": "Insert Welcome Message",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "send auto reply Instagram Graph API": {
-      "main": [
-        [
-          {
-            "node": "insert auto reply",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
     }
   },
   "active": true,
@@ -3529,10 +2910,10 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "e5d6fe40-fa34-4d8a-9f09-3dc94e41c6c7",
+  "versionId": "32bd23da-fcbe-4236-a82b-787e5463039b",
   "meta": {
     "instanceId": "24db91edc562a2f32cf7ac569571eca79e1b048807c8a90e363dcb06af59148c"
   },
-  "id": "eVarHSHTmlgQx0UG",
+  "id": "krFP3H8fuhQkZa9I",
   "tags": []
 }

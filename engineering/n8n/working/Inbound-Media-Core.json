@@ -17,13 +17,22 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://jawabai.vercel.app/api/media",
+        "url": "={{ $env.APP_API_BASE_URL }}/api/media",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({\n  action: \"sign_inbound_upload\",\n  conversation_id: $json.conversation_id,\n  message_type: $json.message_type,\n  file_name: $json.provider_file_name || ($json.message_type + \"_file\"),\n  mime_type: $json.provider_mime || ($json.message_type === \"image\" ? \"image/jpeg\" : $json.message_type === \"audio\" ? \"audio/ogg\" : \"application/octet-stream\"),\n  size_bytes: Number($json.provider_size_bytes) || 0\n}) }}",
-        "options": {}
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-vercel-protection-bypass",
+              "value": "={{ $env.VERCEL_PROTECTION_BYPASS }}"
+            }
+          ]
+        }
       },
       "id": "7f75bb52-7c64-4dfb-a2eb-fad3611e1f07",
       "name": "Sign Upload",

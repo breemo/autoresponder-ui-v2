@@ -1,0 +1,879 @@
+{
+  "name": "AI-Agent-Core",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "b9295567-0ff5-4c14-9048-60f81944346f",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1072,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.APP_API_BASE_URL }}/api/ai-context",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"conversation_id\": \"{{ $json.conversation_id }}\",\n  \"client_id\": \"{{ $json.client_id }}\",\n  \"current_message_text\": {{ JSON.stringify($json.current_message) }}\n}",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-vercel-protection-bypass",
+              "value": "={{ $env.VERCEL_PROTECTION_BYPASS }}"
+            }
+          ]
+        }
+      },
+      "id": "683d13ee-7cb5-4efd-a8c7-eea25630780b",
+      "name": "Get AI Context",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -880,
+        192
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SP9fXNhKXWE7oiXK",
+          "name": "AI Context Secret"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const triggerItems = $items(\"When Executed by Another Workflow\", 0, 0);\n\nif (!triggerItems || !triggerItems.length) {\n  throw new Error(\"Missing input from When Executed by Another Workflow\");\n}\n\nconst trigger = triggerItems[0].json || {};\nconst ctx = $json || {};\n\nconst messages = Array.isArray(ctx.messages) ? ctx.messages : [];\n\nlet baseSystem =\n  \"You are the customer support and sales assistant for this business. Be helpful, accurate, and speak as the business.\";\n\nconst contextOk =\n  messages.length > 0 &&\n  messages[0] &&\n  typeof messages[0].content === \"string\" &&\n  messages[0].content.trim().length > 0;\n\nif (contextOk) {\n  baseSystem = messages[0].content;\n}\n\nconst customerTurns = messages\n  .slice(1)\n  .filter(\n    (m) =>\n      m &&\n      m.role === \"user\" &&\n      typeof m.content === \"string\" &&\n      m.content.trim()\n  )\n  .map((m) => m.content);\n\nconst currentMessage =\n  typeof trigger.current_message === \"string\"\n    ? trigger.current_message\n    : \"\";\n\nconst currentStep = trigger.current_step || null;\n\nconst operatingRules = [\n  \"\",\n  \"## How you operate\",\n  \"- You have tools. Use get_business_facts for ANY question about branches, locations, address, phone, or working hours. Use search_business_knowledge for ANY question about products, menu, prices, services, policies, offers, or how things work.\",\n  \"- The \\\"RELEVANT KNOWLEDGE BASE EXCERPTS\\\" section in the context above is THIS turn's authoritative lookup for products, services, prices, durations, policies, offers and availability. If an excerpt there directly answers the customer's question, answer ONLY from it and add NO detail (quantity, weight, size, portion, ingredient, material, type/species, variant, option, etc.) that is not written there. If that section is missing or does not cover the question, call search_business_knowledge ONCE with the question rephrased as a sharper search query. If that search still returns nothing, tell the customer that detail is not confirmed and offer to check with / connect them to the team. Never answer these factual topics from general knowledge or from memory. (Location, working hours and phone still come from get_business_facts - unchanged, and never guess there either, and never say we do not have X when you simply do not know.)\",\n  \"- get_business_facts returns locations_guidance. Obey it exactly. If the location list is not confirmed complete, an unlisted location is UNKNOWN - never say our only branch is X.\",\n  \"- Customer wants a human, or an unresolved complaint -> request_human_handover. Customer gives a name or phone -> save_lead. Customer wants to order -> start_order, then gather items and contact info, then save_lead and request_human_handover so a teammate finalizes it. Customer is done -> close_conversation with confirmed false; the system will ask them to confirm.\",\n  \"- Booking requests, and requests to be sent a file or menu image: answer helpfully with what you have and offer to connect them with the team. Do not invent a booking. Do not claim a file was sent.\",\n  \"- Reply in the customer language (Arabic, Palestinian-Levantine colloquial, English, or mixed). Speak AS the business (we, our). Never mention tools, steps, or that you are an AI.\",\n  \"- Ask at most ONE short clarifying question, and only when genuinely ambiguous.\",\n  \"- End every reply with a new line exactly: #intent: <one of greeting|knowledge|price|order|booking|asset_request|support|complaint|human_request|lead|closing|unknown>\"\n].join(\"\\n\");\n\nconst historyBlock = customerTurns.length\n  ? [\n      \"\",\n      \"## Conversation so far (the customer's previous messages only)\",\n      ...customerTurns.map((t) => \"- \" + t)\n    ]\n  : [];\n\nconst stepHint = currentStep\n  ? [\n      \"\",\n      \"## Current step: \" +\n        currentStep +\n        (\n          currentStep === \"waiting_for_contact\"\n            ? \" - the customer was asked for their name and phone; if this message contains them, call save_lead.\"\n            : \"\"\n        )\n    ]\n  : [];\n\nconst degradedBlock = contextOk\n  ? []\n  : [\n      \"\",\n      \"## Business context unavailable this turn\",\n      \"- The authoritative business profile and knowledge base could not be loaded.\",\n      \"- Do NOT state any specific price, product detail, branch, address, or opening time.\",\n      \"- Use your tools; if a tool cannot answer, tell the customer you will check with the team and follow up. Never guess.\"\n    ];\n\nreturn [\n  {\n    json: {\n      conversation_id: trigger.conversation_id || null,\n      message_id: trigger.message_id || null,\n      channel: trigger.channel || null,\n      current_message: currentMessage,\n      context_ok: contextOk,\n      system_message: [\n        baseSystem,\n        operatingRules,\n        ...degradedBlock,\n        ...historyBlock,\n        ...stepHint\n      ].join(\"\\n\")\n    }\n  }\n];"
+      },
+      "id": "8b76a7ed-80c9-46e3-adee-07d83675998b",
+      "name": "Prepare Agent Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.current_message }}",
+        "options": {
+          "systemMessage": "={{ $json.system_message }}",
+          "maxIterations": 5,
+          "returnIntermediateSteps": true
+        }
+      },
+      "id": "be50e442-bdc5-4e0f-ba77-a86e8425ddc2",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -96,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {
+          "temperature": 0.35,
+          "maxTokens": 600
+        }
+      },
+      "id": "13b97866-6117-4544-94e1-09e57f9b5a89",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -592,
+        752
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "afovqICsLxuNejmu",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Search the business knowledge base (menu, price lists, brochures, services, FAQ, policies) for information needed to answer the customer. Call this for any question about what the business offers, prices, how something works, or policies. Returns short text excerpts.",
+        "method": "POST",
+        "url": "={{ $env.APP_API_BASE_URL }}/api/ai-tools",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"action\": \"search_knowledge\",\n  \"conversation_id\": \"{{ $('When Executed by Another Workflow').item.json.conversation_id }}\",\n  \"query\": {{ JSON.stringify($fromAI(\"query\", \"the customer question, rephrased as a concise search query\", \"string\")) }}\n}",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-vercel-protection-bypass",
+              "value": "={{ $env.VERCEL_PROTECTION_BYPASS }}"
+            }
+          ]
+        }
+      },
+      "id": "8a6958fb-69d2-4387-add3-0d0146bb8551",
+      "name": "search_business_knowledge",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        -144,
+        752
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TBATq3Dn0WwGFqLu",
+          "name": "AI Tools Secret"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Get the authoritative current business profile and the list of physical branches/locations, with explicit guidance (locations_guidance) on whether that list is complete. Call this before answering anything about branches, locations, address, phone number, or working hours.",
+        "method": "POST",
+        "url": "={{ $env.APP_API_BASE_URL }}/api/ai-tools",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"action\": \"get_business_facts\",\n  \"conversation_id\": \"{{ $('When Executed by Another Workflow').item.json.conversation_id }}\"\n}",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-vercel-protection-bypass",
+              "value": "={{ $env.VERCEL_PROTECTION_BYPASS }}"
+            }
+          ]
+        }
+      },
+      "id": "24007740-78ae-402e-b8d0-3b61a0b46a64",
+      "name": "get_business_facts",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        624,
+        752
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TBATq3Dn0WwGFqLu",
+          "name": "AI Tools Secret"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Hand this conversation to the human team. Use when the customer explicitly asks for a person, is upset or has a complaint you cannot resolve, or an order is ready for a human to finalize. After calling, tell the customer a teammate will follow up soon (no specific time).",
+        "method": "POST",
+        "url": "={{ $env.APP_API_BASE_URL }}/api/ai-tools",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"action\": \"request_handover\",\n  \"conversation_id\": \"{{ $('When Executed by Another Workflow').item.json.conversation_id }}\",\n  \"reason\": {{ JSON.stringify($fromAI(\"reason\", \"short reason for the handover\", \"string\")) }}\n}",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-vercel-protection-bypass",
+              "value": "={{ $env.VERCEL_PROTECTION_BYPASS }}"
+            }
+          ]
+        }
+      },
+      "id": "17b348c8-a61a-4bd0-ab5c-d0fec8b13df9",
+      "name": "request_human_handover",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        816,
+        752
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TBATq3Dn0WwGFqLu",
+          "name": "AI Tools Secret"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Save the customer contact details when they provide them. Pass whatever you have. Returns whether name and phone are now both on file or which is still missing.",
+        "method": "POST",
+        "url": "={{ $env.APP_API_BASE_URL }}/api/ai-tools",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"action\": \"upsert_lead\",\n  \"conversation_id\": \"{{ $('When Executed by Another Workflow').item.json.conversation_id }}\",\n  \"name\": {{ JSON.stringify($fromAI(\"name\", \"customer name if given\", \"string\")) }},\n  \"phone\": {{ JSON.stringify($fromAI(\"phone\", \"customer phone if given\", \"string\")) }},\n  \"notes\": {{ JSON.stringify($fromAI(\"notes\", \"any useful lead note\", \"string\")) }}\n}",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-vercel-protection-bypass",
+              "value": "={{ $env.VERCEL_PROTECTION_BYPASS }}"
+            }
+          ]
+        }
+      },
+      "id": "a1abfb19-e7bb-4739-81ee-2217aa7e7b93",
+      "name": "save_lead",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        1008,
+        752
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TBATq3Dn0WwGFqLu",
+          "name": "AI Tools Secret"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Begin taking an order when the customer wants to order. Then collect items, quantities, and any delivery detail conversationally. Order capture is conversational only - a teammate finalizes it, so also call save_lead and then request_human_handover once you have the items and the customer contact info.",
+        "method": "POST",
+        "url": "={{ $env.APP_API_BASE_URL }}/api/ai-tools",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"action\": \"start_order\",\n  \"conversation_id\": \"{{ $('When Executed by Another Workflow').item.json.conversation_id }}\",\n  \"items_summary\": {{ JSON.stringify($fromAI(\"items_summary\", \"what the customer wants so far\", \"string\")) }}\n}",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-vercel-protection-bypass",
+              "value": "={{ $env.VERCEL_PROTECTION_BYPASS }}"
+            }
+          ]
+        }
+      },
+      "id": "98eaff82-6887-4d1f-8f26-a875a7edcc66",
+      "name": "start_order",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        48,
+        752
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TBATq3Dn0WwGFqLu",
+          "name": "AI Tools Secret"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Add more items or details to an order that is already in progress.",
+        "method": "POST",
+        "url": "={{ $env.APP_API_BASE_URL }}/api/ai-tools",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"action\": \"continue_order\",\n  \"conversation_id\": \"{{ $('When Executed by Another Workflow').item.json.conversation_id }}\",\n  \"items_summary\": {{ JSON.stringify($fromAI(\"items_summary\", \"updated list of items\", \"string\")) }},\n  \"customer_note\": {{ JSON.stringify($fromAI(\"customer_note\", \"any note from the customer\", \"string\")) }}\n}",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-vercel-protection-bypass",
+              "value": "={{ $env.VERCEL_PROTECTION_BYPASS }}"
+            }
+          ]
+        }
+      },
+      "id": "b81dd593-037f-4e59-8823-3ace4d1615b2",
+      "name": "continue_order",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        240,
+        752
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TBATq3Dn0WwGFqLu",
+          "name": "AI Tools Secret"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use when the customer signals they are finished (for example thanks, that is all). Call with confirmed set to false - the system will show the customer a confirm or continue choice. Do not end the conversation yourself.",
+        "method": "POST",
+        "url": "={{ $env.APP_API_BASE_URL }}/api/ai-tools",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"action\": \"close_conversation\",\n  \"conversation_id\": \"{{ $('When Executed by Another Workflow').item.json.conversation_id }}\",\n  \"confirmed\": {{ JSON.stringify($fromAI(\"confirmed\", \"whether the customer explicitly confirmed they are done; default false\", \"boolean\")) }}\n}",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-vercel-protection-bypass",
+              "value": "={{ $env.VERCEL_PROTECTION_BYPASS }}"
+            }
+          ]
+        }
+      },
+      "id": "511b0b79-61f2-474d-95e8-6661ed4802b7",
+      "name": "close_conversation",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        432,
+        752
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TBATq3Dn0WwGFqLu",
+          "name": "AI Tools Secret"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const agent = $json || {};\n\nconst triggerItems = $items(\"When Executed by Another Workflow\", 0, 0);\nconst trigger =\n  triggerItems && triggerItems.length\n    ? (triggerItems[0].json || {})\n    : {};\n\n// --------------------------------------------------\n// Extract reply\n// --------------------------------------------------\n\nlet raw = \"\";\n\nif (agent.output !== undefined && agent.output !== null) {\n  raw = agent.output;\n} else if (agent.text !== undefined && agent.text !== null) {\n  raw = agent.text;\n} else if (agent.response !== undefined && agent.response !== null) {\n  raw = agent.response;\n}\n\nif (typeof raw === \"object\") {\n  try {\n    raw = JSON.stringify(raw);\n  } catch (e) {\n    raw = \"\";\n  }\n}\n\nconst text = String(raw || \"\").trim();\n\n// --------------------------------------------------\n// Extract intent marker  (QW4 — hardened)\n//   * use the LAST \"#intent:\" occurrence in the reply\n//   * tolerate ANY trailing text after it (punctuation, emoji, a stray\n//     extra line) — the marker and everything after it is removed\n//   * map a few near-miss synonyms the model still emits from an older\n//     instruction list back onto the 12-value taxonomy\n// --------------------------------------------------\n\nconst INTENT_MARKER = /#intent:\\s*([a-z_]+)/gi;\n\nlet lastMatch = null;\nfor (const m of text.matchAll(INTENT_MARKER)) {\n  lastMatch = m;\n}\n\nlet modelIntent = lastMatch ? String(lastMatch[1]).toLowerCase() : \"unknown\";\n\n// Cut everything from the FIRST surviving \"#intent:\" token to the end, so\n// an earlier stray marker (before the last one) is removed from the reply\n// too — never shown to the customer.\nlet reply = (lastMatch ? text.slice(0, lastMatch.index) : text)\n  .replace(/#intent:[\\s\\S]*$/i, \"\")\n  .trim();\n\nconst INTENT_ALIASES = {\n  pricing: \"price\",\n  prices: \"price\",\n  knowledge_base: \"knowledge\"\n};\nif (INTENT_ALIASES[modelIntent]) {\n  modelIntent = INTENT_ALIASES[modelIntent];\n}\n\nconst TAXONOMY = [\n  \"greeting\",\n  \"knowledge\",\n  \"price\",\n  \"order\",\n  \"booking\",\n  \"asset_request\",\n  \"support\",\n  \"complaint\",\n  \"human_request\",\n  \"lead\",\n  \"closing\",\n  \"unknown\"\n];\n\nif (!TAXONOMY.includes(modelIntent)) {\n  modelIntent = \"unknown\";\n}\n\n// --------------------------------------------------\n// Read tool executions\n// --------------------------------------------------\n\nconst steps = Array.isArray(agent.intermediateSteps)\n  ? agent.intermediateSteps\n  : [];\n\nconst toolsUsed = steps\n  .map((step) => {\n    if (step?.action?.tool) {\n      return step.action.tool;\n    }\n\n    if (step?.tool) {\n      return step.tool;\n    }\n\n    return null;\n  })\n  .filter(Boolean);\n\n// --------------------------------------------------\n// Deterministic intent/action from executed tools\n// --------------------------------------------------\n\nlet action = null;\nlet deterministicIntent = null;\n\nif (toolsUsed.includes(\"request_human_handover\")) {\n  action = \"human_handover\";\n  deterministicIntent = \"human_request\";\n}\nelse if (toolsUsed.includes(\"close_conversation\")) {\n  action = \"close_needs_confirmation\";\n  deterministicIntent = \"closing\";\n}\nelse if (toolsUsed.includes(\"save_lead\")) {\n  action = \"lead_saved\";\n  deterministicIntent = \"lead\";\n}\nelse if (\n  toolsUsed.includes(\"start_order\") ||\n  toolsUsed.includes(\"continue_order\")\n) {\n  action = \"order_in_progress\";\n  deterministicIntent = \"order\";\n}\n\n// --------------------------------------------------\n// Resolve final intent\n// --------------------------------------------------\n\nlet finalIntent = deterministicIntent || modelIntent;\n\n// Business facts tool was used but model returned unknown\nif (\n  finalIntent === \"unknown\" &&\n  toolsUsed.includes(\"get_business_facts\")\n) {\n  finalIntent = \"knowledge\";\n}\n\n// Knowledge tool was used but model returned unknown\nif (\n  finalIntent === \"unknown\" &&\n  toolsUsed.includes(\"search_business_knowledge\")\n) {\n  finalIntent = \"knowledge\";\n}\n\n// Preserve price classification when knowledge search was used\nif (\n  modelIntent === \"price\"\n) {\n  finalIntent = \"price\";\n}\n\n// --------------------------------------------------\n// Deterministic keyword fallback (NO extra LLM call).\n// Only runs when nothing else resolved an intent: the model emitted no\n// usable #intent marker AND no executed tool implied one. Never overrides\n// a valid model- or tool-derived intent.\n// --------------------------------------------------\n\nif (finalIntent === \"unknown\") {\n  const cust = String(trigger.current_message || \"\").toLowerCase();\n\n  const matchAny = (arr) =>\n    arr.some((k) => {\n      if (/[a-z]/i.test(k)) {\n        const esc = k.replace(/[.*+?^${}()|[\\]\\\\]/g, \"\\\\$&\");\n        return new RegExp(\"(^|[^a-z])\" + esc + \"([^a-z]|$)\", \"i\").test(cust);\n      }\n      return cust.indexOf(k) !== -1;\n    });\n\n  const KW_HUMAN = [\n    \"موظف\", \"مندوب\", \"خدمة العملاء\", \"خدمه العملاء\",\n    \"حد حقيقي\", \"حدا حقيقي\", \"بشر\", \"ادمي\", \"آدمي\",\n    \"بدي احكي\", \"بدي أحكي\", \"احكي مع حدا\", \"أحكي مع حدا\",\n    \"اتواصل مع حدا\", \"اكلم حدا\", \"أكلم حدا\",\n    \"representative\", \"agent\", \"human\", \"real person\", \"customer service\",\n    \"talk to someone\", \"talk to a person\", \"speak to someone\", \"speak to a person\"\n  ];\n  const KW_PRICE = [\n    \"سعر\", \"اسعار\", \"أسعار\", \"بكم\", \"بقديش\", \"قديش\", \"كم سعر\",\n    \"التكلفة\", \"التكلفه\", \"كلفة\", \"كلفه\",\n    \"price\", \"prices\", \"pricing\", \"cost\", \"how much\", \"rate\", \"rates\", \"quote\"\n  ];\n  const KW_KNOW = [\n    \"وين\", \"فين\", \"موقع\", \"موقعكم\", \"لوكيشن\", \"فرع\", \"فروع\",\n    \"عنوان\", \"عنوانكم\", \"دوام\", \"الدوام\", \"اوقات\", \"أوقات\",\n    \"ساعات العمل\", \"متى تفتح\", \"متى بتفتح\", \"متى بتسكر\",\n    \"بتفتحو\", \"بتسكرو\", \"امتى بتفتح\",\n    \"location\", \"address\", \"where are you\", \"where is\", \"branch\", \"branches\",\n    \"working hours\", \"opening hours\", \"open today\", \"what time\", \"hours\"\n  ];\n  const KW_GREET = [\n    \"مرحبا\", \"مرحبتين\", \"السلام عليكم\", \"اهلا\", \"أهلا\", \"هاي\",\n    \"هلا\", \"هلو\", \"صباح الخير\", \"مساء الخير\", \"كيفك\",\n    \"hi\", \"hello\", \"hey\", \"good morning\", \"good evening\", \"good afternoon\"\n  ];\n  const KW_CLOSE = [\n    \"شكرا\", \"شكرًا\", \"شكراً\", \"يسلمو\", \"مشكور\", \"مشكورة\", \"تسلم\",\n    \"خلص\", \"بس هيك\", \"هيك بس\", \"تمام شكرا\", \"الله يعطيك العافية\",\n    \"thanks\", \"thank you\", \"thx\", \"that's all\", \"thats all\", \"bye\", \"goodbye\", \"see you\"\n  ];\n\n  if (matchAny(KW_HUMAN)) {\n    finalIntent = \"human_request\";\n  } else if (matchAny(KW_PRICE)) {\n    finalIntent = \"price\";\n  } else if (matchAny(KW_KNOW)) {\n    finalIntent = \"knowledge\";\n  } else if (matchAny(KW_CLOSE)) {\n    finalIntent = \"closing\";\n  } else if (matchAny(KW_GREET)) {\n    finalIntent = \"greeting\";\n  }\n}\n\n// --------------------------------------------------\n// Was lifecycle action already performed by a tool?\n// --------------------------------------------------\n\nconst handoverAlreadyExecuted =\n  toolsUsed.includes(\"request_human_handover\");\n\nconst alreadyRecorded =\n  Boolean(deterministicIntent);\n\n// --------------------------------------------------\n// Extract lifecycle values from tool observations\n// --------------------------------------------------\n\nlet conversationStatus = null;\nlet currentStep = null;\nlet quickReplyAction = null;\n\nfor (const step of steps) {\n\n  let observation = step?.observation;\n\n  if (typeof observation === \"string\") {\n    try {\n      observation = JSON.parse(observation);\n    } catch (e) {\n      observation = null;\n    }\n  }\n\n  if (\n    observation &&\n    typeof observation === \"object\"\n  ) {\n\n    if (observation.conversation_status) {\n      conversationStatus =\n        observation.conversation_status;\n    }\n\n    if (observation.current_step) {\n      currentStep =\n        observation.current_step;\n    }\n\n    if (observation.quick_reply_action) {\n      quickReplyAction =\n        observation.quick_reply_action;\n    }\n  }\n}\n\n// --------------------------------------------------\n// Output\n// --------------------------------------------------\n\nreturn [\n  {\n    json: {\n      conversation_id:\n        trigger.conversation_id || null,\n\n      client_id:\n        trigger.client_id || null,\n\n      message_id:\n        trigger.message_id || null,\n\n      reply,\n\n      intent: finalIntent,\n\n      action,\n\n      already_recorded: alreadyRecorded,\n\n      handover_already_executed:\n        handoverAlreadyExecuted,\n\n      conversation_status:\n        conversationStatus,\n\n      current_step:\n        currentStep,\n\n      quick_reply_action:\n        quickReplyAction\n    }\n  }\n];"
+      },
+      "id": "9e83bb4e-ace2-4404-b627-8f45e667c811",
+      "name": "Resolve Intent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "08e95dc0-39a4-4767-9af0-85858bd9c182",
+              "leftValue": "={{ $items('Force Required Action', 0, 0)[0].json.already_recorded }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": "={{ false }}",
+        "options": {}
+      },
+      "id": "9c2617c3-86b3-4128-a2ae-bd7dc949f93c",
+      "name": "If Intent Not Recorded",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1312,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.APP_API_BASE_URL }}/api/ai-tools",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"action\": \"record_intent\",\n  \"conversation_id\": \"{{ $items('Force Required Action', 0, 0)[0].json.conversation_id }}\",\n  \"intent\": \"{{ $items('Force Required Action', 0, 0)[0].json.intent }}\",\n  \"confidence\": 0.7,\n  \"metadata\": { \"source\": \"agent_classification\" }\n}",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-vercel-protection-bypass",
+              "value": "={{ $env.VERCEL_PROTECTION_BYPASS }}"
+            }
+          ]
+        }
+      },
+      "id": "fe6c2242-38f6-48e1-aae3-fb70c706bd84",
+      "name": "Record Intent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1568,
+        48
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TBATq3Dn0WwGFqLu",
+          "name": "AI Tools Secret"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Base carries every Resolve Intent field plus must_handover /\n// already_recorded (Force Required Action spreads Resolve Intent).\nconst fraItems = $items(\"Force Required Action\", 0, 0);\nlet src = (fraItems && fraItems.length ? fraItems[0].json : null) || {};\n\nif (!src || Object.keys(src).length === 0) {\n  const ri = $items(\"Resolve Intent\", 0, 0);\n  src = (ri && ri.length ? ri[0].json : {}) || {};\n}\n\nlet intent = src.intent || \"unknown\";\nlet action = src.action || null;\nlet conversationStatus = src.conversation_status || null;\nlet currentStep = src.current_step || null;\nconst quickReplyAction = src.quick_reply_action || null;\nconst reply = src.reply || \"\";\n\n// --- Detect a completed human handover -------------------------------\n// Path 1: the agent executed the request_human_handover tool itself.\nconst toolHandover = src.handover_already_executed === true;\n\n// Path 2: the deterministic Force Human Handover HTTP node ran.\nlet forcedAttempted = src.must_handover === true;\nlet forcedOk = false;\ntry {\n  const fh = $items(\"Force Human Handover\", 0, 0);\n  if (fh && fh.length) {\n    const resp = fh[0].json || {};\n    forcedAttempted = true;\n    forcedOk =\n      resp.error === undefined &&\n      (resp.ok === true ||\n        resp.action === \"human_handover\" ||\n        resp.conversation_status === \"waiting_human\");\n  }\n} catch (e) {\n  // node did not run on this branch\n}\n\nconst handoverDone = toolHandover || forcedOk;\n\nif (handoverDone) {\n  intent = \"human_request\";\n  action = \"human_handover\";\n  conversationStatus = \"waiting_human\";\n} else if (forcedAttempted && intent === \"human_request\") {\n  // Handover was required but could not be confirmed this turn. Still\n  // surface the intent so the parent non-downgrade guard parks the\n  // conversation in waiting_human rather than letting AI keep replying.\n  action = \"human_handover\";\n  conversationStatus = \"waiting_human\";\n}\n\n// close_conversation(confirmed:true) already surfaces via\n// src.conversation_status / src.current_step from the tool observation.\n\nreturn [\n  {\n    json: {\n      reply,\n      intent,\n      action,\n      quick_reply_action: quickReplyAction,\n      conversation_status: conversationStatus,\n      current_step: currentStep,\n      handover_done: handoverDone,\n      handover_unconfirmed: forcedAttempted && !forcedOk && !toolHandover\n    }\n  }\n];"
+      },
+      "id": "1e4378fb-e09d-44c0-bfa0-eefa145f767c",
+      "name": "Build Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1824,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "14581772-fd0c-4d21-8e58-be8647d650fd",
+              "name": "debug_stage",
+              "value": "after_context",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -688,
+        192
+      ],
+      "id": "ef81db83-dc32-4278-8da9-1e129442d865",
+      "name": "DEBUG - After Context"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "14581772-fd0c-4d21-8e58-be8647d650fd",
+              "name": "debug_stage",
+              "value": "before_agent",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -272,
+        192
+      ],
+      "id": "2e5e8131-29e4-4aaa-9d49-7d967a0e62ac",
+      "name": "DEBUG - Before Agent"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "14581772-fd0c-4d21-8e58-be8647d650fd",
+              "name": "debug_stage",
+              "value": "after_agent",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        192
+      ],
+      "id": "ee408b5d-2414-47d2-9304-52b334ea9483",
+      "name": "DEBUG - After Agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $json || {};\n\nconst mustHandover =\n  r.intent === \"human_request\" &&\n  r.handover_already_executed !== true;\n\n// Intent persistence is guaranteed by the backend whenever a lifecycle\n// tool runs (agent tool path) OR the deterministic Force Human Handover\n// runs (/api/ai-tools request_handover -> handleRequestHandover records\n// the human_request intent). In those cases the n8n Record Intent step\n// must be skipped to avoid a duplicate message-intent write.\nconst alreadyRecorded =\n  r.already_recorded === true ||\n  r.handover_already_executed === true ||\n  mustHandover;\n\nreturn [\n  {\n    json: {\n      ...r,\n      must_handover: mustHandover,\n      already_recorded: alreadyRecorded\n    }\n  }\n];"
+      },
+      "id": "06686bc1-5c87-45ec-a179-059e429c18aa",
+      "name": "Force Required Action",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "08e95dc0-39a4-4767-9af0-85858bd9c182",
+              "leftValue": "={{ $json.must_handover === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "31e33291-a29e-4ff7-a2a8-f8b3c809fea2",
+      "name": "If Handover Required",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        816,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.APP_API_BASE_URL }}/api/ai-tools",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"action\": \"request_handover\",\n  \"conversation_id\": \"{{ $json.conversation_id }}\",\n  \"reason\": \"customer_requested_human\"\n}",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-vercel-protection-bypass",
+              "value": "={{ $env.VERCEL_PROTECTION_BYPASS }}"
+            }
+          ]
+        }
+      },
+      "id": "ea24e551-d4ae-4a31-83d8-08d8e879e9a6",
+      "name": "Force Human Handover",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1072,
+        64
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TBATq3Dn0WwGFqLu",
+          "name": "AI Tools Secret"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Get AI Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get AI Context": {
+      "main": [
+        [
+          {
+            "node": "DEBUG - After Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Agent Context": {
+      "main": [
+        [
+          {
+            "node": "DEBUG - Before Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "DEBUG - After Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Intent": {
+      "main": [
+        [
+          {
+            "node": "Force Required Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Intent Not Recorded": {
+      "main": [
+        [
+          {
+            "node": "Record Intent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Intent": {
+      "main": [
+        [
+          {
+            "node": "Build Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "search_business_knowledge": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_business_facts": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "request_human_handover": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "save_lead": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "start_order": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "continue_order": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "close_conversation": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DEBUG - After Context": {
+      "main": [
+        [
+          {
+            "node": "Prepare Agent Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DEBUG - Before Agent": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DEBUG - After Agent": {
+      "main": [
+        [
+          {
+            "node": "Resolve Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Force Required Action": {
+      "main": [
+        [
+          {
+            "node": "If Handover Required",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Handover Required": {
+      "main": [
+        [
+          {
+            "node": "Force Human Handover",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If Intent Not Recorded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Force Human Handover": {
+      "main": [
+        [
+          {
+            "node": "If Intent Not Recorded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "d6d3aee6-12b7-4f2d-941d-ec6aae0b68f5",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "24db91edc562a2f32cf7ac569571eca79e1b048807c8a90e363dcb06af59148c"
+  },
+  "id": "x2T6z94nazQWk2NY",
+  "tags": []
+}

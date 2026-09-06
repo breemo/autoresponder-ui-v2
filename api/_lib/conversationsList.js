@@ -247,13 +247,16 @@ export async function handleConversationsList(req, res) {
 
       // Generic Conversation V2 customer display name, most-authoritative
       // first: the contact's tenant-level best-known name, then this
-      // specific channel identity's profile name, then a captured lead
-      // name, then the raw provider sender id / phone as the final
-      // fallback. sender_id stays available on the row regardless.
+      // specific channel identity's profile name (WhatsApp pushName /
+      // Telegram first_name / a permitted FB-IG Graph name — see
+      // api/_lib/contactEnrich.js), then a captured lead name. NULL when
+      // no real name exists — the frontend then shows sender_id, which
+      // stays on the row regardless. Deliberately NOT falling back to
+      // senderId here so the UI can tell "have a name" from "don't".
       const identityName =
         typeof channelIdentity?.display_name === "string" ? channelIdentity.display_name.trim() : "";
       const customerName =
-        contactNameById.get(row.contact_id) || identityName || lead?.name || senderId || "";
+        contactNameById.get(row.contact_id) || identityName || lead?.name || null;
 
       const whatsappInstance =
         platform.toLowerCase() === "whatsapp" && channelIdentity?.channel_key

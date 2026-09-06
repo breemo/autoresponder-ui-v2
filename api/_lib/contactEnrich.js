@@ -1,17 +1,23 @@
 import { getSupabaseServerClient } from "./supabaseServer.js";
 
-// Customer profile-name enrichment for Facebook Messenger & Instagram.
+// Customer display-name enrichment for Conversation V2 identities.
 //
 // ---------------------------------------------------------------------
 // Why
 // ---------------------------------------------------------------------
-// A Meta webhook event carries only `sender.id` (a PSID / IGSID) — never
-// the person's name. So Conversation V2's contact_channel_identities.display_name
-// and contacts.display_name are always NULL for these channels, and the
-// Inbox shows a raw numeric id ("6229396837110469") instead of a name.
-// The only way to get the name is a Graph profile lookup with the page /
-// Instagram access token of the SAME channel account the message came
-// through — which lives server-side, never in the browser.
+// The Inbox should show a person's name, not a raw id. Two shapes:
+//   - WhatsApp (pushName) and Telegram (from.first_name) send the name IN
+//     the inbound webhook — the caller forwards it here as `webhook_name`
+//     and it is persisted directly, no provider API call.
+//   - Facebook / Instagram webhooks carry only `sender.id` (PSID / IGSID),
+//     so the name needs a Graph profile lookup with the page / Instagram
+//     access token of the SAME channel account the message came through —
+//     which lives server-side, never in the browser. Meta often refuses
+//     that lookup (Development Mode / Standard Access / privacy) — those
+//     identities keep the sender_id fallback and are retried at the start
+//     of the next conversation.
+// The write only ever fills an EMPTY contact_channel_identities.display_name
+// (+ contacts.display_name while blank); a stored name is never overwritten.
 //
 // This handler is called server-to-server by AutoResponder_Final's
 // `enrich_contact_name` node, fire-and-forget, AFTER the customer's reply
@@ -30,7 +36,16 @@ import { getSupabaseServerClient } from "./supabaseServer.js";
 
 const FB_GRAPH = "https://graph.facebook.com/v21.0";
 const IG_GRAPH = "https://graph.instagram.com/v21.0";
-const ENRICHABLE = new Set(["facebook", "instagram"]);
+// Channels we store a display name for at all.
+const NAME_CHANNELS = new Set(["facebook", "instagram", "whatsapp", "telegram"]);
+// Channels whose name must be fetched via a Graph profile lookup.
+// WhatsApp (pushName) and Telegram (first_name) arrive in the webhook and
+// are passed straight in as `webhook_name` — no provider API call.
+const GRAPH_CHANNELS = new Set(["facebook", "instagram"]);
+
+function cleanName(raw) {
+  return String(raw || "").replace(/\s+/g, " ").trim().slice(0, 200);
+}
 
 function pageTokenFromConfig(config) {
   if (!config || typeof config !== "object") return "";
@@ -103,11 +118,50 @@ export async function handleContactEnrich(req, res) {
   }
 
   const platform = String(identity.platform || "").toLowerCase();
-  if (!ENRICHABLE.has(platform)) {
+  if (!NAME_CHANNELS.has(platform)) {
     return res.status(200).json({ success: true, enriched: false, reason: "platform_not_supported" });
   }
   if (typeof identity.display_name === "string" && identity.display_name.trim() !== "") {
     return res.status(200).json({ success: true, enriched: false, reason: "already_set" });
+  }
+
+  // persist(name) writes the resolved name onto the V2 identity, and onto
+  // the contact only while that is still blank (a lead capture / manual
+  // edit is more authoritative). Never overwrites a stored name — the
+  // already_set check above guarantees we only reach here when it is empty.
+  const persist = async (rawName) => {
+    const value = cleanName(rawName);
+    if (!value) return { ok: false };
+    const now = new Date().toISOString();
+    const { error } = await supabase
+      .from("contact_channel_identities")
+      .update({ display_name: value, updated_at: now })
+      .eq("id", identity.id)
+      .eq("client_id", identity.client_id);
+    if (error) return { ok: false, error };
+    if (identity.contact_id) {
+      await supabase
+        .from("contacts")
+        .update({ display_name: value, updated_at: now })
+        .eq("id", identity.contact_id)
+        .eq("client_id", identity.client_id)
+        .is("display_name", null);
+    }
+    return { ok: true, value };
+  };
+
+  // WhatsApp pushName / Telegram first_name arrive in the webhook — the
+  // caller passes them as webhook_name. No provider API call, no throttle
+  // (it is free, and already_set makes it at most one write per identity).
+  const webhookName = cleanName(req.body?.webhook_name);
+  if (webhookName) {
+    const w = await persist(webhookName);
+    if (!w.ok) return res.status(500).json({ success: false, message: "persist failed" });
+    return res.status(200).json({ success: true, enriched: true, name: w.value, platform, source: "webhook" });
+  }
+
+  if (!GRAPH_CHANNELS.has(platform)) {
+    return res.status(200).json({ success: true, enriched: false, reason: "no_webhook_name" });
   }
 
   // Throttle. Once a name is stored we never look again (check above). When
@@ -167,28 +221,9 @@ export async function handleContactEnrich(req, res) {
     });
   }
 
-  const clean = name.replace(/\s+/g, " ").trim().slice(0, 200);
-  const now = new Date().toISOString();
-
-  const { error: identityWriteErr } = await supabase
-    .from("contact_channel_identities")
-    .update({ display_name: clean, updated_at: now })
-    .eq("id", identity.id)
-    .eq("client_id", identity.client_id);
-  if (identityWriteErr) {
+  const p = await persist(name);
+  if (!p.ok) {
     return res.status(500).json({ success: false, message: "persist failed" });
   }
-
-  // Only fill the contact-level name while it is still blank — a name set
-  // elsewhere (a lead capture, a manual edit) is more authoritative.
-  if (identity.contact_id) {
-    await supabase
-      .from("contacts")
-      .update({ display_name: clean, updated_at: now })
-      .eq("id", identity.contact_id)
-      .eq("client_id", identity.client_id)
-      .is("display_name", null);
-  }
-
-  return res.status(200).json({ success: true, enriched: true, name: clean, platform });
+  return res.status(200).json({ success: true, enriched: true, name: p.value, platform, source: "graph" });
 }

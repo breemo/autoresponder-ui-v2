@@ -13,6 +13,7 @@ import {
   canSendMediaOnChannel,
   canSendMediaTypeOnChannel,
 } from "../../lib/mediaMessages.js";
+import { getConversationIdentity } from "../../lib/conversationIdentity.js";
 
 // Media controls — WhatsApp Media & Attachment Support v1. `type` maps each
 // button to a canonical MESSAGE_TYPES value (single source of truth for
@@ -1286,7 +1287,7 @@ export default function ClientMessages() {
   const filteredConversations = useMemo(() => {
     const q = search.trim().toLowerCase();
     return conversations.filter((conv) => {
-      const haystack = `${conv.sender || ""} ${conv.last_message || ""} ${conv.sender_id || ""} ${conv.lead_name || ""} ${conv.lead_phone || ""} ${conv.conversation_id || ""}`.toLowerCase();
+      const haystack = `${conv.customer_name || ""} ${conv.sender || ""} ${conv.last_message || ""} ${conv.sender_id || ""} ${conv.lead_name || ""} ${conv.lead_phone || ""} ${conv.conversation_id || ""}`.toLowerCase();
       const matchesSearch = !q || haystack.includes(q);
       const matchesChannel = channel === "all" || conv.channel === channel || conv.platform === channel;
       const matchesStatus = status === "all" || conv.conversation_status === status;
@@ -1523,10 +1524,18 @@ export default function ClientMessages() {
                     <div className="flex items-start gap-3">
       <ChannelIcon channel={conv.channel || conv.platform} />
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="truncate text-sm font-bold text-slate-950">{conv.customer_name || conv.lead_name || conv.sender || conv.sender_id || t("common.noName")}</p>
-                          <span className="shrink-0 text-[11px] text-slate-400">{relativeTime(conv.last_message_at || conv.updated_at, t)}</span>
-                        </div>
+                        {(() => {
+                          const idn = getConversationIdentity(conv);
+                          return (
+                            <>
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="truncate text-sm font-bold text-slate-950">{idn.primary || t("common.noName")}</p>
+                                <span className="shrink-0 text-[11px] text-slate-400">{relativeTime(conv.last_message_at || conv.updated_at, t)}</span>
+                              </div>
+                              {idn.secondary && <p className="truncate text-[11px] leading-4 text-slate-400" dir="ltr">{idn.secondary}</p>}
+                            </>
+                          );
+                        })()}
                         <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{conv.last_message || t("messagesPage.noMessageYet")}</p>
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                           <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${platformClass}`}>{conv.channel || conv.platform || t("messagesPage.unknownChannel")}</span>
@@ -1626,7 +1635,15 @@ export default function ClientMessages() {
                         items already use (see filteredConversations.map
                         above). */}
                     <div className="min-w-0">
-                      <h2 className="truncate text-base font-bold text-slate-950">{selectedConversation.customer_name || selectedLead?.name || selectedConversation.lead_name || selectedConversation.sender || selectedConversation.sender_id || t("common.noName")}</h2>
+                      {(() => {
+                        const idn = getConversationIdentity(selectedConversation, { selectedLeadName: selectedLead?.name });
+                        return (
+                          <>
+                            <h2 className="truncate text-base font-bold text-slate-950">{idn.primary || t("common.noName")}</h2>
+                            {idn.secondary && <p className="truncate text-xs leading-4 text-slate-400" dir="ltr">{idn.secondary}</p>}
+                          </>
+                        );
+                      })()}
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                         <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">{selectedConversation.channel || selectedConversation.platform || t("messagesPage.unknownChannel")}</span>
                         {multipleWhatsappNumbers && selectedConversation.platform?.toLowerCase() === "whatsapp" && selectedConversation.whatsapp_instance && (

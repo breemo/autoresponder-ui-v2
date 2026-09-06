@@ -143,14 +143,11 @@ export function validateMediaFile(messageType, file) {
 // before both could safely coexist. Do not add "whatsapp" back to a
 // broad/substring match if that day comes — it must go back to an exact,
 // disambiguated value.
-// "instagram" is enabled here so the three media controls (image /
-// document / audio) become available on an Instagram conversation for
-// end-to-end testing. As with facebook/telegram, enabling a control is
-// NOT a claim that delivery already works for every type — the Human
-// Reply Instagram builder currently forms text/image via the Instagram
-// Graph attachment API and forms experimental audio (type:"audio") and
-// document (type:"file") requests purely to capture Meta's real API
-// response. No per-type hiding until those live tests are in.
+// "instagram" is a media channel, but NOT for every type — per-type
+// support is in CHANNEL_MEDIA_TYPE_SUPPORT below (live testing: image
+// works, generic documents do not — Meta's IG Messaging API has no
+// "file" attachment type). Text and image are delivered via the
+// Instagram Graph attachment API in the Human Reply builder.
 export const SUPPORTED_MEDIA_CHANNEL_VALUES = ["whatsapp", "facebook", "telegram", "instagram"];
 
 export function isSupportedMediaChannel(channel) {
