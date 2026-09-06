@@ -1095,14 +1095,10 @@
         "method": "PATCH",
         "url": "={{\n  $node[\"Config\"].json[\"SUPABASE_URL\"]\n  + \"/rest/v1/conversation_state\"\n  + \"?client_id=eq.\"\n  + encodeURIComponent($node[\"state_payload\"].json[\"client_id\"])\n  + \"&conversation_id=eq.\"\n  + encodeURIComponent($node[\"prepare_conversation\"].json[\"conversation_id\"])\n}}",
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "genericAuthType": "httpCustomAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
-            },
             {
               "name": "Content-Type",
               "value": "application/json"
@@ -1131,6 +1127,10 @@
         "httpHeaderAuth": {
           "id": "b1JwiXiEiCRpV5gs",
           "name": "Supabase Service Role"
+        },
+        "httpCustomAuth": {
+          "id": "6fL8mHUGMjVZf2v7",
+          "name": "Custom Auth account"
         }
       }
     },
@@ -1903,18 +1903,9 @@
         "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"]}}/rest/v1/system_settings?select=key,value&key=in.(ai_agent_core_workflow_id,inbound_media_core_workflow_id)",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpCustomAuth",
-        "sendHeaders": true,
+        "sendHeaders": false,
         "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
-            }
-          ]
+          "parameters": []
         },
         "options": {}
       },
@@ -1927,6 +1918,10 @@
         0
       ],
       "credentials": {
+        "httpHeaderAuth": {
+          "id": "b1JwiXiEiCRpV5gs",
+          "name": "Supabase Service Role"
+        },
         "httpCustomAuth": {
           "id": "6fL8mHUGMjVZf2v7",
           "name": "Custom Auth account"

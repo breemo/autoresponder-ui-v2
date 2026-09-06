@@ -64,14 +64,10 @@
         "method": "POST",
         "url": "={{$node[\"Config\"].json[\"SUPABASE_URL\"]}}/rest/v1/messages\n\n",
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "genericAuthType": "httpCustomAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
-            },
             {
               "name": "Content-Type",
               "value": "application/json"
@@ -100,6 +96,10 @@
         "httpHeaderAuth": {
           "id": "b1JwiXiEiCRpV5gs",
           "name": "Supabase Service Role"
+        },
+        "httpCustomAuth": {
+          "id": "6fL8mHUGMjVZf2v7",
+          "name": "Custom Auth account"
         }
       }
     },
@@ -724,15 +724,10 @@
       "parameters": {
         "url": "={{\n  $node[\"Config\"].json[\"SUPABASE_URL\"] +\n  \"/rest/v1/conversations\" +\n  \"?select=id,client_id,contact_id,channel_identity_id,platform,conversation_status,current_step,assigned_user_id,system_assigned_user_id,closed_at\" +\n  \"&id=eq.\" +\n  encodeURIComponent($node[\"Webhook\"].json[\"body\"][\"conversation_id\"]) +\n  \"&limit=1\"\n}}",
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendHeaders": true,
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": false,
         "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
-            }
-          ]
+          "parameters": []
         },
         "options": {}
       },
@@ -749,6 +744,10 @@
         "httpHeaderAuth": {
           "id": "b1JwiXiEiCRpV5gs",
           "name": "Supabase Service Role"
+        },
+        "httpCustomAuth": {
+          "id": "6fL8mHUGMjVZf2v7",
+          "name": "Custom Auth account"
         }
       }
     },
@@ -756,15 +755,10 @@
       "parameters": {
         "url": "={{\n  $node[\"Config\"].json[\"SUPABASE_URL\"] +\n  \"/rest/v1/contact_channel_identities\" +\n  \"?select=id,client_id,contact_id,platform,sender_id,channel_key\" +\n  \"&id=eq.\" +\n  encodeURIComponent($json[\"channel_identity_id\"]) +\n  \"&limit=1\"\n}}",
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendHeaders": true,
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": false,
         "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{$node[\"Config\"].json[\"SUPABASE_KEY\"]}}"
-            }
-          ]
+          "parameters": []
         },
         "options": {}
       },
@@ -781,6 +775,10 @@
         "httpHeaderAuth": {
           "id": "b1JwiXiEiCRpV5gs",
           "name": "Supabase Service Role"
+        },
+        "httpCustomAuth": {
+          "id": "6fL8mHUGMjVZf2v7",
+          "name": "Custom Auth account"
         }
       }
     }
