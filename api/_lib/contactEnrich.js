@@ -109,6 +109,26 @@ export async function handleContactEnrich(req, res) {
   if (typeof identity.display_name === "string" && identity.display_name.trim() !== "") {
     return res.status(200).json({ success: true, enriched: false, reason: "already_set" });
   }
+
+  // Throttle. Once a name is stored we never look again (check above). When
+  // it is NOT stored, only (re)attempt the Graph lookup at the START of a
+  // conversation. Meta's Messenger User Profile API returns
+  // "...cannot be loaded due to missing permissions..." for a large share
+  // of PSIDs — an app in Development Mode can only read profiles of people
+  // with an app/business role, and even a Live app cannot resolve every
+  // PSID (privacy settings, region, entry point) — see the enrichment
+  // audit. Without this gate that failing lookup repeats on every single
+  // inbound message from that person, forever. A new conversation
+  // (first-ever, or after a close / inactivity gap) is a sane retry point
+  // and also re-checks users automatically if the Meta app config changes
+  // later. The caller (AutoResponder_Final's enrich_contact_name node)
+  // passes is_new_conversation from the resolver.
+  const isNewConversation =
+    req.body?.is_new_conversation === true || req.body?.is_new_conversation === "true";
+  if (!isNewConversation) {
+    return res.status(200).json({ success: true, enriched: false, reason: "not_new_conversation" });
+  }
+
   const senderId = String(identity.sender_id || "").trim();
   if (!senderId) {
     return res.status(200).json({ success: true, enriched: false, reason: "no_sender_id" });

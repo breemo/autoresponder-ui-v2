@@ -2663,7 +2663,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"action\": \"enrich_contact\",\n  \"channel_identity_id\": \"{{ $node[\"prepare_conversation\"].json[\"channel_identity_id\"] }}\",\n  \"sender_id\": \"{{ $node[\"prepare_conversation\"].json[\"sender_id\"] }}\",\n  \"platform\": \"{{ $node[\"prepare_conversation\"].json[\"platform\"] }}\"\n}",
+        "jsonBody": "={\n  \"action\": \"enrich_contact\",\n  \"channel_identity_id\": \"{{ $node[\"prepare_conversation\"].json[\"channel_identity_id\"] }}\",\n  \"sender_id\": \"{{ $node[\"prepare_conversation\"].json[\"sender_id\"] }}\",\n  \"platform\": \"{{ $node[\"prepare_conversation\"].json[\"platform\"] }}\",\n  \"is_new_conversation\": {{ $node[\"prepare_conversation\"].json[\"is_new_conversation\"] }}\n}",
         "options": {
           "timeout": 4000
         }
