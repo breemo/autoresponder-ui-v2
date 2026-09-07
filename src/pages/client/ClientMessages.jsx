@@ -885,6 +885,11 @@ export default function ClientMessages() {
 
       const payload = { conversation_status: newStatus, updated_at: data.updated_at || new Date().toISOString() };
       if (!preserveStep) payload.current_step = currentStep;
+      // Keep closed_at consistent locally so the Reopen control's 2h
+      // window (see reopenWindowExpired) reflects this action without a
+      // refetch. close stamps it; reopen clears it.
+      if (action === "close") payload.closed_at = data.solved_at || new Date().toISOString();
+      if (action === "reopen") payload.closed_at = null;
       if (clearAssignment) {
         payload.assigned_user_id = null;
         payload.assigned_at = null;
@@ -1402,6 +1407,23 @@ export default function ClientMessages() {
   const isOwnedByMe = !!selectedConversation?.assigned_user_id && selectedConversation.assigned_user_id === user?.id;
   const canControlConversation = !isClosedConversation && (!isWaitingHuman || isOwnedByMe);
 
+  // Manual Reopen is server-enforced to only work within 2h of closed_at
+  // (apply_conversation_lifecycle_action -> outcome 'expired' otherwise;
+  // see supabase/migrations/20260907_manual_reopen_2h_window.sql). This is
+  // the matching UI mirror: past the window the conversation is a
+  // read-only archive — hide Reopen and explain why. A missing closed_at
+  // on a closed row is treated as already archived.
+  const REOPEN_WINDOW_MS = 2 * 60 * 60 * 1000;
+  const reopenWindowExpired =
+    isClosedConversation &&
+    (() => {
+      const closedAt = selectedConversation?.closed_at;
+      if (!closedAt) return true;
+      const ts = new Date(closedAt).getTime();
+      if (Number.isNaN(ts)) return true;
+      return Date.now() - ts >= REOPEN_WINDOW_MS;
+    })();
+
   // Media & Attachment Support — see SUPPORTED_MEDIA_CHANNEL_VALUES in
   // src/lib/mediaMessages.js for exactly which channel values this allows
   // (whatsapp/facebook/telegram today). Any other/unknown channel value
@@ -1716,8 +1738,13 @@ export default function ClientMessages() {
                     {conversationStatus !== "closed" && canControlConversation && (
                       <button onClick={closeConversation} disabled={updatingStatus} className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">{t("common.close")}</button>
                     )}
-                    {conversationStatus === "closed" && (
+                    {conversationStatus === "closed" && !reopenWindowExpired && (
                       <button onClick={reopenConversation} disabled={updatingStatus} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">{t("messagesPage.reopenConversation")}</button>
+                    )}
+                    {conversationStatus === "closed" && reopenWindowExpired && (
+                      <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-500">
+                        {t("messagesPage.conversationArchivedBadge", "مؤرشفة")}
+                      </span>
                     )}
                     {/* Conversation Card V1 — opens the same card as the
                         persistent xl+ panel, as a drawer/sheet. Hidden at
@@ -1806,7 +1833,12 @@ export default function ClientMessages() {
                 {!canControlConversation && (
                   <div className="mb-2 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
                     {isClosedConversation
-                      ? t("messagesPage.conversationClosedNotice")
+                      ? reopenWindowExpired
+                        ? t(
+                            "messagesPage.conversationArchivedNotice",
+                            "هذه المحادثة مؤرشفة (مضى أكثر من ساعتين على إغلاقها) ولا يمكن إعادة فتحها. أي رسالة جديدة من العميل ستبدأ محادثة جديدة."
+                          )
+                        : t("messagesPage.conversationClosedNotice")
                       : selectedConversation.assigned_user_id
                         ? t("messagesPage.claimedByNotice", { name: selectedConversation.assigned_user?.name || t("roles.agent") })
                         : t("messagesPage.mustClaimFirst")}

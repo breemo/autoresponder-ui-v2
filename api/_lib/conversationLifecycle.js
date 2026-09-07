@@ -142,6 +142,56 @@ async function handleClaim(req, res) {
 // before.
 const RPC_ACTION_BY_STATUS_ACTION = { close: "solve", reopen: "reopen" };
 
+// Manual-reopen guard rails. apply_conversation_lifecycle_action's 'reopen'
+// branch (supabase/migrations/20260907_manual_reopen_2h_window.sql) now
+// returns deterministic non-'ok' outcomes instead of an uncontrolled error
+// or a silent no-op:
+//   'expired'      - closed_at is older than 2h -> the conversation is
+//                    historical/archived and cannot be reopened.
+//   'conflict'     - another conversation for the same customer/channel is
+//                    already open (reopening would break the
+//                    one-open-per-channel-identity invariant).
+//   'already_open' - the conversation is not actually closed.
+// Pure + side-effect free so it is unit-testable without a Supabase mock.
+// Returns { status, body } for a guarded outcome, or null to let the
+// caller's normal handling continue.
+export function reopenGuardResponse(action, result) {
+  if (action !== "reopen" || !result) return null;
+  switch (result.outcome) {
+    case "expired":
+      return {
+        status: 409,
+        body: {
+          success: false,
+          code: "REOPEN_WINDOW_EXPIRED",
+          message:
+            "انتهت مهلة إعادة الفتح (ساعتان). هذه المحادثة أصبحت سجلاً مؤرشفًا ولا يمكن إعادة فتحها؛ أي رسالة جديدة من العميل ستبدأ محادثة جديدة.",
+        },
+      };
+    case "conflict":
+      return {
+        status: 409,
+        body: {
+          success: false,
+          code: "ANOTHER_CONVERSATION_OPEN",
+          message:
+            "توجد محادثة نشطة أخرى مع نفس العميل على نفس القناة، لذلك لا يمكن إعادة فتح هذه المحادثة.",
+        },
+      };
+    case "already_open":
+      return {
+        status: 409,
+        body: {
+          success: false,
+          code: "CONVERSATION_NOT_CLOSED",
+          message: "هذه المحادثة ليست مغلقة، ولا حاجة لإعادة فتحها.",
+        },
+      };
+    default:
+      return null;
+  }
+}
+
 async function handleStatusChange(req, res, action) {
   const conversation_id = req.body?.conversation_id;
   const actor_user_id = req.body?.actor_user_id;
@@ -234,6 +284,14 @@ async function handleStatusChange(req, res, action) {
     // a defensive guard, not an expected outcome.
     if (!result || result.outcome === "not_found") {
       return res.status(404).json({ success: false, message: "المحادثة غير موجودة ضمن هذا الحساب" });
+    }
+
+    // Manual reopen 2h-window / conflict / already-open — controlled
+    // outcomes from apply_conversation_lifecycle_action, surfaced with a
+    // clear message instead of the generic 500 the old raw 23505 produced.
+    const reopenGuard = reopenGuardResponse(action, result);
+    if (reopenGuard) {
+      return res.status(reopenGuard.status).json(reopenGuard.body);
     }
 
     // Only ever reachable for action === "close": the RPC's 'solve'

@@ -119,7 +119,7 @@ export async function handleConversationsList(req, res) {
           "id, client_id, contact_id, channel_identity_id, platform, conversation_status, current_step, " +
             "assigned_user_id, assigned_at, " +
             "system_assigned_user_id, system_assigned_at, " +
-            "solved_by, solved_at, reopened_by, reopened_at, last_message_at, created_at, updated_at"
+            "solved_by, solved_at, reopened_by, reopened_at, closed_at, last_message_at, created_at, updated_at"
         )
         .eq("client_id", clientId)
         .order("created_at", { ascending: false }),
@@ -294,6 +294,11 @@ export async function handleConversationsList(req, res) {
         solved_at: row.solved_at || null,
         reopened_by: row.reopened_by || null,
         reopened_at: row.reopened_at || null,
+        // Drives the Inbox's Reopen control: manual Reopen is only allowed
+        // within 2h of closed_at (server-enforced by
+        // apply_conversation_lifecycle_action). null once the conversation
+        // is open again (auto- or manual-reopen clears it).
+        closed_at: row.closed_at || null,
         created_at: row.created_at,
         updated_at: row.updated_at || row.created_at,
         last_message: agg?.lastMessage || "",
