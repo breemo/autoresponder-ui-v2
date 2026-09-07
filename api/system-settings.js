@@ -1,5 +1,6 @@
 import { getSupabaseServerClient } from "./_lib/supabaseServer.js";
 import { resolveActingAdmin } from "./_lib/clientAuthz.js";
+import { computeAdminOverview } from "./_lib/adminOverview.js";
 
 // Platform system settings — the central registry for n8n workflow
 // references (Admin -> Settings -> System).
@@ -23,6 +24,14 @@ import { resolveActingAdmin } from "./_lib/clientAuthz.js";
 // src/App.jsx's <AdminRoute> makes for the page. Follows the existing
 // "only actor_user_id is trusted, role is re-read server-side" pattern
 // (see api/_lib/clientAuthz.js) — no new auth architecture.
+//
+// GET /api/system-settings?resource=overview&actor_user_id=  ->  the
+// Admin (platform operator) Overview: platform-wide aggregates over
+// clients / subscriptions / plans / conversations / messages / channel
+// accounts. Same admin-only gate; no tenant parameter. See
+// api/_lib/adminOverview.js. (Folded in here rather than a new file — the
+// deploy is already at the 12-Serverless-Function Hobby cap, and this
+// endpoint is already the platform-admin one.)
 const WEBHOOK_KEYS = new Set(["human_reply_webhook_url"]);
 const ID_KEYS = new Set(["ai_agent_core_workflow_id", "inbound_media_core_workflow_id"]);
 const URL_KEYS = new Set(["ai_agent_core_workflow_url", "inbound_media_core_workflow_url"]);
@@ -64,6 +73,25 @@ export default async function handler(req, res) {
   const admin = await resolveActingAdmin(supabase, actorUserId);
   if (!admin) {
     return res.status(401).json({ success: false, message: "Unauthorized" });
+  }
+
+  // Admin (platform operator) Overview — platform-wide aggregates. Reached
+  // ONLY after the resolveActingAdmin() check above (users.role === "admin",
+  // re-derived server-side). No client_id / tenant parameter is read — a
+  // browser cannot obtain platform-wide data by passing a client_id or a
+  // role. See api/_lib/adminOverview.js.
+  if (req.method === "GET" && req.query?.resource === "overview") {
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error("system-settings(overview): SUPABASE_SERVICE_ROLE_KEY is not set — refusing to serve admin aggregates (anon-key reads on public.messages return an empty set under RLS, not an error).");
+      return res.status(500).json({ success: false, message: "Server is not configured" });
+    }
+    try {
+      const overview = await computeAdminOverview(supabase);
+      return res.status(200).json({ success: true, overview });
+    } catch (error) {
+      console.error("system-settings(overview): failed to build admin overview:", error);
+      return res.status(500).json({ success: false, message: "Failed to load the admin overview" });
+    }
   }
 
   if (req.method === "GET") {
