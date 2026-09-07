@@ -142,6 +142,81 @@ async function handleClaim(req, res) {
 // before.
 const RPC_ACTION_BY_STATUS_ACTION = { close: "solve", reopen: "reopen" };
 
+// Manual "Transfer to Agent" (action === "takeover"): the authoritative
+// state move active -> waiting_human PLUS one append-only telemetry event.
+//
+// Semantics — this event means ONLY "a human employee manually pushed this
+// conversation into the shared human queue". It is NOT a claim/accept, NOT
+// "handled", NOT a solve. This function never touches assigned_user_id or
+// system_assigned_user_id, and never emits an 'accepted'/'solved' event.
+//
+// - The conversations UPDATE is guarded to conversation_status = 'active'
+//   (unchanged), so it can never resurrect a closed conversation or
+//   clobber an already-claimed waiting_human one.
+// - The 'transferred' event is written EXACTLY ONCE, and ONLY when the
+//   UPDATE actually transitioned a row (rows is empty when the
+//   conversation was already waiting_human/closed — nothing was
+//   transferred, so no event).
+// - actor_user_id / client_id are passed in from the already-resolved
+//   authenticated membership by the caller — never from request input.
+// - conversation_state_id is null (this operates on public.conversations
+//   only; the column is nullable per 20260825_conversation_lifecycle_v2.sql),
+//   matching how the resolver writes its own events.
+// - Best-effort event: a failed insert is logged and swallowed — the state
+//   transition already succeeded and must not be failed because of the
+//   audit log. A real DB error on the state UPDATE itself IS surfaced
+//   ({ error }) so the caller returns 500 exactly as before.
+//
+// Exported for unit tests.
+export async function recordManualTransfer(supabase, { clientId, actorUserId, conversationId, updatedAtIso }) {
+  const { data: rows, error } = await supabase
+    .from("conversations")
+    .update({ conversation_status: "waiting_human", updated_at: updatedAtIso })
+    .eq("client_id", clientId)
+    .eq("id", conversationId)
+    .eq("conversation_status", "active")
+    .select("id, channel_identity_id");
+
+  if (error) return { transitioned: false, error };
+
+  const transitioned = Array.isArray(rows) && rows.length > 0;
+  if (!transitioned) return { transitioned: false };
+
+  // conversation_events.sender_id is NOT NULL — resolve it from the
+  // conversation's own channel identity (same tenant), '' as the last
+  // resort, exactly like apply_conversation_lifecycle_action does.
+  let senderId = "";
+  const channelIdentityId = rows[0]?.channel_identity_id || null;
+  if (channelIdentityId) {
+    const { data: identity } = await supabase
+      .from("contact_channel_identities")
+      .select("sender_id")
+      .eq("id", channelIdentityId)
+      .eq("client_id", clientId)
+      .maybeSingle();
+    senderId = identity?.sender_id || "";
+  }
+
+  const { error: eventError } = await supabase.from("conversation_events").insert({
+    client_id: clientId,
+    conversation_state_id: null,
+    conversation_id: conversationId,
+    sender_id: senderId,
+    event_type: "transferred",
+    actor_user_id: actorUserId,
+  });
+  if (eventError) {
+    console.error("conversation lifecycle: failed to record 'transferred' event:", {
+      code: eventError.code,
+      message: eventError.message,
+      conversationId,
+      clientId,
+    });
+  }
+
+  return { transitioned: true };
+}
+
 // Manual-reopen guard rails. apply_conversation_lifecycle_action's 'reopen'
 // branch (supabase/migrations/20260907_manual_reopen_2h_window.sql) now
 // returns deterministic non-'ok' outcomes instead of an uncontrolled error
@@ -321,17 +396,9 @@ async function handleStatusChange(req, res, action) {
   }
 
   // action === "takeover" ("Transfer to Agent") — move the conversation
-  // into the SHARED human queue. No owner is assigned here; the separate
-  // Claim/Accept step ("accept") does that. No conversation_events entry.
-  //
-  // Authoritative on public.conversations (Conversation Lifecycle V2 —
-  // the same table the outbound gate api/_lib/conversationOwnership.js and
-  // the Inbox composer read). Without this, "Transfer to Agent" only ever
-  // wrote the legacy conversation_state mirror, so the authoritative row
-  // stayed 'active' and the employee could never actually take over an
-  // AI/auto conversation (incl. one the resolver auto-reopened). Guarded
-  // to conversation_status = 'active' so it can never resurrect a closed
-  // conversation or clobber an already-claimed waiting_human one.
+  // into the SHARED human queue + record one 'transferred' telemetry
+  // event. No owner is assigned here; the separate Claim/Accept step
+  // ("accept") does that. See recordManualTransfer() above.
   const payload = {
     updated_at: new Date().toISOString(),
     conversation_status: "waiting_human",
@@ -339,14 +406,13 @@ async function handleStatusChange(req, res, action) {
     // step, same as the prior direct-write behavior.
   };
 
-  const { error: conversationsError } = await supabase
-    .from("conversations")
-    .update({ conversation_status: "waiting_human", updated_at: payload.updated_at })
-    .eq("client_id", actor.membership.client_id)
-    .eq("id", conversation_id)
-    .eq("conversation_status", "active");
-
-  if (conversationsError) {
+  const transfer = await recordManualTransfer(supabase, {
+    clientId: actor.membership.client_id,
+    actorUserId: actor.user.id,
+    conversationId: conversation_id,
+    updatedAtIso: payload.updated_at,
+  });
+  if (transfer.error) {
     return res.status(500).json({ success: false, message: "فشل في تحديث حالة المحادثة" });
   }
 
