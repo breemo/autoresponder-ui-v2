@@ -360,12 +360,11 @@ test("M. buildLexicalContextText agrees with buildContextualRetrievalQuery about
   assert.equal(standaloneLexicalContext, "");
 });
 
-test("M2. the confirmed Phase 2 bug is fixed end-to-end: a short standalone-like query after a long prior turn still searches for its OWN words lexically", () => {
-  // Reproduces the exact scenario the Phase 2 diagnostic report proved
-  // was broken: a 2-word message ("عرض المنيو") is classified as a
-  // likely follow-up (short-message heuristic) and a prior unrelated
-  // turn exists — before the fix, the resulting tsquery contained NONE
-  // of the current message's own words.
+test("M2. a short standalone query after a long prior turn searches for its OWN words lexically", () => {
+  // "عرض المنيو" names its own topic, so (after the SHORT-MESSAGE != FOLLOW-UP
+  // fix) it is standalone: buildLexicalContextText returns "" and the
+  // tsquery is built purely from the current message. The current
+  // message's own words must be present regardless.
   const history = [
     { role: "user", content: "طيب بتوصلوا داخل نابلس؟" },
     { role: "assistant", content: "التوصيل داخل نابلس متاح، التكلفة 10 شيكل، ومجاني للطلبات فوق 200 شيكل." },

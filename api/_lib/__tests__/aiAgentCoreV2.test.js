@@ -76,7 +76,7 @@ test("Prepare Agent Context: business/grounding/language duplication removed fro
   assert.match(code, /request_human_handover: only tell the customer their request reached the team AFTER/);
 });
 
-// --- History -> human turn -------------------------------------------
+// --- History -> reference-only block; current message is the request ----
 
 function runPrepare({ messages = [], trigger = {} }) {
   const code = node(CORE, "Prepare Agent Context").parameters.jsCode;
@@ -89,37 +89,43 @@ function runPrepare({ messages = [], trigger = {} }) {
   return fn($items, $json)[0].json;
 }
 
-test("Prepare Agent Context: prior CUSTOMER turns go into human_input in order; current message is last; assistant turns excluded", () => {
+test("Prepare Agent Context: prior CUSTOMER turns go into a reference-only block; current message is the sole request; assistant turns excluded", () => {
   const out = runPrepare({
     messages: [
       { role: "system", content: "## AUTHORITATIVE BUSINESS PROFILE\n..." },
       { role: "user", content: "شو عندكم برغر؟" },
+      { role: "assistant", content: "عنا برغر لحمة وبرغر دجاج." },
       { role: "user", content: "طيب والثاني كم سعره؟" },
     ],
     trigger: { conversation_id: "c1", current_message: "طيب والثاني كم سعره؟", current_step: null },
   });
-  assert.match(out.human_input, /شو عندكم برغر؟/);
-  // current message is the final line
-  assert.ok(out.human_input.trim().endsWith("طيب والثاني كم سعره؟"));
-  // not duplicated
-  assert.equal(out.human_input.match(/طيب والثاني كم سعره؟/g).length, 1);
-  // system message carries no conversation transcript and no assistant text
+  // current message is what the agent answers
+  assert.equal(out.current_message, "طيب والثاني كم سعره؟");
+  // prior customer turn is reference-only, in the system message, labelled, once
+  assert.match(out.system_message, /## Earlier messages from this customer \(reference only\)/);
+  assert.match(out.system_message, /They are NOT open questions/);
+  assert.match(out.system_message, /- شو عندكم برغر؟/);
+  // 15: current message is NOT duplicated into the reference block
+  assert.equal((out.system_message.match(/طيب والثاني كم سعره؟/g) || []).length, 0);
+  // assistant text never appears
+  assert.doesNotMatch(out.system_message, /عنا برغر لحمة وبرغر دجاج/);
   assert.doesNotMatch(out.system_message, /## Conversation so far/);
 });
 
-test("Prepare Agent Context: no prior turns -> human_input is exactly the current message", () => {
+test("Prepare Agent Context: no prior turns -> no reference block; current_message set", () => {
   const out = runPrepare({
     messages: [{ role: "system", content: "sys" }, { role: "user", content: "مرحبا" }],
     trigger: { current_message: "مرحبا" },
   });
-  assert.equal(out.human_input, "مرحبا");
+  assert.equal(out.current_message, "مرحبا");
+  assert.doesNotMatch(out.system_message, /reference only/);
 });
 
 test("Prepare Agent Context: degraded context still produces a valid item and the degraded block", () => {
   const out = runPrepare({ messages: [], trigger: { current_message: "hi" } });
   assert.equal(out.context_ok, false);
   assert.match(out.system_message, /## Business context unavailable this turn/);
-  assert.equal(out.human_input, "hi");
+  assert.equal(out.current_message, "hi");
 });
 
 test("Prepare Agent Context: fallback_reply is language-aware and invents no business facts / no handoff claim", () => {
@@ -182,9 +188,9 @@ test("Resolve Intent: an agent turn that only ran a tool (steps, empty text) is 
 
 // --- AI Agent node wiring -------------------------------------------
 
-test("AI Agent consumes human_input and has a graceful error path", () => {
+test("AI Agent answers the current customer message and has a graceful error path", () => {
   const agent = node(CORE, "AI Agent");
-  assert.equal(agent.parameters.text, "={{ $json.human_input }}");
+  assert.equal(agent.parameters.text, "={{ $json.current_message }}");
   assert.equal(agent.onError, "continueRegularOutput");
 });
 

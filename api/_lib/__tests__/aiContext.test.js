@@ -434,6 +434,59 @@ test("V2 history: a real caption on a media message is kept as-is, not replaced 
   assert.equal(result.context.conversation.history[0].content, "هاي المنتج يلي بدي اياه");
 });
 
+// --- Regression: SHORT MESSAGE != FOLLOW-UP (generic, end-to-end) --------
+//
+// Live regression after 474072c: a short standalone topic ("التوصيل")
+// following an unrelated prior turn ("...عروض...") inherited the prior
+// turn into the retrieval query, so the previous topic's chunk kept being
+// retrieved and repeated. A standalone topic must embed ONLY itself; a
+// genuine referential follow-up ("كم سعره؟") must still inherit.
+
+function captureEmbeddingInput(t) {
+  const state = { input: null };
+  globalThis.fetch = async (url, options) => {
+    state.input = JSON.parse(options.body).input;
+    return { ok: true, json: async () => ({ data: [{ index: 0, embedding: new Array(EMBEDDING_DIMENSIONS).fill(0.01) }] }) };
+  };
+  process.env.OPENAI_API_KEY = "test-key";
+  t.after(restoreFetch);
+  return state;
+}
+
+function offerHistoryTables() {
+  const tables = baseTables();
+  tables.messages = [
+    { id: "m1", client_id: "client-1", conversation_id: "conv-1", message: "ممكن تحكيلنا اذا في عروض او فعاليات هاي الفترة", direction: "inbound", created_at: "2026-01-01T00:00:00Z" },
+    { id: "m2", client_id: "client-1", conversation_id: "conv-1", message: "أكيد، عنا عرض عائلي لـ 4-5 أشخاص بـ 150 شيكل.", direction: "outbound", created_at: "2026-01-01T00:00:05Z" },
+  ];
+  return tables;
+}
+
+for (const standalone of ["التوصيل", "وجبات اليوم", "طلب وجبة", "الموقع", "الأسعار", "ساعات العمل", "طرق الدفع"]) {
+  test(`retrieval: standalone "${standalone}" after an offer turn embeds only itself`, async (t) => {
+    const cap = captureEmbeddingInput(t);
+    const supabase = createMockSupabase(offerHistoryTables());
+    supabase.rpc = async () => ({ data: [], error: null });
+    const result = await resolveAiContext(supabase, { conversationId: "conv-1", clientId: "client-1", currentMessageText: standalone });
+    assert.equal(result.ok, true);
+    assert.equal(cap.input?.[0], standalone, "standalone topic must not inherit the offer turn");
+  });
+}
+
+for (const followup of ["كم سعره؟", "شو بشمل؟"]) {
+  test(`retrieval: referential "${followup}" after an offer turn inherits the offer context`, async (t) => {
+    const cap = captureEmbeddingInput(t);
+    const supabase = createMockSupabase(offerHistoryTables());
+    supabase.rpc = async () => ({ data: [], error: null });
+    const result = await resolveAiContext(supabase, { conversationId: "conv-1", clientId: "client-1", currentMessageText: followup });
+    assert.equal(result.ok, true);
+    assert.equal(
+      cap.input?.[0],
+      `ممكن تحكيلنا اذا في عروض او فعاليات هاي الفترة أكيد، عنا عرض عائلي لـ 4-5 أشخاص بـ 150 شيكل. ${followup}`
+    );
+  });
+}
+
 test("Phase 1: a standalone factual query embeds unchanged end-to-end, even with unrelated history present", async (t) => {
   let capturedInput = null;
   globalThis.fetch = async (url, options) => {

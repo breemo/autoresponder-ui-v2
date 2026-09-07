@@ -25,41 +25,127 @@ import { embedText } from "./openaiEmbeddings.js";
 // it necessary).
 //
 // Generic across every client/business type on purpose — no business-
-// domain vocabulary (delivery/menu/etc.) appears anywhere below, only
-// generic discourse-connector words and structural signals.
+// domain vocabulary (delivery/menu/appointment/product/etc.) appears
+// anywhere below. Detection is built ONLY from closed-class function
+// words — discourse markers, pronouns, demonstratives, comparatives and
+// interrogatives — that exist in every language register and every
+// industry.
+//
+// The rule (generic): a previous turn is prepended to the retrieval
+// query ONLY when the current message genuinely needs an earlier
+// referent to be understood — it is either referential ("كم سعره؟",
+// "والثاني؟", "في غيره؟", "how much is it?") or elliptical ("متى بيكون؟",
+// "شو بشمل؟", "ليش؟"). A short message that names its OWN topic is a NEW
+// standalone query and retrieves on itself alone, no matter how short —
+// "الموقع", "الأسعار", "التوصيل", "ساعات العمل", "طرق الدفع", "الحجز",
+// "طلب وجبة", "وجبات اليوم". Message length ALONE is never a trigger
+// (that was the confirmed regression: every <=2-word message, standalone
+// topics included, was treated as a follow-up).
+
+// Continuation / discourse openers — matched at the very start of the
+// message (optionally after a single leading و / ف conjunction).
 const FOLLOWUP_MARKERS = [
-  // Arabic — checked as sentence-initial markers (see startsWithAnyMarker)
-  "طيب", "طب", "وبالنسبة", "وهل", "وكمان", "ماذا عن", "شو عن", "وماذا عن", "وشو عن",
-  // English
-  "then", "what about", "and", "also",
+  "طيب", "طب", "بعدين", "وبعدين", "بعدها", "بعد هيك", "بالنسبة", "وبالنسبة",
+  "كمان", "وكمان", "وهل", "بخصوص", "ماذا عن", "وماذا عن", "شو عن", "وشو عن",
+  "ماذا بخصوص",
+  "then", "what about", "how about", "and what about",
 ];
 
-const SHORT_MESSAGE_WORD_COUNT = 2; // "very short" secondary signal — see isLikelyFollowUp
-const MAX_CONTEXTUAL_QUERY_LENGTH = 500; // hard cap — see buildContextualRetrievalQuery
+// Anaphora — a whole word (optionally after a leading و / ف) that points
+// back at something already named earlier in the conversation.
+const REFERENTIAL_TOKENS = new Set([
+  // Arabic object pronouns / demonstratives. NB: "هو" / "هي" / "هما" are
+  // deliberately excluded — in "ما هو سعرها؟" / "ما هي ساعات العمل؟" they
+  // are the copula of a standalone question, not anaphora.
+  "اياه", "اياها", "اياهم", "اياهن", "هم", "هن",
+  "هاد", "هادا", "هاي", "هيدا", "هيدي", "هيك", "هذا", "هذه", "ذلك", "تلك",
+  "نفسه", "نفسها", "نفسهم", "نفس",
+  // Arabic comparatives / anaphoric ordinals
+  "الثاني", "التاني", "الاول", "الأول", "التالت", "الثالث",
+  "غيره", "غيرها", "غيرهم", "غيرو", "الباقي", "باقي",
+  // English
+  "it", "its", "that", "this", "these", "those", "them", "one", "ones",
+  "other", "another", "same",
+]);
 
-function startsWithAnyMarker(text) {
-  const normalized = text.trim().toLowerCase();
-  return FOLLOWUP_MARKERS.some((marker) => normalized.startsWith(marker.toLowerCase()));
+// Bare interrogative openers — used only by the "elliptical question"
+// test below (a question with no topic noun of its own).
+const INTERROGATIVE_STARTERS = new Set([
+  "شو", "إيش", "ايش", "وش", "كيف", "كيفية", "كم", "بكم", "قديش", "بقديش", "أديش",
+  "وين", "فين", "منين", "متى", "إمتى", "امتى", "ليش", "لماذا", "علاش",
+  "مين", "لمين", "اي", "أي", "هل",
+  "what", "how", "when", "where", "who", "whom", "why", "which",
+  "is", "are", "am", "do", "does", "did", "can", "could", "would", "will", "should",
+]);
+
+const MAX_CONTEXTUAL_QUERY_LENGTH = 500; // hard cap — see buildContextualRetrievalQuery
+const MAX_ELLIPTICAL_TOKENS = 3; // an elliptical question is very short by nature
+
+// A single leading و / ف is a conjunction, not part of the word.
+function stripLeadingConjunction(token) {
+  return token.replace(/^[وف]/, "");
 }
 
-// Deliberately conservative: a fully standalone factual question ("كم سعر
-// وجبة المشاوي المشكلة؟") must NOT trigger this — it has neither a
-// leading discourse marker nor is it "very short". A message opening
-// with a known follow-up/discourse word, or a very short message (<=2
-// words, e.g. "ليش؟"), is treated as likely depending on the previous
-// turn to be understood.
-//
-// Known tradeoff (Phase 2B diagnostic): this also fires for ordinary
-// short standalone requests ("عرض المنيو", "طلب وجبة" — both 2 words).
-// That is intentionally NOT "fixed" by narrowing this heuristic in
-// Phase 2B — instead, buildLexicalTsQuery (below) is redesigned so that,
-// even when this heuristic fires, the current message's own words can
-// never be crowded out of the lexical query by whatever prior-turn
-// context gets attached. See that function's own comment.
+function normalizeForFollowUp(text) {
+  return (text || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[؟?!.،,…:؛]+$/u, "")
+    .trim();
+}
+
+function tokenizeNormalized(normalized) {
+  return normalized.split(/\s+/).filter(Boolean);
+}
+
+function startsWithAnyMarker(normalized) {
+  const stripped = stripLeadingConjunction(normalized);
+  return FOLLOWUP_MARKERS.some((marker) => {
+    const m = marker.toLowerCase();
+    return (
+      normalized === m || normalized.startsWith(m + " ") ||
+      stripped === m || stripped.startsWith(m + " ")
+    );
+  });
+}
+
+function containsReferentialToken(tokens) {
+  return tokens.some((t) => REFERENTIAL_TOKENS.has(t) || REFERENTIAL_TOKENS.has(stripLeadingConjunction(t)));
+}
+
+// An Arabic definite noun (ال- / وال- / بال- / لل- … prefixed) means the
+// message carries its own topic noun, so it is NOT elliptical even when
+// it is a short question ("وين الموقع؟", "كم الأسعار؟").
+function hasDefiniteNoun(tokens) {
+  return tokens.some((t) => /^[وفبكل]?(ال|لل)[ء-ي]{2,}/u.test(t));
+}
+
+// Elliptical question: a very short question opening with an
+// interrogative word and carrying no topic noun of its own —
+// "شو بشمل؟", "متى بيكون؟", "كم سعره؟", "ليش؟". Contrast "وين الموقع؟"
+// (has a definite topic noun -> standalone).
+function isEllipticalQuestion(tokens) {
+  if (tokens.length === 0 || tokens.length > MAX_ELLIPTICAL_TOKENS) return false;
+  const first = tokens[0];
+  if (!INTERROGATIVE_STARTERS.has(first) && !INTERROGATIVE_STARTERS.has(stripLeadingConjunction(first))) {
+    return false;
+  }
+  return !hasDefiniteNoun(tokens);
+}
+
+// Deliberately conservative. A self-contained query — long OR short —
+// that names its own topic ("كم سعر وجبة المشاوي المشكلة؟", "الموقع",
+// "طرق الدفع", "طلب وجبة") must NOT trigger this. Only a leading
+// discourse marker, an explicit anaphoric token, or an elliptical
+// interrogative does.
 function isLikelyFollowUp(text) {
-  if (startsWithAnyMarker(text)) return true;
-  const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
-  return wordCount > 0 && wordCount <= SHORT_MESSAGE_WORD_COUNT;
+  const normalized = normalizeForFollowUp(text);
+  if (!normalized) return false;
+  if (startsWithAnyMarker(normalized)) return true;
+  const tokens = tokenizeNormalized(normalized);
+  if (containsReferentialToken(tokens)) return true;
+  if (isEllipticalQuestion(tokens)) return true;
+  return false;
 }
 
 // Finds the most recent user+assistant exchange STRICTLY BEFORE the

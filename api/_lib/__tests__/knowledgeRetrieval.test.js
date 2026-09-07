@@ -203,13 +203,61 @@ test("6. malformed/missing history falls back safely to the current message, nev
   assert.equal(buildContextualRetrievalQuery(current, [null, { role: "user" }, { role: "assistant", content: 42 }]), current);
 });
 
-test("a very short message is also treated as a likely follow-up, even without a discourse marker", () => {
+test("an elliptical bare interrogative (no topic noun of its own) is a follow-up", () => {
   const query = buildContextualRetrievalQuery("ليش؟", [
     { role: "user", content: "هل يوجد توصيل خارج نابلس؟" },
     { role: "assistant", content: "لا، لا يوجد توصيل خارج مدينة نابلس حالياً." },
   ]);
   assert.equal(query, "هل يوجد توصيل خارج نابلس؟ لا، لا يوجد توصيل خارج مدينة نابلس حالياً. ليش؟");
 });
+
+// --- Generic follow-up vs standalone: SHORT MESSAGE != FOLLOW-UP --------
+// The regression fix: a short current message that names its OWN topic is
+// a NEW standalone query and must retrieve on itself alone, regardless of
+// length. Only a leading discourse marker, an explicit anaphoric token,
+// or an elliptical interrogative (a question with no topic noun) inherits
+// the previous turn. Nothing here is business-type specific.
+
+const PRIOR = [
+  { role: "user", content: "PREV_Q" },
+  { role: "assistant", content: "PREV_A" },
+];
+
+for (const msg of [
+  "الموقع",
+  "الأسعار",
+  "ساعات العمل",
+  "التوصيل",
+  "وجبات اليوم",
+  "طلب وجبة",
+  "طرق الدفع",
+  "الحجز",
+  "المنيو",
+  "ما هي ساعات العمل؟",
+  "وين الموقع؟",
+]) {
+  test(`standalone topic "${msg}" does NOT inherit the previous turn`, () => {
+    assert.equal(buildContextualRetrievalQuery(msg, PRIOR), msg);
+  });
+}
+
+for (const msg of [
+  "كم سعره؟",
+  "شو بشمل؟",
+  "والثاني؟",
+  "في غيره؟",
+  "متى بيكون؟",
+  "احجزلي اياه",
+  "طيب؟",
+  "وبعدين؟",
+  "طيب وين موقعكم؟",
+  "what about the other one?",
+  "how much is it?",
+]) {
+  test(`referential / elliptical "${msg}" DOES inherit the previous turn`, () => {
+    assert.equal(buildContextualRetrievalQuery(msg, PRIOR), `PREV_Q PREV_A ${msg}`);
+  });
+}
 
 test("a follow-up marker with no usable prior context still falls back to the current message alone", () => {
   assert.equal(buildContextualRetrievalQuery("طيب شكرا", []), "طيب شكرا");
