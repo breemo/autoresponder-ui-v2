@@ -6,6 +6,7 @@ import {
   sanitizeFileName,
   buildMediaObjectPath,
 } from "../../src/lib/mediaMessages.js";
+import { checkInboundMediaFamily } from "./inboundMediaMime.js";
 
 // Customer -> Inbox INBOUND media ingestion helper.
 //
@@ -34,7 +35,16 @@ export const INBOUND_HARD_MAX_BYTES = 25 * 1024 * 1024;
 // audio/ogg;codecs=opus, application/octet-stream, etc. Rejecting a customer's
 // real photo/voice note on a strict allow-list would be worse than storing it.
 // Size is still enforced (per-type + a hard cap); MIME is a family check only.
-export function validateInboundMedia(messageType, { mimeType, sizeBytes } = {}) {
+//
+// `platform` is optional and only affects the audio family check: on the
+// Meta inbound path (facebook | instagram) a voice note delivered as a
+// "video/mp4" container is accepted AS AUDIO — see
+// ./inboundMediaMime.js (isMetaVoiceContainerMime). The n8n
+// "Post-Download Validate" node mirrors the same rule after the actual
+// download (this call happens at sign time, before the bytes exist, so
+// the family check here is a best-effort early gate — the post-download
+// check is authoritative).
+export function validateInboundMedia(messageType, { mimeType, sizeBytes, platform } = {}) {
   if (!MEDIA_MESSAGE_TYPES.includes(messageType)) {
     return { valid: false, reason: "unsupported_type" };
   }
@@ -51,11 +61,8 @@ export function validateInboundMedia(messageType, { mimeType, sizeBytes } = {}) 
   }
 
   if (mimeType) {
-    const family = String(mimeType).split("/")[0].toLowerCase().trim();
-    if (messageType === "image" && family !== "image") {
-      return { valid: false, reason: "mime_mismatch" };
-    }
-    if (messageType === "audio" && family !== "audio") {
+    const family = checkInboundMediaFamily({ platform, messageType, mime: mimeType });
+    if (!family.ok) {
       return { valid: false, reason: "mime_mismatch" };
     }
     // "document" accepts any other family (application/*, text/*, ...).
@@ -77,6 +84,7 @@ export async function signInboundUpload(supabase, {
   fileName,
   mimeType,
   sizeBytes,
+  platform,
 } = {}) {
   if (!conversationId || typeof conversationId !== "string") {
     return { ok: false, status: 400, code: "MISSING_CONVERSATION_ID", message: "conversation_id is required" };
@@ -88,7 +96,7 @@ export async function signInboundUpload(supabase, {
     return { ok: false, status: 400, code: "MISSING_FILE_NAME", message: "file_name is required" };
   }
 
-  const validation = validateInboundMedia(messageType, { mimeType, sizeBytes });
+  const validation = validateInboundMedia(messageType, { mimeType, sizeBytes, platform });
   if (!validation.valid) {
     const code =
       validation.reason === "too_large"

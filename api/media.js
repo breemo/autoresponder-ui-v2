@@ -310,6 +310,10 @@ async function handleSignInboundUpload(req, res) {
     fileName: typeof req.body?.file_name === "string" ? req.body.file_name : "",
     mimeType: typeof req.body?.mime_type === "string" ? req.body.mime_type : "",
     sizeBytes: req.body?.size_bytes,
+    // Optional — lets the audio family check accept a Meta (Facebook /
+    // Instagram) voice note delivered as a video/mp4 container. Absent =>
+    // strict family match (see api/_lib/inboundMediaMime.js).
+    platform: typeof req.body?.platform === "string" ? req.body.platform : "",
   });
 
   const { ok, status, ...rest } = result;
