@@ -1,7 +1,8 @@
-// The single authoritative "can this employee act on this conversation"
-// read, shared by every gate that enforces Human Takeover ownership
-// (api/_lib/humanReply.js — send a reply; api/media.js action "sign_upload"
-// — attach media to a reply).
+// The single authoritative "can this employee send a human outbound
+// message on this conversation" read, shared by every employee outbound
+// gate (api/_lib/humanReply.js — send a text/media reply; api/media.js
+// action "sign_upload" — mint the Storage upload URL for a reply
+// attachment).
 //
 // ---------------------------------------------------------------------
 // Why this exists
@@ -70,20 +71,59 @@ export async function loadConversationGate(supabase, clientId, conversationId) {
   };
 }
 
-// The shared ownership rule: a conversation in the human queue
-// (waiting_human) may only be acted on by its assigned employee — and if
-// nobody has claimed it yet (assigned_user_id null), nobody may act until
-// someone does. Any other status has no owner concept and is unrestricted.
-// Returns null when allowed, or { message } (Arabic, caller-facing) when
-// blocked — identical wording to what humanReply.js / media.js returned
-// before, so no UI copy changes.
+// The shared "may this employee send a human outbound message" rule.
+//
+// Human outbound (text reply OR media) is permitted ONLY when the
+// conversation is actually in human-handling mode AND owned by the acting
+// employee:
+//
+//     conversation_status === 'waiting_human'
+//     AND assigned_user_id === actorUserId
+//
+// Everything else is blocked:
+//   - 'active' (or any other AI/Auto-driven status) -> automation owns the
+//     conversation. An active conversation is NOT sendable just because it
+//     currently has no owner — this is the fix for the resolver's
+//     customer-triggered auto-reopen (and any normal AI conversation),
+//     which leaves conversation_status='active', assigned_user_id=null.
+//     The employee must use Transfer to Agent (-> waiting_human) then
+//     Claim/Accept (-> assigned) first.
+//   - 'waiting_human' with a different owner -> another employee has it.
+//   - 'waiting_human' with no owner -> Claim/Accept first (shared queue).
+//   - 'closed' -> reopen first.
+//
+// assigned_user_id is the ONLY ownership signal. system_assigned_user_id
+// (a Smart Assignment RECOMMENDATION) is never consulted here and never
+// grants send permission — loadConversationGate does not even read it.
+//
+// Returns null when allowed, or { message, code } (message is Arabic,
+// caller-facing) when blocked.
 export function humanTakeoverBlock(gate, actorUserId) {
-  if (!gate?.found) return null;
-  if (gate.conversation_status !== "waiting_human") return null;
-  if (gate.assigned_user_id === actorUserId) return null;
+  if (!gate?.found) return null; // caller returns its own 404
+
+  const status = gate.conversation_status;
+
+  if (
+    status === "waiting_human" &&
+    gate.assigned_user_id &&
+    gate.assigned_user_id === actorUserId
+  ) {
+    return null;
+  }
+
+  if (status === "closed") {
+    return { code: "CONVERSATION_CLOSED", message: "المحادثة مغلقة. أعد فتحها أولاً لإرسال رسالة." };
+  }
+
+  if (status === "waiting_human") {
+    return gate.assigned_user_id
+      ? { code: "ASSIGNED_TO_OTHER", message: "هذه المحادثة مستلمة بواسطة موظف آخر" }
+      : { code: "MUST_CLAIM_FIRST", message: "يجب استلام المحادثة أولاً" };
+  }
+
+  // 'active' or any other AI/Auto-driven status.
   return {
-    message: gate.assigned_user_id
-      ? "هذه المحادثة مستلمة بواسطة موظف آخر"
-      : "يجب استلام المحادثة أولاً",
+    code: "AUTOMATION_HANDLING",
+    message: "هذه المحادثة يديرها الرد الآلي حالياً. استخدم «تحويل إلى موظف» ثم «استلام المحادثة» للرد يدوياً.",
   };
 }

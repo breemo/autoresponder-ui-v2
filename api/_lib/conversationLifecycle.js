@@ -320,9 +320,18 @@ async function handleStatusChange(req, res, action) {
     return res.status(200).json({ success: true, conversation_id, ...payload });
   }
 
-  // action === "takeover" — unchanged plain direct update. Not one of the
-  // two actions above (see the module comment): a takeover has no
-  // ownership/acceptance concept and no conversation_events entry.
+  // action === "takeover" ("Transfer to Agent") — move the conversation
+  // into the SHARED human queue. No owner is assigned here; the separate
+  // Claim/Accept step ("accept") does that. No conversation_events entry.
+  //
+  // Authoritative on public.conversations (Conversation Lifecycle V2 —
+  // the same table the outbound gate api/_lib/conversationOwnership.js and
+  // the Inbox composer read). Without this, "Transfer to Agent" only ever
+  // wrote the legacy conversation_state mirror, so the authoritative row
+  // stayed 'active' and the employee could never actually take over an
+  // AI/auto conversation (incl. one the resolver auto-reopened). Guarded
+  // to conversation_status = 'active' so it can never resurrect a closed
+  // conversation or clobber an already-claimed waiting_human one.
   const payload = {
     updated_at: new Date().toISOString(),
     conversation_status: "waiting_human",
@@ -330,6 +339,19 @@ async function handleStatusChange(req, res, action) {
     // step, same as the prior direct-write behavior.
   };
 
+  const { error: conversationsError } = await supabase
+    .from("conversations")
+    .update({ conversation_status: "waiting_human", updated_at: payload.updated_at })
+    .eq("client_id", actor.membership.client_id)
+    .eq("id", conversation_id)
+    .eq("conversation_status", "active");
+
+  if (conversationsError) {
+    return res.status(500).json({ success: false, message: "فشل في تحديث حالة المحادثة" });
+  }
+
+  // Best-effort legacy mirror (conversation_state), kept in sync exactly
+  // as before.
   const { error: updateError } = await supabase
     .from("conversation_state")
     .update(payload)

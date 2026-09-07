@@ -137,9 +137,16 @@ export async function handleHumanReply(req, res) {
     return res.status(500).json({ success: false, message: "فشل التحقق من حالة المحادثة" });
   }
 
+  // Multi-tenant isolation: the conversation must exist under THIS actor's
+  // client (loadConversationGate filters on client_id). Mirrors the same
+  // 404 api/media.js#handleSignUpload already returns.
+  if (!gate.found) {
+    return res.status(404).json({ success: false, message: "المحادثة غير موجودة ضمن هذا الحساب" });
+  }
+
   const block = humanTakeoverBlock(gate, actor.user.id);
   if (block) {
-    return res.status(403).json({ success: false, message: block.message });
+    return res.status(403).json({ success: false, message: block.message, code: block.code });
   }
 
   // No subscription/entitlement check here — see the architecture note

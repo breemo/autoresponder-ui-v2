@@ -227,7 +227,7 @@ async function handleSignUpload(req, res) {
 
   const block = humanTakeoverBlock(gate, actor.user.id);
   if (block) {
-    return res.status(403).json({ success: false, message: block.message });
+    return res.status(403).json({ success: false, message: block.message, code: block.code });
   }
 
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {

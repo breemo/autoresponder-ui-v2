@@ -1135,10 +1135,10 @@ export default function ClientMessages() {
   async function sendHumanReply() {
     const trimmed = draft.trim();
     if ((!trimmed && !attachment) || !selectedConversationId || sendingRef.current) return;
-    // Mirrors the composer's own disabled state (see canControlConversation)
+    // Mirrors the composer's own disabled state (see canSendHumanReply)
     // — belt-and-suspenders against any path that could still call this
     // directly. The server (api/_lib/humanReply.js) is the authoritative check.
-    if (!canControlConversation) return;
+    if (!canSendHumanReply) return;
     // Belt-and-suspenders mirror of the media controls' own disabled state
     // (canSendMedia — WhatsApp/Evolution only). The attachment can only be
     // selected via those controls, but api/_lib/humanReply.js is the actual
@@ -1406,6 +1406,15 @@ export default function ClientMessages() {
   const isClosedConversation = conversationStatus === "closed";
   const isOwnedByMe = !!selectedConversation?.assigned_user_id && selectedConversation.assigned_user_id === user?.id;
   const canControlConversation = !isClosedConversation && (!isWaitingHuman || isOwnedByMe);
+
+  // Human outbound (text reply + media) permission — mirrors the server
+  // rule in api/_lib/conversationOwnership.js#humanTakeoverBlock exactly:
+  // allowed ONLY on a waiting_human conversation this employee actually
+  // owns. An active/AI-driven conversation (including one the resolver
+  // auto-reopened) is NOT sendable — the employee must Transfer to Agent
+  // then Claim first. system_assigned_user_id (a recommendation) is
+  // deliberately NOT part of this — only assigned_user_id (isOwnedByMe).
+  const canSendHumanReply = isWaitingHuman && isOwnedByMe;
 
   // Manual Reopen is server-enforced to only work within 2h of closed_at
   // (apply_conversation_lifecycle_action -> outcome 'expired' otherwise;
@@ -1830,7 +1839,7 @@ export default function ClientMessages() {
                   </div>
                 )}
 
-                {!canControlConversation && (
+                {!canSendHumanReply && (
                   <div className="mb-2 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
                     {isClosedConversation
                       ? reopenWindowExpired
@@ -1839,9 +1848,14 @@ export default function ClientMessages() {
                             "هذه المحادثة مؤرشفة (مضى أكثر من ساعتين على إغلاقها) ولا يمكن إعادة فتحها. أي رسالة جديدة من العميل ستبدأ محادثة جديدة."
                           )
                         : t("messagesPage.conversationClosedNotice")
-                      : selectedConversation.assigned_user_id
-                        ? t("messagesPage.claimedByNotice", { name: selectedConversation.assigned_user?.name || t("roles.agent") })
-                        : t("messagesPage.mustClaimFirst")}
+                      : isWaitingHuman
+                        ? selectedConversation.assigned_user_id
+                          ? t("messagesPage.claimedByNotice", { name: selectedConversation.assigned_user?.name || t("roles.agent") })
+                          : t("messagesPage.mustClaimFirst")
+                        : t(
+                            "messagesPage.automationHandlingNotice",
+                            "هذه المحادثة يديرها الرد الآلي حالياً. اضغط «تحويل إلى موظف» ثم «استلام المحادثة» للرد يدوياً."
+                          )}
                   </div>
                 )}
 
@@ -1896,7 +1910,7 @@ export default function ClientMessages() {
                         <button
                           type="button"
                           onClick={() => handleMediaButtonClick(key)}
-                          disabled={!canSendMedia || sending || !canControlConversation}
+                          disabled={!canSendMedia || sending || !canSendHumanReply}
                           title={canSendMedia ? t(labelKey) : t("messagesPage.mediaComingSoon", { label: t(labelKey) })}
                           className={`flex h-11 w-11 items-center justify-center rounded-2xl border transition ${
                             canSendMedia
@@ -1914,9 +1928,9 @@ export default function ClientMessages() {
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={handleComposerKeyDown}
-                    disabled={sending || !canControlConversation}
+                    disabled={sending || !canSendHumanReply}
                     placeholder={
-                      canControlConversation
+                      canSendHumanReply
                         ? attachment
                           ? t("messagesPage.captionPlaceholder")
                           : t("messagesPage.composerPlaceholderEnabled")
@@ -1935,7 +1949,7 @@ export default function ClientMessages() {
                   <button
                     type="button"
                     onClick={sendHumanReply}
-                    disabled={sending || (!draft.trim() && !attachment) || !canControlConversation}
+                    disabled={sending || (!draft.trim() && !attachment) || !canSendHumanReply}
                     className="h-11 shrink-0 rounded-2xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50"
                   >
                     {sending ? t("messagesPage.sending") : t("messagesPage.send")}
