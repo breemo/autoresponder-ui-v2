@@ -5,6 +5,7 @@ import { handleConversationsList } from "./_lib/conversationsList.js";
 import { handleConversationLifecycle } from "./_lib/conversationLifecycle.js";
 import { handleHumanReply } from "./_lib/humanReply.js";
 import { handleContactEnrich } from "./_lib/contactEnrich.js";
+import { handleDashboardSummary } from "./_lib/dashboardSummary.js";
 
 // Conversation Card V1 — API consolidation Merge #1: this single domain
 // endpoint replaces the former api/conversation-card.js (read-only
@@ -41,6 +42,14 @@ import { handleContactEnrich } from "./_lib/contactEnrich.js";
 //     -> list notes (former conversation-notes.js GET)
 //   GET  /api/conversation?resource=list&actor_user_id=
 //     -> conversation list (former top-level api/conversations.js)
+//   GET  /api/conversation?resource=dashboard&actor_user_id=
+//     -> Client Dashboard aggregates (open/waiting counts, recent
+//        conversations, billing-period messages usage, reply_source
+//        breakdown, 7-day activity chart), computed server-side from the
+//        authoritative public.conversations / public.messages — replaces
+//        ClientDashboard.jsx's former browser messages/conversation_state
+//        reads (messages RLS returned an empty set to the anon role). See
+//        api/_lib/dashboardSummary.js.
 //   GET  /api/conversation?resource=messages&actor_user_id=&conversation_id=
 //     -> historical conversation messages (created_at ASC), moved
 //        server-side from ClientMessages.jsx's former direct browser
@@ -469,6 +478,7 @@ const LIFECYCLE_ACTIONS = new Set(["claim", "close", "reopen", "takeover"]);
 // own pre-existing card/notes logic — exactly as before this merge.
 export function resolveConversationRoute(req) {
   if (req.method === "GET" && req.query?.resource === "list") return "list";
+  if (req.method === "GET" && req.query?.resource === "dashboard") return "dashboard";
   if (req.method === "POST" && LIFECYCLE_ACTIONS.has(req.body?.action)) return "lifecycle";
   if (req.method === "POST" && req.body?.action === "human_reply") return "human_reply";
   // Server-to-server (shared secret, no actor) — Meta customer profile-name
@@ -484,6 +494,7 @@ export default async function handler(req, res) {
   // the module comment above.
   const route = resolveConversationRoute(req);
   if (route === "list") return handleConversationsList(req, res);
+  if (route === "dashboard") return handleDashboardSummary(req, res);
   if (route === "lifecycle") return handleConversationLifecycle(req, res);
   if (route === "human_reply") return handleHumanReply(req, res);
   if (route === "enrich_contact") return handleContactEnrich(req, res);

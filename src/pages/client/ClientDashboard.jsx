@@ -36,6 +36,11 @@ function getSourceLabel(key, t) {
   return { auto: "Auto", system: "System", quick_reply: "Quick" }[key] || key;
 }
 
+// Reply-source order/keys are the product's real set — see AutoResponder_*
+// n8n `state_payload` (ai | auto | human | quick_reply | system). Not
+// invented, not derived from conversation_state.
+const SOURCE_KEYS = ["ai", "auto", "human", "quick_reply", "system"];
+
 const SOURCE_COLORS = {
   ai: "bg-violet-50 text-violet-700 border-violet-100",
   auto: "bg-emerald-50 text-emerald-700 border-emerald-100",
@@ -171,9 +176,16 @@ export default function ClientDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [messages, setMessages] = useState([]);
+  // Operational aggregates (open/waiting counts, recent conversations,
+  // billing-period messages usage, reply_source breakdown, 7-day activity
+  // chart) — computed server-side from the authoritative
+  // public.conversations / public.messages. The browser cannot read
+  // public.messages directly (RLS denies the anon role — it returned an
+  // empty set, which is why every message-derived widget rendered zeros),
+  // and conversation_state is legacy/non-authoritative. See
+  // api/_lib/dashboardSummary.js.
+  const [summary, setSummary] = useState(null);
   const [leadsCount, setLeadsCount] = useState(0);
-  const [conversationStates, setConversationStates] = useState([]);
   const [integrations, setIntegrations] = useState([]);
   const [plan, setPlan] = useState(null);
   const [subscriptionStatus, setSubscriptionStatus] = useState(null); // client_subscription_status row
@@ -195,25 +207,19 @@ export default function ClientDashboard() {
       setRefreshing(true);
       setError("");
 
-      const [clientRes, messagesRes, leadsRes, statesRes, integrationsRes, subStatusRes] =
+      const [clientRes, summaryResult, leadsRes, integrationsRes, subStatusRes] =
         await Promise.all([
           supabase.from("clients").select("id, plan_id").eq("id", realClientId).maybeSingle(),
-          supabase
-            .from("messages")
-            .select("id, message, channel, sender, direction, reply_source, conversation_id, created_at")
-            .eq("client_id", realClientId)
-            .order("created_at", { ascending: false })
-            .limit(500),
+          // Server-side, service-role, tenant-scoped operational aggregates.
+          // client_id is derived from the authenticated membership server-side;
+          // actor_user_id is the only value sent.
+          fetch(`/api/conversation?resource=dashboard&actor_user_id=${encodeURIComponent(user?.id || "")}`)
+            .then(async (r) => ({ ok: r.ok, body: await r.json().catch(() => ({})) }))
+            .catch(() => ({ ok: false, body: {} })),
           supabase
             .from("leads")
             .select("id", { count: "exact", head: true })
             .eq("client_id", realClientId),
-          supabase
-            .from("conversation_state")
-            .select("conversation_id, sender_id, platform, conversation_status, current_step, updated_at")
-            .eq("client_id", realClientId)
-            .order("updated_at", { ascending: false })
-            .limit(200),
           supabase
             .from("client_feature_integrations")
             .select("id, is_active, config, features(slug, name)")
@@ -226,15 +232,23 @@ export default function ClientDashboard() {
         ]);
 
       if (clientRes.error) throw clientRes.error;
-      if (messagesRes.error) throw messagesRes.error;
       if (leadsRes.error) throw leadsRes.error;
-      if (statesRes.error) console.warn("conversation_state error", statesRes.error);
       if (integrationsRes.error) console.warn("integrations error", integrationsRes.error);
       if (subStatusRes.error) console.warn("subscription status error", subStatusRes.error);
 
-      setMessages(messagesRes.data || []);
+      // The operational aggregates endpoint failing must not blank the
+      // whole page — the plan / subscription / leads / integrations cards
+      // still render. Surface the error and leave `summary` null so the
+      // operational widgets show real zeros/empty, never fabricated data.
+      if (summaryResult.ok && summaryResult.body?.success) {
+        setSummary(summaryResult.body);
+      } else {
+        setSummary(null);
+        setError(t("dashboard.errorLoad"));
+        console.warn("dashboard summary error", summaryResult.body);
+      }
+
       setLeadsCount(leadsRes.count || 0);
-      setConversationStates(statesRes.data || []);
       setIntegrations(integrationsRes.data || []);
       setSubscriptionStatus(subStatusRes.data || null);
 
@@ -275,99 +289,51 @@ export default function ClientDashboard() {
   }
 
   const dashboard = useMemo(() => {
-    const inbound = messages.filter((m) => m.direction === "inbound");
-    const outbound = messages.filter((m) => m.direction === "outbound");
-    const aiReplies = outbound.filter((m) => m.reply_source === "ai").length;
-    const autoReplies = outbound.filter((m) => m.reply_source === "auto").length;
-    const systemReplies = outbound.filter((m) => m.reply_source === "system").length;
-    const quickReplies = outbound.filter((m) => m.reply_source === "quick_reply").length;
-    const humanReplies = outbound.filter((m) => m.reply_source === "human").length;
-
-    const conversationMap = new Map();
-    messages.forEach((msg) => {
-      const key = msg.conversation_id || `${msg.channel || "unknown"}:${msg.sender || msg.id}`;
-      const existing = conversationMap.get(key) || {
-        id: key,
-        sender: msg.sender || "Unknown",
-        channel: msg.channel || "unknown",
-        lastMessage: "",
-        lastAt: msg.created_at,
-        count: 0,
-      };
-
-      existing.count += 1;
-
-      if (new Date(msg.created_at) >= new Date(existing.lastAt || 0)) {
-        existing.lastAt = msg.created_at;
-        existing.lastMessage = msg.message || "";
-        existing.sender = msg.sender || existing.sender;
-        existing.channel = msg.channel || existing.channel;
-      }
-
-      conversationMap.set(key, existing);
-    });
-
-    const statesByConversation = new Map(conversationStates.map((s) => [s.conversation_id, s]));
-
-    const conversations = Array.from(conversationMap.values())
-      .map((conversation) => {
-        const state = statesByConversation.get(conversation.id);
-        return {
-          ...conversation,
-          status: state?.conversation_status || "active",
-          updatedAt: state?.updated_at || conversation.lastAt,
-        };
-      })
-      .sort((a, b) => new Date(b.updatedAt || b.lastAt) - new Date(a.updatedAt || a.lastAt));
-
-    // Derived directly from conversation_state (the real conversation
-    // model) rather than the last-500-messages-derived list above, so it
-    // isn't skewed by conversations with no recent messages.
-    const openConversations = conversationStates.filter(
-      (s) => !["closed", "done"].includes(s.conversation_status)
-    ).length;
-    const waitingHuman = conversationStates.filter((s) => s.conversation_status === "waiting_human").length;
-
+    const s = summary;
     const dateLocale = i18n.language === "en" ? "en-US" : "ar-EG";
-    const days = {};
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const key = d.toLocaleDateString(dateLocale, { weekday: "short" });
-      days[key] = { day: key, inbound: 0, outbound: 0 };
-    }
 
-    messages.forEach((msg) => {
-      const day = new Date(msg.created_at).toLocaleDateString(dateLocale, { weekday: "short" });
-      if (!days[day]) return;
-      if (msg.direction === "inbound") days[day].inbound += 1;
-      if (msg.direction === "outbound") days[day].outbound += 1;
+    // Automation & Replies — server-side reply_source breakdown over the
+    // current billing period (trailing 30d when there is no subscription).
+    const byKey = Object.fromEntries((s?.automation?.stats || []).map((x) => [x.key, x.value]));
+    const outboundTotal = Math.max(s?.automation?.outbound_total || 0, 1);
+    const sourceStats = SOURCE_KEYS.map((key) => {
+      const value = byKey[key] || 0;
+      return { key, value, percentage: Math.round((value / outboundTotal) * 100) };
     });
 
-    const sourceTotal = Math.max(outbound.length, 1);
-    const sourceStats = [
-      { key: "ai", value: aiReplies, percentage: Math.round((aiReplies / sourceTotal) * 100) },
-      { key: "auto", value: autoReplies, percentage: Math.round((autoReplies / sourceTotal) * 100) },
-      { key: "human", value: humanReplies, percentage: Math.round((humanReplies / sourceTotal) * 100) },
-      { key: "quick_reply", value: quickReplies, percentage: Math.round((quickReplies / sourceTotal) * 100) },
-      { key: "system", value: systemReplies, percentage: Math.round((systemReplies / sourceTotal) * 100) },
-    ];
+    // Chart — server returns 7 UTC day buckets (YYYY-MM-DD); localise the
+    // weekday label only, keep the existing design.
+    const chartData = (s?.chart?.days || []).map((d) => ({
+      day: new Date(`${d.day}T00:00:00Z`).toLocaleDateString(dateLocale, { weekday: "short" }),
+      inbound: d.inbound || 0,
+      outbound: d.outbound || 0,
+    }));
+
+    // Recent — authoritative public.conversations, closed included,
+    // ordered by real activity (last_message_at) server-side.
+    const conversations = (s?.recent_conversations || []).map((c) => ({
+      id: c.conversation_id,
+      channel: c.channel || c.platform || "unknown",
+      sender: c.customer_name || c.sender_id || "",
+      status: c.conversation_status || "active",
+      lastMessage: c.last_message || "",
+      updatedAt: c.last_message_at,
+      count: c.messages_count || 0,
+    }));
 
     return {
-      totalMessages: messages.length,
       conversations,
-      openConversations,
-      waitingHuman,
-      aiReplies,
+      openConversations: s?.open_conversations ?? 0,
+      waitingHuman: s?.waiting_human ?? 0,
       sourceStats,
-      chartData: Object.values(days),
+      chartData,
       connectedIntegrations: integrations.filter((i) => i.is_active).length,
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, conversationStates, integrations, i18n.language]);
+  }, [summary, integrations, i18n.language]);
 
   const displayName = user?.business_name || user?.name || user?.email || t("dashboard.defaultClientName");
   const recentConversations = dashboard.conversations.slice(0, 5);
+  const messagesUsage = summary?.messages_usage || null;
   const daysRemaining = subscription?.end_date ? getDaysRemaining(subscription.end_date) : null;
 
   return (
@@ -512,7 +478,16 @@ export default function ClientDashboard() {
         <SectionCard title={t("common.usage")} subtitle={null}>
           {subscription && plan ? (
             <div className="space-y-4">
-              <UsageBar label={t("common.messagesLabel")} used={subscription.messages_used} limit={plan.messages_limit} />
+              {/* Messages Usage = actual public.messages rows counted
+                  server-side over the CURRENT subscription billing period
+                  ([start_date .. min(end_date, now)]); limit is that
+                  period's plan.messages_limit (null => unlimited). Not the
+                  stale subscriptions.messages_used counter. */}
+              <UsageBar
+                label={t("common.messagesLabel")}
+                used={messagesUsage?.used ?? subscription.messages_used ?? 0}
+                limit={messagesUsage?.plan_known ? messagesUsage.limit : (plan.messages_limit ?? null)}
+              />
               <UsageBar label={t("dashboard.usageAiReplies")} used={subscription.ai_replies_used} limit={plan.ai_replies_limit} />
               <UsageBar label={t("dashboard.usageAutoReplies")} used={subscription.auto_replies_used} limit={plan.auto_replies_limit} />
             </div>
