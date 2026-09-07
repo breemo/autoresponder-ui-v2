@@ -93,6 +93,8 @@
     "team": "Team",
     "settings": "Settings",
     "myAccount": "My Account",
+    "teamPerformance": "Team Performance",
+    "myPerformance": "My Performance",
     "clients": "Clients",
     "messages": "Messages",
     "plans": "Plans",
@@ -112,7 +114,9 @@
       "integrations": "Connect platforms",
       "featureSettings": "Feature settings",
       "team": "Team",
-      "myAccount": "My Account"
+      "myAccount": "My Account",
+      "teamPerformance": "Team metrics",
+      "myPerformance": "Your metrics"
     }
   },
   "pageTitles": {
@@ -135,7 +139,9 @@
       "featureSettings": ["Feature Settings", "Settings for each enabled feature"],
       "team": ["Team", "Manage your team and permissions"],
       "settings": ["Settings", "Welcome messages and general settings"],
-      "account": ["My Account", "Your personal details and password"]
+      "account": ["My Account", "Your personal details and password"],
+      "teamPerformance": ["Team Performance", "How your team is handling and solving conversations"],
+      "myPerformance": ["My Performance", "Your own handling and resolution metrics"]
     },
     "fallback": {
       "adminClientDetail": ["Client Settings", "Manage a specific client's settings"],
@@ -847,5 +853,51 @@
     "noteAddFailed": "Failed to add the note",
     "noteEditFailed": "Failed to save the note",
     "noteDeleteFailed": "Failed to delete the note"
+  },
+  "teamPerformance": {
+    "rangeToday": "Today",
+    "rangeWeek": "This Week",
+    "rangeMonth": "This Month",
+    "rangeCustom": "Custom",
+    "customFrom": "From",
+    "customTo": "To",
+    "apply": "Apply",
+    "summaryTitle": "Team Summary",
+    "myTitle": "My Summary",
+    "conversationsHandled": "Conversations Handled",
+    "conversationsSolved": "Conversations Solved",
+    "handlingCycles": "Claims / Cycles",
+    "avgFirstResponse": "Avg First Response",
+    "avgFirstResponseHint": "Time from claim to first reply, not customer wait time",
+    "avgResolution": "Avg Resolution",
+    "avgResolutionHint": "From claim to solve, per handling cycle",
+    "currentWorkload": "Current Workload",
+    "solvedToday": "Solved Today",
+    "humanMessagesSent": "Human Messages Sent",
+    "manualReopens": "Manual Reopens",
+    "employee": "Employee",
+    "tableTitle": "Employee Performance",
+    "notEnoughData": "Not enough data",
+    "noEmployees": "No team members yet.",
+    "loadError": "Could not load performance metrics.",
+    "loading": "Loading performance metrics...",
+    "selectEmployee": "Select an employee to see details",
+    "detailTitle": "{{name}} - Details",
+    "trendTitle": "Handled / Solved over the period",
+    "recentCycles": "Recent Handling Cycles",
+    "activityTimeline": "Recent Activity",
+    "cycleOpen": "Still open",
+    "eventAccepted": "Claimed",
+    "eventSolved": "Solved",
+    "eventReopened": "Reopened",
+    "eventTransferred": "Transferred to queue",
+    "back": "Back to team",
+    "myWorkloadTitle": "Your current queue",
+    "myWorkloadEmpty": "You have no conversations waiting on you right now.",
+    "openInInbox": "Open in Inbox",
+    "sampleNote": "Based on {{count}} completed cycle(s)",
+    "attributionNote": "Employee message attribution is accurate only for messages recorded after outbound telemetry was enabled{{since}}. Older messages are not attributed to anyone.",
+    "attributionSince": " (from {{date}})",
+    "attributionNoData": "No directly-attributed human messages yet. Attribution starts once employees reply through the Inbox after the telemetry update."
   }
 }

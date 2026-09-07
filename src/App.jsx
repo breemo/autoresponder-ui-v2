@@ -36,6 +36,8 @@ import ClientFeatureSettings from "./pages/client/ClientFeatureSettings.jsx";
 import ClientLeads from "./pages/client/ClientLeads.jsx";
 import ClientQuickReplies from "./pages/client/ClientQuickReplies.jsx";
 import ClientTeam from "./pages/client/ClientTeam.jsx";
+import ClientTeamPerformance from "./pages/client/ClientTeamPerformance.jsx";
+import ClientMyPerformance from "./pages/client/ClientMyPerformance.jsx";
 import ClientAccount from "./pages/client/ClientAccount.jsx";
 
 const ACCOUNT_PATH = "/client/account";
@@ -154,6 +156,14 @@ export default function App() {
           <Route
             path="/client/team"
             element={<ClientRoute permission={PERMISSIONS.TEAM_MANAGEMENT}><ClientTeam /></ClientRoute>}
+          />
+          <Route
+            path="/client/team-performance"
+            element={<ClientRoute permission={PERMISSIONS.TEAM_MANAGEMENT}><ClientTeamPerformance /></ClientRoute>}
+          />
+          <Route
+            path="/client/my-performance"
+            element={<ClientRoute><ClientMyPerformance /></ClientRoute>}
           />
           <Route
             path={ACCOUNT_PATH}

@@ -9,6 +9,8 @@ import {
   ChatBubbleLeftRightIcon,
   ChatBubbleOvalLeftEllipsisIcon,
   ChartBarIcon,
+  ChartPieIcon,
+  PresentationChartLineIcon,
   Cog6ToothIcon,
   CreditCardIcon,
   HomeIcon,
@@ -48,6 +50,8 @@ const clientItems = [
   { to: "/client/integrations", labelKey: "navigation.integrations", descKey: "navigation.descriptions.integrations", icon: Squares2X2Icon, permission: PERMISSIONS.INTEGRATIONS },
   { to: "/client/feature-settings", labelKey: "navigation.featureSettings", descKey: "navigation.descriptions.featureSettings", icon: PuzzlePieceIcon, permission: PERMISSIONS.AI_SETTINGS },
   { to: "/client/team", labelKey: "navigation.team", descKey: "navigation.descriptions.team", icon: UserGroupIcon, permission: PERMISSIONS.TEAM_MANAGEMENT },
+  { to: "/client/team-performance", labelKey: "navigation.teamPerformance", descKey: "navigation.descriptions.teamPerformance", icon: PresentationChartLineIcon, permission: PERMISSIONS.TEAM_MANAGEMENT },
+  { to: "/client/my-performance", labelKey: "navigation.myPerformance", descKey: "navigation.descriptions.myPerformance", icon: ChartPieIcon },
   { to: "/client/settings", labelKey: "navigation.settings", descKey: "navigation.descriptions.settings", icon: Cog6ToothIcon, permission: PERMISSIONS.SETTINGS },
   { to: "/client/account", labelKey: "navigation.myAccount", descKey: "navigation.descriptions.myAccount", icon: UserCircleIcon },
 ];
@@ -68,6 +72,8 @@ const PAGE_TITLE_KEYS = {
   "/client/integrations": "pageTitles.client.integrations",
   "/client/feature-settings": "pageTitles.client.featureSettings",
   "/client/team": "pageTitles.client.team",
+  "/client/team-performance": "pageTitles.client.teamPerformance",
+  "/client/my-performance": "pageTitles.client.myPerformance",
   "/client/settings": "pageTitles.client.settings",
   "/client/account": "pageTitles.client.account",
 };

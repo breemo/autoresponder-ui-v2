@@ -6,6 +6,7 @@ import { handleConversationLifecycle } from "./_lib/conversationLifecycle.js";
 import { handleHumanReply } from "./_lib/humanReply.js";
 import { handleContactEnrich } from "./_lib/contactEnrich.js";
 import { handleDashboardSummary } from "./_lib/dashboardSummary.js";
+import { handleTeamPerformance } from "./_lib/teamPerformance.js";
 
 // Conversation Card V1 — API consolidation Merge #1: this single domain
 // endpoint replaces the former api/conversation-card.js (read-only
@@ -42,6 +43,14 @@ import { handleDashboardSummary } from "./_lib/dashboardSummary.js";
 //     -> list notes (former conversation-notes.js GET)
 //   GET  /api/conversation?resource=list&actor_user_id=
 //     -> conversation list (former top-level api/conversations.js)
+//   GET  /api/conversation?resource=team-performance&actor_user_id=&scope=team|me
+//        [&range=today|week|month|custom&from=YYYY-MM-DD&to=YYYY-MM-DD&employee_user_id=]
+//     -> Team Productivity V1 metrics. scope=team requires TEAM_MANAGEMENT
+//        and returns every employee of the acting user's own client (+
+//        optional employee_user_id drill-down, validated as a member of
+//        that client). scope=me forces employee = actor.user.id. Tenant
+//        scope is always actor.membership.client_id. See
+//        api/_lib/teamPerformance.js.
 //   GET  /api/conversation?resource=dashboard&actor_user_id=
 //     -> Client Dashboard aggregates (open/waiting counts, recent
 //        conversations, billing-period messages usage, reply_source
@@ -479,6 +488,7 @@ const LIFECYCLE_ACTIONS = new Set(["claim", "close", "reopen", "takeover"]);
 export function resolveConversationRoute(req) {
   if (req.method === "GET" && req.query?.resource === "list") return "list";
   if (req.method === "GET" && req.query?.resource === "dashboard") return "dashboard";
+  if (req.method === "GET" && req.query?.resource === "team-performance") return "team-performance";
   if (req.method === "POST" && LIFECYCLE_ACTIONS.has(req.body?.action)) return "lifecycle";
   if (req.method === "POST" && req.body?.action === "human_reply") return "human_reply";
   // Server-to-server (shared secret, no actor) — Meta customer profile-name
@@ -495,6 +505,7 @@ export default async function handler(req, res) {
   const route = resolveConversationRoute(req);
   if (route === "list") return handleConversationsList(req, res);
   if (route === "dashboard") return handleDashboardSummary(req, res);
+  if (route === "team-performance") return handleTeamPerformance(req, res);
   if (route === "lifecycle") return handleConversationLifecycle(req, res);
   if (route === "human_reply") return handleHumanReply(req, res);
   if (route === "enrich_contact") return handleContactEnrich(req, res);

@@ -93,6 +93,8 @@
     "team": "فريق العمل",
     "settings": "الإعدادات",
     "myAccount": "حسابي",
+    "teamPerformance": "أداء الفريق",
+    "myPerformance": "أدائي",
     "clients": "العملاء",
     "messages": "الرسائل",
     "plans": "الباقات",
@@ -112,7 +114,9 @@
       "integrations": "ربط المنصات",
       "featureSettings": "إعدادات الميزات",
       "team": "فريق العمل",
-      "myAccount": "حسابي"
+      "myAccount": "حسابي",
+      "teamPerformance": "مقاييس الفريق",
+      "myPerformance": "مقاييسك"
     }
   },
   "pageTitles": {
@@ -135,7 +139,9 @@
       "featureSettings": ["إعدادات الميزات", "إعدادات كل ميزة مفعّلة"],
       "team": ["فريق العمل", "إدارة فريق العمل والصلاحيات"],
       "settings": ["الإعدادات", "رسائل الترحيب والإعدادات العامة"],
-      "account": ["حسابي", "بياناتك الشخصية وكلمة المرور"]
+      "account": ["حسابي", "بياناتك الشخصية وكلمة المرور"],
+      "teamPerformance": ["أداء الفريق", "كيف يتعامل فريقك مع المحادثات وينهيها"],
+      "myPerformance": ["أدائي", "مقاييس معالجتك وإنهائك للمحادثات"]
     },
     "fallback": {
       "adminClientDetail": ["إعدادات العميل", "إدارة إعدادات عميل محدد"],
@@ -847,5 +853,51 @@
     "noteAddFailed": "فشل إضافة الملاحظة",
     "noteEditFailed": "فشل حفظ الملاحظة",
     "noteDeleteFailed": "فشل حذف الملاحظة"
+  },
+  "teamPerformance": {
+    "rangeToday": "اليوم",
+    "rangeWeek": "هذا الأسبوع",
+    "rangeMonth": "هذا الشهر",
+    "rangeCustom": "مخصّص",
+    "customFrom": "من",
+    "customTo": "إلى",
+    "apply": "تطبيق",
+    "summaryTitle": "ملخّص الفريق",
+    "myTitle": "ملخّصي",
+    "conversationsHandled": "محادثات تمّت معالجتها",
+    "conversationsSolved": "محادثات تمّ إنهاؤها",
+    "handlingCycles": "الاستلامات / الدورات",
+    "avgFirstResponse": "متوسط أول رد",
+    "avgFirstResponseHint": "الوقت من الاستلام حتى أول رد، وليس وقت انتظار العميل",
+    "avgResolution": "متوسط الإنهاء",
+    "avgResolutionHint": "من الاستلام حتى الإنهاء، لكل دورة معالجة",
+    "currentWorkload": "المهام الحالية",
+    "solvedToday": "أُنهيت اليوم",
+    "humanMessagesSent": "رسائل بشرية مُرسَلة",
+    "manualReopens": "إعادات فتح يدوية",
+    "employee": "الموظف",
+    "tableTitle": "أداء الموظفين",
+    "notEnoughData": "بيانات غير كافية",
+    "noEmployees": "لا يوجد أعضاء فريق بعد.",
+    "loadError": "تعذّر تحميل مقاييس الأداء.",
+    "loading": "جارِ تحميل مقاييس الأداء...",
+    "selectEmployee": "اختر موظفاً لعرض التفاصيل",
+    "detailTitle": "{{name}} - التفاصيل",
+    "trendTitle": "المعالجة / الإنهاء خلال الفترة",
+    "recentCycles": "أحدث دورات المعالجة",
+    "activityTimeline": "أحدث النشاط",
+    "cycleOpen": "لا تزال مفتوحة",
+    "eventAccepted": "استلام",
+    "eventSolved": "إنهاء",
+    "eventReopened": "إعادة فتح",
+    "eventTransferred": "تحويل إلى القائمة",
+    "back": "العودة إلى الفريق",
+    "myWorkloadTitle": "قائمتك الحالية",
+    "myWorkloadEmpty": "لا توجد محادثات بانتظارك الآن.",
+    "openInInbox": "فتح في صندوق الوارد",
+    "sampleNote": "بناءً على {{count}} دورة مكتملة",
+    "attributionNote": "إسناد رسائل الموظفين دقيق فقط للرسائل المُسجّلة بعد تفعيل تتبّع الرسائل الصادرة{{since}}. الرسائل الأقدم لا تُنسب إلى أي موظف.",
+    "attributionSince": " (اعتباراً من {{date}})",
+    "attributionNoData": "لا توجد رسائل بشرية منسوبة مباشرةً بعد. يبدأ الإسناد عندما يرد الموظفون من صندوق الوارد بعد تحديث التتبّع."
   }
 }
