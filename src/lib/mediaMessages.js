@@ -145,9 +145,12 @@ export function validateMediaFile(messageType, file) {
 // disambiguated value.
 // "instagram" is a media channel, but NOT for every type — per-type
 // support is in CHANNEL_MEDIA_TYPE_SUPPORT below (live testing: image
-// works, generic documents do not — Meta's IG Messaging API has no
-// "file" attachment type). Text and image are delivered via the
-// Instagram Graph attachment API in the Human Reply builder.
+// works outbound; generic documents do not — Meta's IG Messaging API has
+// no "file" attachment type; audio does not either — Meta rejects
+// audio/mpeg and MP4 with "attachment type not supported"). Only text and
+// image are delivered via the Instagram Graph attachment API in the Human
+// Reply builder. INBOUND Instagram audio is unaffected and fully
+// supported (see api/_lib/inboundMediaMime.js / Inbound-Media-Core).
 export const SUPPORTED_MEDIA_CHANNEL_VALUES = ["whatsapp", "facebook", "telegram", "instagram"];
 
 export function isSupportedMediaChannel(channel) {
@@ -165,15 +168,19 @@ export function canSendMediaOnChannel(channel) {
 }
 
 // Per-channel OUTBOUND media type capability. A channel absent from this
-// map supports all three types. Instagram Messaging (Meta) has no
-// "file"/document attachment type — the Graph API rejects it, and live
-// testing confirmed only images work outbound — so the Document control is
-// hidden for an Instagram conversation. `text` and `image` (and, per
-// Meta's documented attachment types, `audio`) stay available. The Human
-// Reply n8n builder throws a clean error for an Instagram document as the
-// server-side backstop.
+// map supports all three media types. Instagram Messaging (Meta) only
+// accepts an `image` attachment outbound: live testing confirmed Meta
+// rejects both `document` (no "file" attachment type) and `audio`
+// (audio/mpeg and MP4 both return "attachment type not supported"), so
+// their controls are hidden for an Instagram conversation. Only `text` and
+// `image` stay available. The Human Reply n8n builder (build_provider_request
+// in "Human Reply - Multi Channel Media") throws a clean error for an
+// Instagram document OR audio send as the server-side backstop.
+//
+// This is OUTBOUND only. Instagram INBOUND audio (a customer voice note)
+// is fully supported and is NOT affected by this map.
 export const CHANNEL_MEDIA_TYPE_SUPPORT = {
-  instagram: { image: true, audio: true, document: false },
+  instagram: { image: true, audio: false, document: false },
 };
 
 export function canSendMediaTypeOnChannel(channel, messageType) {
