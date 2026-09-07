@@ -194,10 +194,37 @@ async function resolveReplyMode(supabase, { clientId, platform, mapping, account
 // 'outbound' -> "assistant" — messages is the only table this reads;
 // conversation_notes (a separate table entirely) is never queried here,
 // so "internal notes" are structurally excluded, not filtered out.
+//
+// Media awareness (AI Reply Quality V2): an inbound message that carries
+// media but no textual caption used to be dropped entirely, leaving the
+// model with a silent gap ("the customer sent a photo" was invisible). It
+// is now represented by a neutral, internal-only placeholder built from
+// message_type. The deterministic bilingual "Unsupported media" marker
+// n8n writes for a failed media ingest is an internal telemetry string,
+// not something the customer typed — it is normalised to the same neutral
+// placeholder so it never contaminates the AI's view of the conversation.
+// Outbound (assistant) turns with no text are still dropped — the Prompt
+// Builder keeps only customer turns anyway.
+const UNSUPPORTED_MEDIA_MARKER = "⚠️ وسائط غير مدعومة / Unsupported media";
+const MEDIA_TYPE_PLACEHOLDERS = {
+  image: "[Customer sent an image]",
+  photo: "[Customer sent an image]",
+  audio: "[Customer sent an audio message]",
+  voice: "[Customer sent an audio message]",
+  video: "[Customer sent a video]",
+  document: "[Customer sent a document]",
+  file: "[Customer sent a document]",
+  sticker: "[Customer sent a sticker]",
+};
+
+function mediaPlaceholder(messageType) {
+  return MEDIA_TYPE_PLACEHOLDERS[String(messageType || "").toLowerCase()] || "[Customer sent an attachment]";
+}
+
 async function loadHistory(supabase, { clientId, conversationId }) {
   const { data, error } = await supabase
     .from("messages")
-    .select("id, message, direction, reply_source, created_at")
+    .select("id, message, message_type, direction, reply_source, created_at")
     .eq("client_id", clientId)
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: false })
@@ -205,9 +232,24 @@ async function loadHistory(supabase, { clientId, conversationId }) {
   if (error) throw error;
 
   return (data || [])
-    .filter((row) => (row.message || "").trim() !== "")
     .reverse()
-    .map((row) => ({ role: row.direction === "outbound" ? "assistant" : "user", content: row.message.trim() }));
+    .map((row) => {
+      const isInbound = row.direction !== "outbound";
+      const role = isInbound ? "user" : "assistant";
+      let content = (row.message || "").trim();
+
+      if (isInbound && content === UNSUPPORTED_MEDIA_MARKER) {
+        content = mediaPlaceholder(row.message_type);
+      } else if (isInbound && content === "" && row.message_type && row.message_type !== "text") {
+        content = mediaPlaceholder(row.message_type);
+      } else if (content === UNSUPPORTED_MEDIA_MARKER) {
+        // outbound copy of the marker (shouldn't happen) — drop it
+        content = "";
+      }
+
+      return content ? { role, content } : null;
+    })
+    .filter(Boolean);
 }
 
 // Phase 4B: semantic Knowledge Base retrieval — wrapped so a Knowledge
@@ -240,11 +282,9 @@ async function loadHistory(supabase, { clientId, conversationId }) {
 // the confirmed bug this fixes. `queryText` (the Phase-1 contextual
 // string) still goes to vector embedding exactly as before Phase 2B.
 //
-// TEMPORARY DIAGNOSTIC: `logTag` (conversationId + a short per-call
-// suffix) is passed through so every knowledgeRetrieval[DIAGNOSTIC] line
-// for one customer message can be correlated together in the log viewer
-// — see knowledgeRetrieval.js's own comment on retrieveRelevantKnowledgeHybrid.
-// Purely additive metadata, never branched on.
+// `logTag` (conversationId + a short per-call suffix) is passed through
+// as a per-request correlation string for the warn logs below. Purely
+// additive metadata, never branched on.
 async function retrieveKnowledgeSafely(supabase, { clientId, conversationId, queryText, history }) {
   const trimmedQuery = (queryText || "").trim();
   if (!trimmedQuery) return [];

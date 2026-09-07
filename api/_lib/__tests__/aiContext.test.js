@@ -383,6 +383,57 @@ test("regression 7: locations_list_complete tenant isolation — client A's flag
   assert.equal(result.context.client.locations_list_complete, false, "client A must see its own false flag, never client B's true flag");
 });
 
+// --- AI Reply Quality V2: media-aware conversation history ---------------
+
+test("V2 history: an inbound media message with no caption becomes a neutral internal placeholder, in order", async () => {
+  const tables = baseTables();
+  tables.messages = [
+    { id: "m1", client_id: "client-1", conversation_id: "conv-1", message: "مرحبا", message_type: "text", direction: "inbound", created_at: "2026-01-01T00:00:00Z" },
+    { id: "m2", client_id: "client-1", conversation_id: "conv-1", message: "", message_type: "image", direction: "inbound", created_at: "2026-01-01T00:00:05Z" },
+    { id: "m3", client_id: "client-1", conversation_id: "conv-1", message: "", message_type: "audio", direction: "inbound", created_at: "2026-01-01T00:00:10Z" },
+  ];
+  const supabase = createMockSupabase(tables);
+  supabase.rpc = async () => ({ data: [], error: null });
+
+  const result = await resolveAiContext(supabase, { conversationId: "conv-1", clientId: "client-1", currentMessageText: "شو رأيك فيها؟" });
+  assert.equal(result.ok, true);
+  assert.deepEqual(
+    result.context.conversation.history.map((h) => h.content),
+    ["مرحبا", "[Customer sent an image]", "[Customer sent an audio message]"]
+  );
+  assert.equal(result.context.conversation.history.every((h) => h.role === "user"), true);
+});
+
+test("V2 history: the internal 'Unsupported media' marker never leaks into AI context", async () => {
+  const tables = baseTables();
+  tables.messages = [
+    { id: "m1", client_id: "client-1", conversation_id: "conv-1", message: "⚠️ وسائط غير مدعومة / Unsupported media", message_type: "text", direction: "inbound", created_at: "2026-01-01T00:00:00Z" },
+    { id: "m2", client_id: "client-1", conversation_id: "conv-1", message: "بعتتلكم صورة", message_type: "text", direction: "inbound", created_at: "2026-01-01T00:00:05Z" },
+  ];
+  const supabase = createMockSupabase(tables);
+  supabase.rpc = async () => ({ data: [], error: null });
+
+  const result = await resolveAiContext(supabase, { conversationId: "conv-1", clientId: "client-1", currentMessageText: "بعتتلكم صورة" });
+  assert.equal(result.ok, true);
+  const serialized = JSON.stringify(result.context.conversation.history);
+  assert.equal(serialized.includes("Unsupported media"), false);
+  assert.equal(serialized.includes("وسائط غير مدعومة"), false);
+  assert.equal(result.context.conversation.history[0].content, "[Customer sent an attachment]");
+});
+
+test("V2 history: a real caption on a media message is kept as-is, not replaced by a placeholder", async () => {
+  const tables = baseTables();
+  tables.messages = [
+    { id: "m1", client_id: "client-1", conversation_id: "conv-1", message: "هاي المنتج يلي بدي اياه", message_type: "image", direction: "inbound", created_at: "2026-01-01T00:00:00Z" },
+  ];
+  const supabase = createMockSupabase(tables);
+  supabase.rpc = async () => ({ data: [], error: null });
+
+  const result = await resolveAiContext(supabase, { conversationId: "conv-1", clientId: "client-1", currentMessageText: "كم سعره؟" });
+  assert.equal(result.ok, true);
+  assert.equal(result.context.conversation.history[0].content, "هاي المنتج يلي بدي اياه");
+});
+
 test("Phase 1: a standalone factual query embeds unchanged end-to-end, even with unrelated history present", async (t) => {
   let capturedInput = null;
   globalThis.fetch = async (url, options) => {

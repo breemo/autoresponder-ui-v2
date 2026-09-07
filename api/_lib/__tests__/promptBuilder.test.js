@@ -435,12 +435,87 @@ test("QW1: no JSON output-format instruction leaks into the live system prompt (
   assert.doesNotMatch(system, /greeting,\s*pricing,\s*order/);
 });
 
-test("QW2: concise-answer + natural-register behavior is instructed, deferring to configured personality/tone", () => {
+test("QW2/V2: concise answer-first + natural-register behavior is instructed, deferring to configured personality/tone", () => {
   const system = buildPromptMessages(makeContext())[0].content;
-  assert.match(system, /one or two sentences for a simple factual question/i);
-  assert.match(system, /natural everyday \/ Levantine conversational wording/i);
-  assert.match(system, /unless the Personality or Tone above clearly calls for a more formal style/i);
-  assert.match(system, /Do not open a reply with a greeting unless this is the very first message/i);
+  assert.match(system, /Answer the customer's actual question first/i);
+  assert.match(system, /one or two sentences/i);
+  assert.match(system, /Palestinian \/ Levantine conversational Arabic/i);
+  assert.match(system, /Modern Standard Arabic when they do/i);
+  assert.match(system, /never force a dialect/i);
+  assert.match(system, /The Personality or Tone above still wins/i);
+});
+
+// --- AI Reply Quality V2 --------------------------------------------------
+
+test("V2: no-repeated-greeting / no-re-introduction / no-name-repetition rule is present", () => {
+  const system = buildPromptMessages(makeContext())[0].content;
+  assert.match(system, /do not reopen with a greeting, do not re-introduce yourself, and do not repeat the business name/i);
+});
+
+test("V2: no forced 'how can I help you' filler; short acknowledgement is a complete reply", () => {
+  const system = buildPromptMessages(makeContext())[0].content;
+  assert.match(system, /Do not end every reply with an offer of further help/i);
+  assert.match(system, /a short acknowledgement back is a complete reply/i);
+});
+
+test("V2: clarify-only-when-needed and never-re-ask-known-info rule is present", () => {
+  const system = buildPromptMessages(makeContext())[0].content;
+  assert.match(system, /Ask at most one short clarifying question/i);
+  assert.match(system, /Never ask for information the customer has already given/i);
+});
+
+test("V2: the source-of-truth precedence block appears exactly once, ordered, with structured data outranking KB", () => {
+  const system = buildPromptMessages(
+    makeContext({ relevant_knowledge: [{ document_title: "Menu", category: "menu", content: "Burger 25 ILS" }] })
+  )[0].content;
+  const occurrences = system.match(/## Which source to trust/g) || [];
+  assert.equal(occurrences.length, 1);
+  // structured profile is #1, KB is a lower rank
+  const profileRank = system.indexOf("1. The AUTHORITATIVE BUSINESS PROFILE and Locations above");
+  const kbRank = system.indexOf("3. The RELEVANT KNOWLEDGE BASE EXCERPTS below");
+  assert.ok(profileRank >= 0 && kbRank > profileRank);
+  assert.match(system, /the AUTHORITATIVE BUSINESS PROFILE is correct/i);
+  assert.match(system, /do not silently pick one/i);
+  assert.match(system, /Never use your own general knowledge or memory for any fact about this business/i);
+});
+
+test("V2: price exact-item grounding + currency preservation + no cross-item transfer", () => {
+  const system = buildPromptMessages(
+    makeContext({
+      relevant_knowledge: [
+        { document_title: "Menu", category: "menu", content: "Classic Burger 25 ILS\nCheese Burger 30 ILS" },
+      ],
+    })
+  )[0].content;
+  assert.match(system, /state a price only when an excerpt explicitly ties that exact price to the exact item/i);
+  assert.match(system, /keep the currency exactly as written/i);
+  assert.match(system, /Never move a price from one item to another/i);
+  assert.match(system, /ask them to confirm which item before quoting a price/i);
+});
+
+test("V2: incomplete menu/price-list absence is not proof the item is unavailable", () => {
+  const system = buildPromptMessages(
+    makeContext({ relevant_knowledge: [{ document_title: "Menu", category: "menu", content: "Burger 25 ILS" }] })
+  )[0].content;
+  assert.match(system, /an item simply not being listed is NOT proof the business does not offer it, unless the list is explicitly the complete one/i);
+});
+
+test("V2: unknown-info deflection is softened — no single fixed disclaimer sentence is mandated", () => {
+  const system = buildPromptMessages(makeContext())[0].content;
+  assert.match(system, /do not fall back on one long fixed disclaimer sentence; vary the wording naturally/i);
+  // the old rigid phrasing is gone
+  assert.doesNotMatch(system, /that you don't have that confirmed right now, then follow the Escalation/i);
+});
+
+test("V2: false-action-completion protection is preserved and extended to the handover-not-confirmed case", () => {
+  const system = buildPromptMessages(makeContext())[0].content;
+  assert.match(system, /NEVER state that an action has been completed unless this system actually performed it/i);
+  assert.match(system, /only tell the customer their request was passed to the team AFTER the handover step returns success this turn/i);
+});
+
+test("V2: model is told not to mention tools / internal steps / that it is an AI", () => {
+  const system = buildPromptMessages(makeContext())[0].content;
+  assert.match(system, /do not mention tools, internal steps, or that you are an AI/i);
 });
 
 test("system prompt never reveals itself when asked to", () => {
