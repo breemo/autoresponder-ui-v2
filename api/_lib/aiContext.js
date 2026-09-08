@@ -285,7 +285,16 @@ async function loadHistory(supabase, { clientId, conversationId }) {
 // `logTag` (conversationId + a short per-call suffix) is passed through
 // as a per-request correlation string for the warn logs below. Purely
 // additive metadata, never branched on.
-async function retrieveKnowledgeSafely(supabase, { clientId, conversationId, queryText, history }) {
+//
+// `useContextualRetrieval` (default true = unchanged legacy behavior):
+// when false, the raw current message is used as the retrieval query with
+// NO language-heuristic query rewriting (no buildContextualRetrievalQuery,
+// no previous-turn prepend). This is the AI-Agent-Core VNext path — the
+// Agent itself resolves conversational references and calls
+// search_business_knowledge with a fully-spelled-out query when the
+// pre-retrieved excerpts are not enough. The heuristic code stays in
+// knowledgeRetrieval.js untouched, simply not invoked on this path.
+async function retrieveKnowledgeSafely(supabase, { clientId, conversationId, queryText, history, useContextualRetrieval = true }) {
   const trimmedQuery = (queryText || "").trim();
   if (!trimmedQuery) return [];
 
@@ -293,12 +302,14 @@ async function retrieveKnowledgeSafely(supabase, { clientId, conversationId, que
 
   let effectiveQuery = trimmedQuery;
   let lexicalContextText = "";
-  try {
-    effectiveQuery = buildContextualRetrievalQuery(trimmedQuery, history) || trimmedQuery;
-    lexicalContextText = buildLexicalContextText(trimmedQuery, history) || "";
-  } catch (error) {
-    effectiveQuery = trimmedQuery;
-    lexicalContextText = "";
+  if (useContextualRetrieval) {
+    try {
+      effectiveQuery = buildContextualRetrievalQuery(trimmedQuery, history) || trimmedQuery;
+      lexicalContextText = buildLexicalContextText(trimmedQuery, history) || "";
+    } catch (error) {
+      effectiveQuery = trimmedQuery;
+      lexicalContextText = "";
+    }
   }
 
   try {
@@ -386,7 +397,7 @@ async function loadLocationsSafely(supabase, clientId) {
   }
 }
 
-export async function resolveAiContext(supabase, { conversationId, clientId, currentMessageText }) {
+export async function resolveAiContext(supabase, { conversationId, clientId, currentMessageText, useContextualRetrieval = true }) {
   if (!conversationId || !clientId) {
     return fail(400, "missing_input", "conversation_id and client_id are required");
   }
@@ -444,7 +455,7 @@ export async function resolveAiContext(supabase, { conversationId, clientId, cur
   });
 
   const history = await loadHistory(supabase, { clientId, conversationId });
-  const relevantKnowledge = await retrieveKnowledgeSafely(supabase, { clientId, conversationId, queryText: currentMessageText, history });
+  const relevantKnowledge = await retrieveKnowledgeSafely(supabase, { clientId, conversationId, queryText: currentMessageText, history, useContextualRetrieval });
   const { locations, locationsListComplete } = await loadLocationsSafely(supabase, clientId);
 
   const context = {

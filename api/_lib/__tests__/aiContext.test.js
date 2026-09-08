@@ -289,6 +289,37 @@ test("Phase 1: a conversational follow-up embeds a contextualized query end-to-e
   assert.equal(result.context.conversation.current_message_text, "طيب بتوصلوا داخل نابلس؟");
 });
 
+test("VNext path: useContextualRetrieval:false embeds the RAW current message — no follow-up heuristic rewrite", async (t) => {
+  let capturedInput = null;
+  globalThis.fetch = async (url, options) => {
+    capturedInput = JSON.parse(options.body).input;
+    return { ok: true, json: async () => ({ data: [{ index: 0, embedding: new Array(EMBEDDING_DIMENSIONS).fill(0.01) }] }) };
+  };
+  process.env.OPENAI_API_KEY = "test-key";
+  t.after(restoreFetch);
+
+  const tables = baseTables();
+  tables.messages = [
+    { id: "m1", client_id: "client-1", conversation_id: "conv-1", message: "هل يوجد توصيل خارج نابلس؟", direction: "inbound", created_at: "2026-01-01T00:00:00Z" },
+    { id: "m2", client_id: "client-1", conversation_id: "conv-1", message: "لا، لا يوجد توصيل خارج مدينة نابلس حالياً.", direction: "outbound", created_at: "2026-01-01T00:00:05Z" },
+  ];
+  const supabase = createMockSupabase(tables);
+  supabase.rpc = async () => ({ data: [], error: null });
+
+  const result = await resolveAiContext(supabase, {
+    conversationId: "conv-1",
+    clientId: "client-1",
+    currentMessageText: "طيب بتوصلوا داخل نابلس؟",
+    useContextualRetrieval: false,
+  });
+
+  assert.equal(result.ok, true);
+  // The follow-up marker "طيب" is IGNORED on this path — the query is verbatim.
+  assert.equal(capturedInput?.[0], "طيب بتوصلوا داخل نابلس؟");
+  // history and messages are still fully built for the Agent transcript.
+  assert.equal(result.context.conversation.history.length, 2);
+});
+
 // --- Business Voice + Authoritative Locations ------------------------------
 
 test("locations A/B: a client with zero client_locations rows still builds a valid profile, with locations_list_complete defaulting false (address alone never implies a complete branch list)", async () => {
