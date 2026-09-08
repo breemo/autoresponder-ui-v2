@@ -347,11 +347,12 @@ test("M. buildLexicalContextText agrees with buildContextualRetrievalQuery about
     { role: "assistant", content: "لا، لا يوجد توصيل خارج مدينة نابلس حالياً." },
   ];
 
-  // Follow-up case (matches the original Phase 1 example exactly).
+  // Follow-up case — previous CUSTOMER turn only; the assistant reply is
+  // never part of the retrieval query on either path.
   const contextualQuery = buildContextualRetrievalQuery("طيب بتوصلوا داخل نابلس؟", history);
   const lexicalContext = buildLexicalContextText("طيب بتوصلوا داخل نابلس؟", history);
-  assert.equal(contextualQuery, "هل يوجد توصيل خارج نابلس؟ لا، لا يوجد توصيل خارج مدينة نابلس حالياً. طيب بتوصلوا داخل نابلس؟");
-  assert.equal(lexicalContext, "هل يوجد توصيل خارج نابلس؟ لا، لا يوجد توصيل خارج مدينة نابلس حالياً.");
+  assert.equal(contextualQuery, "هل يوجد توصيل خارج نابلس؟ طيب بتوصلوا داخل نابلس؟");
+  assert.equal(lexicalContext, "هل يوجد توصيل خارج نابلس؟");
 
   // Standalone case — both must agree there is NO context to inject.
   const standaloneQuery = buildContextualRetrievalQuery("كم سعر وجبة المشاوي المشكلة؟", history);

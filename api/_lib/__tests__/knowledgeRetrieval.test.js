@@ -157,12 +157,12 @@ test("1. a standalone factual query remains standalone (no history injected)", (
   assert.equal(query, "كم سعر وجبة المشاوي المشكلة؟");
 });
 
-test("2. a likely follow-up receives the previous user + assistant turn as context", () => {
+test("2. a likely follow-up receives the previous CUSTOMER turn as context (never the assistant reply)", () => {
   const query = buildContextualRetrievalQuery("طيب بتوصلوا داخل نابلس؟", [
     { role: "user", content: "هل يوجد توصيل خارج نابلس؟" },
     { role: "assistant", content: "لا، لا يوجد توصيل خارج مدينة نابلس حالياً." },
   ]);
-  assert.equal(query, "هل يوجد توصيل خارج نابلس؟ لا، لا يوجد توصيل خارج مدينة نابلس حالياً. طيب بتوصلوا داخل نابلس؟");
+  assert.equal(query, "هل يوجد توصيل خارج نابلس؟ طيب بتوصلوا داخل نابلس؟");
 });
 
 test("3. the current message is not duplicated when history already ends with it (the real production shape)", () => {
@@ -171,10 +171,12 @@ test("3. the current message is not duplicated when history already ends with it
     { role: "assistant", content: "لا، لا يوجد توصيل خارج مدينة نابلس حالياً." },
     { role: "user", content: "طيب بتوصلوا داخل نابلس؟" }, // n8n's insert-message precedent
   ]);
-  assert.equal(query, "هل يوجد توصيل خارج نابلس؟ لا، لا يوجد توصيل خارج مدينة نابلس حالياً. طيب بتوصلوا داخل نابلس؟");
+  assert.equal(query, "هل يوجد توصيل خارج نابلس؟ طيب بتوصلوا داخل نابلس؟");
   // Sanity: the current message string appears exactly once in the query.
   const occurrences = query.split("طيب بتوصلوا داخل نابلس؟").length - 1;
   assert.equal(occurrences, 1);
+  // Sanity: the assistant reply text never appears in the retrieval query.
+  assert.equal(query.includes("لا يوجد توصيل خارج مدينة"), false);
 });
 
 test("4. context is bounded — the current message is preserved in full, the prepended context is truncated to stay under the hard cap", () => {
@@ -203,12 +205,12 @@ test("6. malformed/missing history falls back safely to the current message, nev
   assert.equal(buildContextualRetrievalQuery(current, [null, { role: "user" }, { role: "assistant", content: 42 }]), current);
 });
 
-test("an elliptical bare interrogative (no topic noun of its own) is a follow-up", () => {
+test("an elliptical bare interrogative (no topic noun of its own) is a follow-up — prev customer turn only", () => {
   const query = buildContextualRetrievalQuery("ليش؟", [
     { role: "user", content: "هل يوجد توصيل خارج نابلس؟" },
     { role: "assistant", content: "لا، لا يوجد توصيل خارج مدينة نابلس حالياً." },
   ]);
-  assert.equal(query, "هل يوجد توصيل خارج نابلس؟ لا، لا يوجد توصيل خارج مدينة نابلس حالياً. ليش؟");
+  assert.equal(query, "هل يوجد توصيل خارج نابلس؟ ليش؟");
 });
 
 // --- Generic follow-up vs standalone: SHORT MESSAGE != FOLLOW-UP --------
@@ -220,7 +222,7 @@ test("an elliptical bare interrogative (no topic noun of its own) is a follow-up
 
 const PRIOR = [
   { role: "user", content: "PREV_Q" },
-  { role: "assistant", content: "PREV_A" },
+  { role: "assistant", content: "PREV_ASSISTANT_REPLY_MUST_NOT_APPEAR" },
 ];
 
 for (const msg of [
@@ -254,8 +256,8 @@ for (const msg of [
   "what about the other one?",
   "how much is it?",
 ]) {
-  test(`referential / elliptical "${msg}" DOES inherit the previous turn`, () => {
-    assert.equal(buildContextualRetrievalQuery(msg, PRIOR), `PREV_Q PREV_A ${msg}`);
+  test(`referential / elliptical "${msg}" DOES inherit the previous CUSTOMER turn (not the assistant reply)`, () => {
+    assert.equal(buildContextualRetrievalQuery(msg, PRIOR), `PREV_Q ${msg}`);
   });
 }
 
@@ -269,5 +271,5 @@ test("an English discourse marker is also recognized (generic, not Arabic-only)"
     { role: "user", content: "Do you have a menu?" },
     { role: "assistant", content: "Yes, here is our menu." },
   ]);
-  assert.equal(query, "Do you have a menu? Yes, here is our menu. what about delivery?");
+  assert.equal(query, "Do you have a menu? what about delivery?");
 });

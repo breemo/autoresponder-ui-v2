@@ -148,14 +148,18 @@ function isLikelyFollowUp(text) {
   return false;
 }
 
-// Finds the most recent user+assistant exchange STRICTLY BEFORE the
-// current message. If history's own last entry already IS the current
-// message (the normal production shape — n8n's `insert message` node
-// writes it before /api/ai-context is ever called, exactly like
-// promptBuilder.js's own "alreadyPresent" check for the prompt-messages
-// path), that entry is skipped here too, so it's never duplicated into
-// the retrieval query. Never throws — any unexpected shape (non-array
-// history, malformed entries) simply yields fewer/no context pieces.
+// Finds the previous CUSTOMER turn (and, incidentally, the assistant turn
+// after it) STRICTLY BEFORE the current message. Only `userMsg` is used
+// for the retrieval query — see resolveFollowUpContext: the assistant's
+// own earlier reply is conversational-continuity context, NOT retrieval
+// evidence, and feeding its (often verbose) text back into the query
+// created a self-amplifying "keep retrieving the previous topic" loop.
+// If history's own last entry already IS the current message (the normal
+// production shape — n8n's `insert message` node writes it before
+// /api/ai-context is ever called), that entry is skipped here too, so
+// it's never duplicated into the retrieval query. Never throws — any
+// unexpected shape (non-array history, malformed entries) simply yields
+// fewer/no context pieces.
 function findPreviousTurn(trimmedCurrent, history) {
   if (!Array.isArray(history) || history.length === 0) return null;
 
@@ -210,7 +214,8 @@ function resolveFollowUpContext(currentMessageText, history) {
   const previousTurn = findPreviousTurn(trimmedCurrent, history);
   if (!previousTurn) return { trimmedCurrent, contextParts: [] };
 
-  const contextParts = [previousTurn.userMsg, previousTurn.assistantMsg].filter(Boolean);
+  // Previous CUSTOMER turn only — never the assistant's previous reply.
+  const contextParts = [previousTurn.userMsg].filter(Boolean);
   return { trimmedCurrent, contextParts };
 }
 
@@ -218,11 +223,12 @@ function resolveFollowUpContext(currentMessageText, history) {
 // gets embedded for VECTOR retrieval:
 //   - a standalone message is returned unchanged (no unrelated history
 //     injected — see the report's explicit requirement)
-//   - a likely follow-up gets at most [previous user message, previous
-//     assistant response, current message] prepended, space-joined,
-//     hard-capped at MAX_CONTEXTUAL_QUERY_LENGTH characters (the current
-//     message itself is never truncated — only the prepended context is,
-//     if the combined length would exceed the cap)
+//   - a likely follow-up gets at most [previous CUSTOMER message,
+//     current message] prepended, space-joined, hard-capped at
+//     MAX_CONTEXTUAL_QUERY_LENGTH characters (the current message itself
+//     is never truncated — only the prepended context is, if the combined
+//     length would exceed the cap). The assistant's previous reply is
+//     never part of the query.
 // Never throws outward — any unexpected `history` shape degrades to
 // returning the current message unchanged (see findPreviousTurn).
 export function buildContextualRetrievalQuery(currentMessageText, history) {

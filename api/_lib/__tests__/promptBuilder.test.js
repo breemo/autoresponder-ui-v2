@@ -217,7 +217,7 @@ test("regression 4: complete=false + a KB excerpt that EXPLICITLY states exclusi
   assert.match(system, /EXPLICITLY states exclusivity or absence/);
 });
 
-test("regression 5: complete=false + an earlier assistant reply already claimed exclusivity — the stale reply is NOT replayed as an assistant turn", () => {
+test("regression 5: an earlier assistant reply claiming exclusivity IS in the transcript, but the incomplete-locations rule + non-authoritative-transcript rule still stand", () => {
   const context = nablusOnlyContext({
     conversation: {
       history: [
@@ -229,15 +229,17 @@ test("regression 5: complete=false + an earlier assistant reply already claimed 
   });
   const messages = buildPromptMessages(context);
   const system = messages[0].content;
-  const replayed = messages.slice(1); // everything after the system prompt
-  // The stale assistant claim must not reach OpenAI at all — not as an
-  // assistant turn, and its text must not appear in any replayed message.
-  assert.equal(replayed.some((m) => m.role === "assistant"), false);
-  assert.equal(replayed.some((m) => (m.content || "").includes("موقعنا الوحيد")), false);
-  // The customer's own earlier question is still there for follow-up context.
+  const replayed = messages.slice(1);
+  // The assistant turn is now present (conversational coherence)...
+  assert.ok(replayed.some((m) => m.role === "assistant" && m.content === "موقعنا الوحيد في نابلس"));
+  // ...but the system prompt still forbids the negative inference AND frames
+  // earlier replies as non-authoritative for facts.
+  assert.match(system, /NOT confirmed complete/);
+  assert.match(system, /never as confirmed absent/);
+  assert.match(system, /Your earlier replies there are NOT an authoritative source/i);
+  assert.match(system, /the current authoritative source wins — correct yourself/i);
+  // The customer's own earlier question is still there.
   assert.ok(replayed.some((m) => m.role === "user" && m.content === "عندكم فرع في رام الله؟"));
-  // And the system prompt states the generic rule.
-  assert.match(system, /Your earlier replies in this conversation are intentionally NOT included/);
 });
 
 test("regression 6: a question about a location that IS configured gets a confident positive regardless of complete=true/false", () => {
@@ -268,7 +270,7 @@ test("language fallback: unset default_language falls back to matching the custo
   assert.match(messages[0].content, /Reply in the same language the customer is writing in\./);
 });
 
-test("scenario 6: customer turns are kept in order, assistant turns are dropped, current message not duplicated", () => {
+test("scenario 6: recent transcript keeps BOTH roles in order; current message is last and not duplicated", () => {
   const context = makeContext({
     conversation: {
       history: [
@@ -280,19 +282,17 @@ test("scenario 6: customer turns are kept in order, assistant turns are dropped,
     },
   });
   const messages = buildPromptMessages(context);
-  // system, then the customer's own turns in order; the assistant reply
-  // is not replayed; the current message already IS the last customer
-  // turn so it is not duplicated.
   assert.deepEqual(
     messages.map((m) => m.role),
-    ["system", "user", "user"]
+    ["system", "user", "assistant", "user"]
   );
   assert.equal(messages[1].content, "hi");
-  assert.equal(messages[2].content, "what are your hours?");
-  assert.equal(messages.length, 3);
+  assert.equal(messages[2].content, "hello, how can I help?");
+  assert.equal(messages[3].content, "what are your hours?");
+  assert.equal(messages.filter((m) => m.content === "what are your hours?").length, 1);
 });
 
-test("current message is appended when not already the last customer turn; assistant turns never appear", () => {
+test("current message is appended when not already the last turn; assistant turns are included as transcript", () => {
   const context = makeContext({
     conversation: {
       history: [{ role: "user", content: "hi" }, { role: "assistant", content: "hello!" }],
@@ -302,10 +302,24 @@ test("current message is appended when not already the last customer turn; assis
   const messages = buildPromptMessages(context);
   assert.deepEqual(
     messages.map((m) => m.role),
-    ["system", "user", "user"]
+    ["system", "user", "assistant", "user"]
   );
   assert.equal(messages[1].content, "hi");
+  assert.equal(messages[2].content, "hello!");
   assert.equal(messages[messages.length - 1].content, "do you deliver?");
+});
+
+test("recent transcript is bounded to the last RECENT_TRANSCRIPT_TURNS turns (chronological order preserved)", () => {
+  const history = [];
+  for (let i = 1; i <= 10; i++) {
+    history.push({ role: "user", content: `q${i}` });
+    history.push({ role: "assistant", content: `a${i}` });
+  }
+  const messages = buildPromptMessages(makeContext({ conversation: { history, current_message_text: "now" } }));
+  const transcript = messages.slice(1, -1);
+  assert.equal(transcript.length, 6); // RECENT_TRANSCRIPT_TURNS
+  assert.deepEqual(transcript.map((m) => m.content), ["q8", "a8", "q9", "a9", "q10", "a10"]);
+  assert.equal(messages[messages.length - 1].content, "now");
 });
 
 test("scenario 11: empty relevant_knowledge produces no Knowledge Base excerpts section", () => {
@@ -360,11 +374,14 @@ test("document text is explicitly framed as untrusted data, not instructions", (
 // item that IS in the context. Diagnosed from a live case where the model
 // had "سمك مشوي موسمي / 60 شيكل / حسب التوفر" and answered "250 جرام فيليه
 // سمك البلطي".
-test("grounding: retrieved KB excerpts are labelled the AUTHORITATIVE source for products/services/prices/durations/policies/offers/availability", () => {
+test("grounding: retrieved KB excerpts are the source for product/price/policy facts, but each excerpt is authoritative ONLY for what it explicitly contains, and irrelevant excerpts must be ignored", () => {
   const system = buildPromptMessages(
     makeContext({ relevant_knowledge: [{ document_title: "Menu", category: "menu", content: "سمك مشوي موسمي — 60 شيكل — حسب التوفر" }] })
   )[0].content;
-  assert.match(system, /AUTHORITATIVE source for this turn's questions about products, services, prices, durations, policies, offers, and availability/i);
+  assert.match(system, /the source for facts about products, services, prices, durations, policies, offers, and availability/i);
+  assert.match(system, /each excerpt is authoritative ONLY for the specific facts it explicitly contains/i);
+  assert.match(system, /Not every excerpt below is relevant to the current request/i);
+  assert.match(system, /must NOT steer your reply back to that topic/i);
 });
 
 test("grounding: model may state ONLY details written in the context; unsupported attributes are explicitly forbidden", () => {
@@ -452,10 +469,12 @@ test("V2: no-repeated-greeting / no-re-introduction / no-name-repetition rule is
   assert.match(system, /do not reopen with a greeting, do not re-introduce yourself, and do not repeat the business name/i);
 });
 
-test("V2: no forced 'how can I help you' filler; short acknowledgement is a complete reply", () => {
+test("V2: no forced 'how can I help you' filler; a bare acknowledgement gets only a brief acknowledgement, not a re-explanation", () => {
   const system = buildPromptMessages(makeContext())[0].content;
   assert.match(system, /Do not end every reply with an offer of further help/i);
-  assert.match(system, /a short acknowledgement back is a complete reply/i);
+  assert.match(system, /it is closing the current point: reply with a brief acknowledgement only, and do not repeat or re-explain the previous answer/i);
+  // covers شكراً / شكرا / يسلمو / تمام / اوك / okay / thanks / thank you
+  assert.match(system, /"شكراً", "شكرا", "يسلمو", "تمام", "اوك", "okay", "thanks", "thank you"/);
 });
 
 test("V2: clarify-only-when-needed and never-re-ask-known-info rule is present", () => {
@@ -533,12 +552,15 @@ test("V2.1: the UNKNOWN rule no longer invites padding an unknown answer with un
   assert.match(system, /say only that the detail isn't confirmed and stop/i);
 });
 
-test("V2.1: the orphaned 'conversation below' wording is replaced with reference-resolution wording", () => {
+test("V3: exactly one non-authoritative-transcript rule; it names the protected fact categories and the tie-breaker", () => {
   const system = buildPromptMessages(makeContext())[0].content;
   assert.doesNotMatch(system, /The conversation below shows only the customer's own previous messages/i);
-  assert.match(system, /Earlier customer messages are provided only for continuity and to resolve references/i);
-  // assistant-history exclusion is untouched
-  assert.match(system, /Your earlier replies in this conversation are intentionally NOT included/i);
+  assert.doesNotMatch(system, /Your earlier replies in this conversation are intentionally NOT included/i);
+  // one concise rule, once
+  const rule = /The recent conversation \(Customer:\/You: lines\) is for conversational continuity and reference resolution only\. Your earlier replies there are NOT an authoritative source/g;
+  assert.equal((system.match(rule) || []).length, 1);
+  assert.match(system, /prices, locations, working hours, policies, availability, product or service facts, staff or person names, contact information, or completed actions/i);
+  assert.match(system, /the current authoritative source wins — correct yourself naturally when needed/i);
 });
 
 test("system prompt never reveals itself when asked to", () => {
@@ -548,16 +570,14 @@ test("system prompt never reveals itself when asked to", () => {
 
 // --- Regression: stale prior AI replies must not anchor changed facts ----
 //
-// Confirmed in Production from the real /api/ai-context output: earlier
-// assistant answers ("لا، ليس لدينا فرع في رام الله. موقعنا الوحيد هو في
-// نابلس...") were being replayed to OpenAI as ordinary `assistant` turns
-// and, repeated in-context, kept overriding the corrected, incomplete
-// LOCATIONS list — even with the 807c5c0 system-prompt rule present. The
-// fix: the assistant's own earlier turns are not sent back to the model;
-// only the customer's previous messages are kept for follow-up context.
-// Generic — nothing about locations/cities is special-cased.
+// The assistant's own earlier turns ARE now included (bounded, so the AI
+// knows what it already said and does not re-answer / invent). They are
+// made non-authoritative for business facts by ONE system-prompt rule +
+// the bounded window, not by exclusion. These tests assert that
+// protection: the stale line may be in the transcript, but the current
+// authoritative sections and the anti-stale rule still stand.
 
-test("history grounding 1: a stale 'we only have X' assistant reply is not passed as an assistant turn when current locations are incomplete", () => {
+test("history grounding 1: a stale 'we only have X' assistant reply is bounded and framed non-authoritative; the incomplete-locations rule still stands", () => {
   const context = nablusOnlyContext({
     conversation: {
       history: [
@@ -570,14 +590,15 @@ test("history grounding 1: a stale 'we only have X' assistant reply is not passe
     },
   });
   const messages = buildPromptMessages(context);
-  const replayed = messages.slice(1); // everything after the system prompt
+  const system = messages[0].content;
 
-  assert.equal(replayed.some((m) => m.role === "assistant"), false);
-  assert.equal(replayed.some((m) => (m.content || "").includes("موقعنا الوحيد")), false);
-  assert.equal(replayed.some((m) => (m.content || "").includes("ليس لدينا فرع")), false);
-  // The current authoritative LOCATIONS block (incomplete) is still what the model sees.
-  assert.match(messages[0].content, /NOT confirmed complete/);
-  assert.match(messages[0].content, /never as confirmed absent/);
+  // The current authoritative LOCATIONS block (incomplete) + the anti-stale rule.
+  assert.match(system, /NOT confirmed complete/);
+  assert.match(system, /never as confirmed absent/);
+  assert.match(system, /Your earlier replies there are NOT an authoritative source/i);
+  assert.match(system, /the current authoritative source wins — correct yourself/i);
+  // Bounded: at most RECENT_TRANSCRIPT_TURNS transcript entries.
+  assert.ok(messages.slice(1, -1).length <= 6);
 });
 
 test("history grounding 2: previous customer questions remain available for follow-up context", () => {
@@ -614,7 +635,7 @@ test("history grounding 3: the current user message is always the final message"
   assert.equal(withHistory[withHistory.length - 1].role, "user");
   assert.equal(withHistory[withHistory.length - 1].content, "كم سعر الوجبة؟");
 
-  // And when the inbound message is already the last customer turn (normal
+  // And when the inbound message is already the last turn (normal
   // production shape), it is the final message without being duplicated.
   const alreadyLast = buildPromptMessages(
     makeContext({
@@ -631,7 +652,7 @@ test("history grounding 3: the current user message is always the final message"
   assert.equal(alreadyLast.filter((m) => m.content === "كم سعر الوجبة؟").length, 1);
 });
 
-test("history grounding 4: the authoritative system message is always first", () => {
+test("history grounding 4: the authoritative system message is always first; the current message is always the last turn", () => {
   const messages = buildPromptMessages(
     makeContext({
       conversation: {
@@ -645,17 +666,14 @@ test("history grounding 4: the authoritative system message is always first", ()
   );
   assert.equal(messages[0].role, "system");
   assert.match(messages[0].content, /## AUTHORITATIVE BUSINESS PROFILE/);
-  assert.equal(messages.slice(1).every((m) => m.role === "user"), true);
+  assert.equal(messages[messages.length - 1].role, "user");
+  assert.equal(messages[messages.length - 1].content, "hours?");
 });
 
-test("history grounding 5: stale prior assistant answers cannot override changed hours, prices, or policies (generic)", () => {
-  const staleReplies = [
-    "أوقات عملنا من 9 صباحاً حتى 5 مساءً.", // hours that may have changed
-    "سعر الوجبة 25 شيكل.", // a price that may have changed
-    "لا نقبل الإرجاع بعد الاستلام.", // a policy that may have changed
-  ];
-  for (const stale of staleReplies) {
-    const context = makeContext({
+test("history grounding 5: a stale prior assistant answer is in the transcript but the anti-stale rule names the fact categories generically", () => {
+  const stale = "سعر الوجبة 25 شيكل."; // a price that may have changed
+  const messages = buildPromptMessages(
+    makeContext({
       conversation: {
         history: [
           { role: "user", content: "سؤال" },
@@ -663,14 +681,14 @@ test("history grounding 5: stale prior assistant answers cannot override changed
         ],
         current_message_text: "وهلأ؟",
       },
-    });
-    const messages = buildPromptMessages(context);
-    assert.equal(messages.some((m) => m.content === stale), false, `stale reply leaked: ${stale}`);
-    assert.equal(messages.some((m) => m.role === "assistant"), false);
-  }
-  // The rule text names these fact categories generically, no city/number hardcoded.
-  const system = buildPromptMessages(makeContext())[0].content;
-  assert.match(system, /locations, working hours, prices, policies/);
+    })
+  );
+  // present as transcript...
+  assert.ok(messages.some((m) => m.role === "assistant" && m.content === stale));
+  // ...but explicitly non-authoritative, and the profile/KB win.
+  const system = messages[0].content;
+  assert.match(system, /prices, locations, working hours, policies, availability/i);
+  assert.match(system, /the current authoritative source wins/i);
 });
 
 test("history grounding 6: retrieval-facing history is unaffected — assistant turns still available to the contextual query builder", () => {

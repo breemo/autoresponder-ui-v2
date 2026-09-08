@@ -281,7 +281,7 @@ test("Phase 1: a conversational follow-up embeds a contextualized query end-to-e
   assert.equal(result.ok, true);
   assert.equal(
     capturedInput?.[0],
-    "هل يوجد توصيل خارج نابلس؟ لا، لا يوجد توصيل خارج مدينة نابلس حالياً. طيب بتوصلوا داخل نابلس؟"
+    "هل يوجد توصيل خارج نابلس؟ طيب بتوصلوا داخل نابلس؟"
   );
   // Conversation history itself (for the Prompt Builder) is completely
   // unaffected by this — still the raw messages, in order.
@@ -474,16 +474,14 @@ for (const standalone of ["التوصيل", "وجبات اليوم", "طلب و�
 }
 
 for (const followup of ["كم سعره؟", "شو بشمل؟"]) {
-  test(`retrieval: referential "${followup}" after an offer turn inherits the offer context`, async (t) => {
+  test(`retrieval: referential "${followup}" inherits the previous CUSTOMER question only (not the assistant reply)`, async (t) => {
     const cap = captureEmbeddingInput(t);
     const supabase = createMockSupabase(offerHistoryTables());
     supabase.rpc = async () => ({ data: [], error: null });
     const result = await resolveAiContext(supabase, { conversationId: "conv-1", clientId: "client-1", currentMessageText: followup });
     assert.equal(result.ok, true);
-    assert.equal(
-      cap.input?.[0],
-      `ممكن تحكيلنا اذا في عروض او فعاليات هاي الفترة أكيد، عنا عرض عائلي لـ 4-5 أشخاص بـ 150 شيكل. ${followup}`
-    );
+    assert.equal(cap.input?.[0], `ممكن تحكيلنا اذا في عروض او فعاليات هاي الفترة ${followup}`);
+    assert.equal(cap.input?.[0].includes("عرض عائلي"), false, "the assistant's previous verbose reply must not be in the retrieval query");
   });
 }
 
