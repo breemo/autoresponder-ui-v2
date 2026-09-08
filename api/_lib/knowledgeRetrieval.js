@@ -51,21 +51,27 @@ const FOLLOWUP_MARKERS = [
   "then", "what about", "how about", "and what about",
 ];
 
-// Anaphora — a whole word (optionally after a leading و / ف) that points
-// back at something already named earlier in the conversation.
+// Anaphora — a whole word (optionally after a leading و / ف) that ALWAYS
+// points back at something already named earlier: object pronouns,
+// "هيك"/"same", comparatives/anaphoric ordinals. NB: "هو" / "هي" / "هما"
+// are deliberately excluded — in "ما هو سعرها؟" / "ما هي ساعات العمل؟"
+// they are the copula of a standalone question, not anaphora.
 const REFERENTIAL_TOKENS = new Set([
-  // Arabic object pronouns / demonstratives. NB: "هو" / "هي" / "هما" are
-  // deliberately excluded — in "ما هو سعرها؟" / "ما هي ساعات العمل؟" they
-  // are the copula of a standalone question, not anaphora.
-  "اياه", "اياها", "اياهم", "اياهن", "هم", "هن",
-  "هاد", "هادا", "هاي", "هيدا", "هيدي", "هيك", "هذا", "هذه", "ذلك", "تلك",
+  "اياه", "اياها", "اياهم", "اياهن", "هم", "هن", "هيك",
   "نفسه", "نفسها", "نفسهم", "نفس",
-  // Arabic comparatives / anaphoric ordinals
   "الثاني", "التاني", "الاول", "الأول", "التالت", "الثالث",
   "غيره", "غيرها", "غيرهم", "غيرو", "الباقي", "باقي",
   // English
-  "it", "its", "that", "this", "these", "those", "them", "one", "ones",
-  "other", "another", "same",
+  "it", "its", "them", "one", "ones", "other", "another", "same",
+]);
+
+// Demonstratives are context-sensitive: pronominal ("هاد بكم؟", "هاي شو؟",
+// "طيب هاد؟", "what about that?") -> referential; but a determiner in a
+// full noun phrase ("في عروض هاي الفترة؟", "هاد المنتج", "شو هاي
+// المنتجات؟", "this service") carries its own topic -> NOT referential.
+const DEMONSTRATIVES = new Set([
+  "هاد", "هادا", "هاي", "هيدا", "هيدي", "هذا", "هذه", "هدا", "هده", "ذلك", "تلك",
+  "this", "that", "these", "those",
 ]);
 
 // Bare interrogative openers — used only by the "elliptical question"
@@ -109,8 +115,30 @@ function startsWithAnyMarker(normalized) {
   });
 }
 
+function inSet(set, token) {
+  return set.has(token) || set.has(stripLeadingConjunction(token));
+}
+
+// A demonstrative counts as anaphoric only when nothing meaningful
+// follows it — it is the last token, or every token after it is itself an
+// interrogative / tiny function word ("هاد بكم؟", "هاي شو؟"). Followed by
+// a content noun ("هاي الفترة", "هاد المنتج") it is just a determiner.
+function hasPronominalDemonstrative(tokens) {
+  for (let i = 0; i < tokens.length; i++) {
+    if (!inSet(DEMONSTRATIVES, tokens[i])) continue;
+    const rest = tokens.slice(i + 1);
+    if (rest.length === 0) return true;
+    if (rest.every((t) => inSet(INTERROGATIVE_STARTERS, t) || stripLeadingConjunction(t).length <= 2)) {
+      return true;
+    }
+    return false;
+  }
+  return false;
+}
+
 function containsReferentialToken(tokens) {
-  return tokens.some((t) => REFERENTIAL_TOKENS.has(t) || REFERENTIAL_TOKENS.has(stripLeadingConjunction(t)));
+  if (tokens.some((t) => inSet(REFERENTIAL_TOKENS, t))) return true;
+  return hasPronominalDemonstrative(tokens);
 }
 
 // An Arabic definite noun (ال- / وال- / بال- / لل- … prefixed) means the

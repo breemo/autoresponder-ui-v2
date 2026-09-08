@@ -26,9 +26,9 @@ const node = (wf, name) => wf.nodes.find((n) => n.name === name);
 
 // --- Structure ----------------------------------------------------------
 
-test("AI-Agent-Core JSON is valid and node/edge integrity is preserved (22 nodes, 21 connection groups)", () => {
-  assert.equal(CORE.nodes.length, 22);
-  assert.equal(Object.keys(CORE.connections).length, 21);
+test("AI-Agent-Core JSON is valid and node/edge integrity is preserved (24 nodes, 22 connection groups)", () => {
+  assert.equal(CORE.nodes.length, 24);
+  assert.equal(Object.keys(CORE.connections).length, 22);
   // every connection target still resolves to a real node
   for (const [from, conn] of Object.entries(CORE.connections)) {
     assert.ok(node(CORE, from), `source node exists: ${from}`);
@@ -223,6 +223,46 @@ test("tool descriptions: search / handover / order wording is tightened, semanti
   assert.match(node(CORE, "continue_order").parameters.toolDescription, /a teammate still confirms the final order/i);
 });
 
+// --- Deterministic acknowledgement classifier + path ------------------
+
+for (const m of [
+  "شكراً", "شكرا", "مشكور", "يسلمو", "تسلم", "تمام", "اوك", "أوكي", "ماشي", "تم",
+  "thanks", "thank you", "ok", "okay", "got it", "شكرا 🙏", "تمام.", "تمام!", "شكراً 🌹🌹", "تمام تسلم",
+]) {
+  test(`ack classifier TRUE: ${JSON.stringify(m)}`, () => {
+    const out = runPrepare({ messages: [], trigger: { current_message: m } });
+    assert.equal(out.is_ack, true);
+    assert.ok(out.ack_reply && out.ack_reply.length > 0 && out.ack_reply.length <= 20);
+  });
+}
+
+for (const m of [
+  "تمام بس كم السعر؟", "تمام، بس كم السعر؟", "شكرا، وين الفرع؟", "ماشي احجزلي",
+  "ok but what time?", "thanks, can you send the location?", "مرحبا", "شو الأسعار؟", "تمام كمل",
+]) {
+  test(`ack classifier FALSE: ${JSON.stringify(m)}`, () => {
+    assert.equal(runPrepare({ messages: [], trigger: { current_message: m } }).is_ack, false);
+  });
+}
+
+test("ack reply is language- and kind-aware, minimal", () => {
+  const ar_t = runPrepare({ messages: [], trigger: { current_message: "شكراً" } });
+  const ar_o = runPrepare({ messages: [], trigger: { current_message: "تمام" } });
+  const en_t = runPrepare({ messages: [], trigger: { current_message: "thanks" } });
+  const en_o = runPrepare({ messages: [], trigger: { current_message: "ok" } });
+  assert.equal(ar_t.ack_reply, "العفو 🌷");
+  assert.equal(ar_o.ack_reply, "تمام 👍");
+  assert.equal(en_t.ack_reply, "You're welcome 🌷");
+  assert.equal(en_o.ack_reply, "👍");
+});
+
+test("non-ack message still flows to the AI Agent (If Acknowledgement false branch)", () => {
+  assert.equal(runPrepare({ messages: [], trigger: { current_message: "وين الفرع؟" } }).is_ack, false);
+  // false branch wiring reaches the agent
+  const chain = CORE.connections["If Acknowledgement"].main[1][0].node; // DEBUG - Before Agent
+  assert.equal(CORE.connections[chain].main[0][0].node, "AI Agent");
+});
+
 // --- Conversational-context architecture: SEQ A–F (end to end) ---------
 //
 // promptBuilder.buildPromptMessages -> Prepare Agent Context is the real
@@ -284,28 +324,38 @@ test("SEQ B — topic switch: 'ساعات العمل' after an offer discussion"
   assert.match(system, /Answer only the customer's CURRENT request/i);
 });
 
-test("SEQ C — acknowledgements: 'شكراً' then 'تمام' after an answered question", () => {
-  const h1 = [
-    { role: "user", content: "كم سعر التوصيل؟" },
-    { role: "assistant", content: "السعر غير مؤكد." },
-    { role: "user", content: "شكراً" },
-  ];
-  const r1 = effectiveInput(h1, "شكراً");
-  assert.match(r1.agentInput, /You: السعر غير مؤكد\./);
-  assert.match(r1.agentInput, /Current customer request:\nشكراً$/);
-  assert.equal(buildContextualRetrievalQuery("شكراً", h1), "شكراً");
+test("SEQ C — acknowledgements: 'شكراً' / 'تمام' hit the deterministic ack path (no LLM, no close_conversation)", () => {
+  // the classifier
+  assert.equal(runPrepare({ messages: [], trigger: { current_message: "شكراً" } }).is_ack, true);
+  assert.equal(runPrepare({ messages: [], trigger: { current_message: "تمام" } }).is_ack, true);
+  assert.equal(runPrepare({ messages: [], trigger: { current_message: "تمام، بس كم السعر؟" } }).is_ack, false);
 
-  const h2 = [
-    ...h1,
-    { role: "assistant", content: "العفو" },
-    { role: "user", content: "تمام" },
-  ];
-  const r2 = effectiveInput(h2, "تمام");
-  assert.match(r2.agentInput, /You: العفو/);
-  assert.match(r2.agentInput, /Current customer request:\nتمام$/);
-  assert.equal(buildContextualRetrievalQuery("تمام", h2), "تمام");
-  // behavioural rule: a bare acknowledgement gets a brief acknowledgement only
-  assert.match(r2.system, /reply with a brief acknowledgement only, and do not repeat or re-explain the previous answer/i);
+  // routed away from the AI Agent
+  const conns = CORE.connections["If Acknowledgement"].main;
+  const ackTargets = conns[0].map((c) => c.node);
+  const nonAckTargets = conns[1].map((c) => c.node);
+  assert.deepEqual(ackTargets, ["Build Ack Result"]);
+  assert.deepEqual(nonAckTargets, ["DEBUG - Before Agent"]);
+
+  // Build Ack Result: normalized schema, no lifecycle / no close
+  const bar = node(CORE, "Build Ack Result");
+  const fn = new Function("$json", bar.parameters.jsCode);
+  const out = fn({ ack_reply: "العفو 🌷" })[0].json;
+  assert.deepEqual(Object.keys(out).sort(), [
+    "action", "conversation_status", "current_step", "handover_done", "handover_unconfirmed", "intent", "quick_reply_action", "reply",
+  ]);
+  assert.equal(out.reply, "العفو 🌷");
+  assert.equal(out.quick_reply_action, null);
+  assert.equal(out.conversation_status, null);
+  assert.equal(out.action, null);
+  assert.equal(out.handover_done, false);
+
+  // retrieval untouched
+  assert.equal(buildContextualRetrievalQuery("شكراً", [{ role: "user", content: "كم سعر التوصيل؟" }, { role: "assistant", content: "غير مؤكد" }, { role: "user", content: "شكراً" }]), "شكراً");
+
+  // a bare thanks is NOT a close_conversation trigger anymore
+  assert.doesNotMatch(node(CORE, "close_conversation").parameters.toolDescription, /for example thanks/i);
+  assert.match(node(CORE, "close_conversation").parameters.toolDescription, /A bare thanks or تمام \/ ok is NOT a request to close/i);
 });
 
 test("SEQ D — genuine follow-up: 'كم سعره؟' after 'شو عندكم عروض؟'", () => {

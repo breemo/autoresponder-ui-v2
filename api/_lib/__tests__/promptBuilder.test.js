@@ -469,12 +469,12 @@ test("V2: no-repeated-greeting / no-re-introduction / no-name-repetition rule is
   assert.match(system, /do not reopen with a greeting, do not re-introduce yourself, and do not repeat the business name/i);
 });
 
-test("V2: no forced 'how can I help you' filler; a bare acknowledgement gets only a brief acknowledgement, not a re-explanation", () => {
+test("V3: generic ANSWER -> STOP rule; no standing offer of help in any wording; bare acknowledgement gets a brief acknowledgement only", () => {
   const system = buildPromptMessages(makeContext())[0].content;
-  assert.match(system, /Do not end every reply with an offer of further help/i);
-  assert.match(system, /it is closing the current point: reply with a brief acknowledgement only, and do not repeat or re-explain the previous answer/i);
-  // covers شكراً / شكرا / يسلمو / تمام / اوك / okay / thanks / thank you
-  assert.match(system, /"شكراً", "شكرا", "يسلمو", "تمام", "اوك", "okay", "thanks", "thank you"/);
+  assert.match(system, /Once you have answered the current request, end the reply\./i);
+  assert.match(system, /Do NOT add a closing courtesy line, a standing offer of further help, or an invitation to ask more — in any wording and any language/i);
+  assert.match(system, /unless the current request genuinely requires a concrete next step/i);
+  assert.match(system, /If the customer's whole message is just an acknowledgement or thanks, reply with a brief acknowledgement only/i);
 });
 
 test("V2: clarify-only-when-needed and never-re-ask-known-info rule is present", () => {
@@ -519,9 +519,18 @@ test("V2: incomplete menu/price-list absence is not proof the item is unavailabl
   assert.match(system, /an item simply not being listed is NOT proof the business does not offer it, unless the list is explicitly the complete one/i);
 });
 
+test("V3: time-sensitive facts — state what's on file, never claim active without evidence, never flatly deny an offer that is in an excerpt", () => {
+  const system = buildPromptMessages(
+    makeContext({ relevant_knowledge: [{ document_title: "Offers", category: "brochure", content: "عرض عائلي 150 شيكل - الأحد والثلاثاء" }] })
+  )[0].content;
+  assert.match(system, /Time-sensitive facts \(a promotion, campaign, temporary price, schedule, availability window, event\)/i);
+  assert.match(system, /you may state what is on file, but say clearly that you cannot confirm it is currently active/i);
+  assert.match(system, /Never flatly deny that it exists when it is in an excerpt, and never claim it is active without evidence/i);
+});
+
 test("V2: unknown-info deflection is softened — no single fixed disclaimer sentence is mandated", () => {
   const system = buildPromptMessages(makeContext())[0].content;
-  assert.match(system, /do not fall back on one long fixed disclaimer sentence; vary the wording naturally/i);
+  assert.match(system, /Vary the wording naturally; do not fall back on one fixed disclaimer sentence/i);
   // the old rigid phrasing is gone
   assert.doesNotMatch(system, /that you don't have that confirmed right now, then follow the Escalation/i);
 });
@@ -545,11 +554,12 @@ test("V2.1: an explicit rule says to answer only the CURRENT request and not con
   assert.match(system, /do not continue or re-answer an earlier topic unless the current message clearly refers back to it/i);
 });
 
-test("V2.1: the UNKNOWN rule no longer invites padding an unknown answer with unrelated content", () => {
+test("V3: the UNKNOWN rule says say-not-confirmed-then-STOP, no default offers, teammate only for a genuine unresolved need", () => {
   const system = buildPromptMessages(makeContext())[0].content;
   assert.doesNotMatch(system, /answer whatever part you DO know/i);
-  assert.match(system, /do not pad the reply with unrelated menu, product, or general-help content/i);
-  assert.match(system, /say only that the detail isn't confirmed and stop/i);
+  assert.match(system, /say that specific detail isn't confirmed, still in the business voice, then STOP/i);
+  assert.match(system, /do not add "let me know", "feel free to ask", "I can check with the team" or any similar offer by default/i);
+  assert.match(system, /Offer to involve a teammate ONLY when the customer needs that specific unresolved detail or action and there is genuinely no way for you to answer it — never as a sign-off/i);
 });
 
 test("V3: exactly one non-authoritative-transcript rule; it names the protected fact categories and the tie-breaker", () => {

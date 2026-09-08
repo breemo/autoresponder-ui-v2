@@ -237,6 +237,12 @@ for (const msg of [
   "المنيو",
   "ما هي ساعات العمل؟",
   "وين الموقع؟",
+  // demonstrative used as a DETERMINER before a noun -> self-contained
+  "في عروض هاي الفترة؟",
+  "شو هاي المنتجات؟",
+  "هاد المنتج",
+  "كم سعر هاي الخدمة؟",
+  "بدي هاد الموعد",
 ]) {
   test(`standalone topic "${msg}" does NOT inherit the previous turn`, () => {
     assert.equal(buildContextualRetrievalQuery(msg, PRIOR), msg);
@@ -255,6 +261,10 @@ for (const msg of [
   "طيب وين موقعكم؟",
   "what about the other one?",
   "how much is it?",
+  // demonstrative used PRONOMINALLY (no following noun) -> referential
+  "هاي شو؟",
+  "هاد بكم؟",
+  "طيب هاد؟",
 ]) {
   test(`referential / elliptical "${msg}" DOES inherit the previous CUSTOMER turn (not the assistant reply)`, () => {
     assert.equal(buildContextualRetrievalQuery(msg, PRIOR), `PREV_Q ${msg}`);
