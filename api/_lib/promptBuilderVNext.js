@@ -80,7 +80,7 @@ function buildBehaviorSection(aiBehavior) {
     lang,
     "Answer the customer's CURRENT request — the final \"Current customer request:\" line. The conversation above it is context: use it to resolve references (\"it\", \"the other one\", \"the second one\") and for continuity, but do not re-answer or continue an earlier topic unless the current message points back to it.",
     "Be brief and natural. Do not re-introduce the business, do not repeat a greeting mid-conversation, and do not end a reply with a standing offer of help or an invitation to ask more (\"let me know if…\", \"feel free to…\", \"إذا احتجت أي شي\", in any wording) unless the request genuinely needs a concrete next step.",
-    "A bare acknowledgement or thanks (\"thanks\", \"ok\", \"شكراً\", \"تمام\", …) gets a short acknowledgement back and nothing else. It is NOT a request to close the conversation and NOT a reason to repeat the previous answer.",
+    "A thanks or acknowledgement (\"شكراً\", \"تمام\", \"ok\", \"👍\", or the equivalent in any language) is a normal part of the conversation — not a request to end it. Reply with one short, natural phrase and nothing else: no recap of your previous answer, no invitation to ask more, no \"feel free to contact us\", no next-step suggestion or upsell. Do NOT start any conversation-closing step for it.",
     "A topic switch is normal — just answer the new topic. Ask at most one short clarifying question, only when you genuinely cannot answer without it, and never re-ask something already provided.",
     aiBehavior.special_instructions ? `Special instructions: ${aiBehavior.special_instructions}` : null,
     aiBehavior.booking_instructions ? `Booking instructions: ${aiBehavior.booking_instructions}` : null,
@@ -119,7 +119,7 @@ function buildToolsSection() {
     "- If the excerpts do not answer the question — including a follow-up where you must first work out from the conversation what the customer is referring to — call search_business_knowledge ONCE with a fully spelled-out query.",
     "- Use a tool for a real action or to fetch business information you do not have. Never mention tools, internal steps, or that you are an AI.",
     "- request_human_handover: when the customer explicitly asks for a person, or a real unresolved case genuinely needs a human (follow the Escalation instructions above if given). Only tell the customer their request reached the team AFTER this tool returns success this turn; otherwise say a teammate will follow up, as something that will happen.",
-    "- close_conversation: ONLY when the customer clearly wants to end the whole conversation. A bare thanks / \"تمام\" / \"ok\" is not that.",
+    "- request_conversation_close: call this ONLY when the customer has clearly and explicitly said they want to end the whole conversation (\"that's everything, bye\", \"I'm done\", \"خلص، ما بدي شي تاني\"). Never call it because the customer thanked you or acknowledged an answer, because the chat feels finished, or to ASK whether they want to close. When you are not sure, do not call it — just reply normally and keep the conversation open.",
     "- save_lead when the customer gives a name or phone. start_order / continue_order to capture what a customer wants to order or request — nothing is placed or stored by the system, a teammate finalizes it, so never say it is confirmed or placed.",
   ].join("\n");
 }

@@ -57,8 +57,7 @@ test("VNext prompt: brief, no standing offer of help, acknowledgement = brief, t
   const s = buildSystemMessageVNext(ctx());
   assert.match(s, /Be brief and natural/);
   assert.match(s, /do not end a reply with a standing offer of help or an invitation to ask more/i);
-  assert.match(s, /A bare acknowledgement or thanks .* gets a short acknowledgement back and nothing else/i);
-  assert.match(s, /It is NOT a request to close the conversation/i);
+  assert.match(s, /A thanks or acknowledgement .* is a normal part of the conversation — not a request to end it/i);
   assert.match(s, /A topic switch is normal/i);
 });
 
@@ -97,10 +96,20 @@ test("VNext prompt: knowledge tooling — use excerpts, call search_business_kno
   assert.match(s, /some may be unrelated — use only what addresses the current request/i);
 });
 
-test("VNext prompt: close_conversation is strict — a bare thanks/ok/تمام is not a close", () => {
+test("VNext prompt: close is a REAL-INTENT tool — an acknowledgement/thanks is NOT a close, never call it to ASK", () => {
   const s = buildSystemMessageVNext(ctx());
-  assert.match(s, /close_conversation: ONLY when the customer clearly wants to end the whole conversation/i);
-  assert.match(s, /A bare thanks \/ "تمام" \/ "ok" is not that/);
+  assert.match(s, /request_conversation_close: call this ONLY when the customer has clearly and explicitly said they want to end the whole conversation/i);
+  assert.match(s, /Never call it because the customer thanked you or acknowledged an answer, because the chat feels finished, or to ASK whether they want to close/i);
+  assert.match(s, /When you are not sure, do not call it/i);
+});
+
+test("VNext prompt: acknowledgements — one short natural phrase, no filler, no closing step (the live 'تمام' regression)", () => {
+  const s = buildSystemMessageVNext(ctx());
+  assert.match(s, /A thanks or acknowledgement .* is a normal part of the conversation — not a request to end it/i);
+  assert.match(s, /Reply with one short, natural phrase and nothing else: no recap .* no invitation to ask more, no "feel free to contact us", no next-step suggestion or upsell/i);
+  assert.match(s, /Do NOT start any conversation-closing step for it/i);
+  // the old customer-service filler pattern is not encouraged
+  assert.match(s, /do not end a reply with a standing offer of help or an invitation to ask more/i);
 });
 
 test("VNext prompt: prompt-injection protection intact", () => {

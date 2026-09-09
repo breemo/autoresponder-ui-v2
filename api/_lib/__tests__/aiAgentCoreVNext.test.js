@@ -67,9 +67,9 @@ test("VNext: model + agent config", () => {
 test("VNext: seven tools, all wired to the AI Agent, all calling /api/ai-tools; descriptions are generic (no restaurant assumption)", () => {
   const toolNames = VNEXT.nodes.filter((n) => n.type === "n8n-nodes-base.httpRequestTool").map((n) => n.name);
   assert.deepEqual(toolNames.sort(), [
-    "close_conversation",
     "continue_order",
     "get_business_facts",
+    "request_conversation_close",
     "request_human_handover",
     "save_lead",
     "search_business_knowledge",
@@ -83,7 +83,18 @@ test("VNext: seven tools, all wired to the AI Agent, all calling /api/ai-tools; 
   }
   assert.match(node(VNEXT, "search_business_knowledge").parameters.toolDescription, /products, services, catalogue, pricing, packages, policies, offers/i);
   assert.match(node(VNEXT, "search_business_knowledge").parameters.toolDescription, /a follow-up where you first resolve from the conversation what the customer is referring to/i);
-  assert.match(node(VNEXT, "close_conversation").parameters.toolDescription, /A bare thanks or "ok" \/ "تمام" is NOT a request to close/i);
+  // the close tool is Agent-facing REAL-INTENT only: renamed, no `confirmed`
+  // parameter, and its description forbids "ask whether they want to close"
+  // and "the conversation feels finished".
+  const closeTool = node(VNEXT, "request_conversation_close");
+  assert.ok(closeTool, "close tool is named request_conversation_close");
+  assert.equal(closeTool.parameters.jsonBody.includes("fromAI"), false, "no AI-supplied parameters");
+  assert.match(closeTool.parameters.jsonBody, /"confirmed": false/); // hard-coded for the unchanged backend contract
+  assert.match(closeTool.parameters.jsonBody, /"action": "close_conversation"/); // backend action unchanged
+  assert.match(closeTool.parameters.toolDescription, /ONLY when the customer has CLEARLY and EXPLICITLY said they want to END the conversation/i);
+  assert.match(closeTool.parameters.toolDescription, /Do NOT call it .* because the customer thanked you or acknowledged your answer/i);
+  assert.match(closeTool.parameters.toolDescription, /Do NOT call it to ASK whether they want to close/i);
+  assert.match(closeTool.parameters.toolDescription, /This tool takes no parameters/i);
 });
 
 test("VNext: Get VNext Context points at /api/ai-context-vnext (raw-message retrieval path)", () => {
@@ -213,7 +224,7 @@ test("Normalize Result: every path returns exactly the parent contract keys", ()
     runNormalize({ forced: { ok: true, action: "human_handover", conversation_status: "waiting_human" } }),
     runNormalize({ agent: {} }),
     runNormalize({ agent: { output: "Our hours are 9–5.", intermediateSteps: [] } }),
-    runNormalize({ agent: { output: "x", intermediateSteps: [{ action: { tool: "close_conversation" }, observation: JSON.stringify({ quick_reply_action: "closing_confirm", current_step: "closing_confirm" }) }] } }),
+    runNormalize({ agent: { output: "x", intermediateSteps: [{ action: { tool: "request_conversation_close" }, observation: JSON.stringify({ quick_reply_action: "closing_confirm", current_step: "closing_confirm" }) }] } }),
   ];
   for (const p of paths) assert.deepEqual(Object.keys(p).sort(), CONTRACT_KEYS);
 });
@@ -248,7 +259,7 @@ test("Normalize Result: handover / close / lead / order actions come from EXECUT
   assert.equal(handover.conversation_status, "waiting_human");
   assert.equal(handover.handover_done, true);
 
-  const close = runNormalize({ agent: { output: "Sure.", intermediateSteps: [{ action: { tool: "close_conversation" }, observation: JSON.stringify({ quick_reply_action: "closing_confirm", current_step: "closing_confirm", conversation_status: "active" }) }] } });
+  const close = runNormalize({ agent: { output: "Sure.", intermediateSteps: [{ action: { tool: "request_conversation_close" }, observation: JSON.stringify({ quick_reply_action: "closing_confirm", current_step: "closing_confirm", conversation_status: "active" }) }] } });
   assert.equal(close.action, "close_needs_confirmation");
   assert.equal(close.quick_reply_action, "closing_confirm");
   assert.equal(close.current_step, "closing_confirm");
@@ -320,6 +331,73 @@ for (const biz of ["clinic", "shop", "services", "restaurant"]) {
     assert.equal(runPrepare({ messages: [], trigger: { current_message: "بدي أحكي مع موظف" } }).is_explicit_human, true);
   });
 }
+
+// --- Live regression: bare "تمام" after "شكراً" must NOT trigger a close ---
+//
+// The AI Agent itself decided a bare acknowledgement meant "close the
+// conversation" and called the close tool with confirmed=false to ASK.
+// Root cause: an Agent-facing close tool that (a) exposed `confirmed` so
+// the model reasoned "not sure they're done -> confirmed=false" and
+// (b) read as "call me to check if they want to close". The fix is the
+// TOOL DECISION BOUNDARY, not a language classifier.
+
+test("live regression (hours -> شكراً -> تمام): AI path, no deterministic close, no keyword classification", () => {
+  const history = [
+    { role: "user", content: "شو ساعات العمل؟" },
+    { role: "assistant", content: "أوقات العمل من الأحد للخميس، 9 صباحاً حتى 5 مساءً." },
+    { role: "user", content: "شكراً" },
+    { role: "assistant", content: "العفو" },
+  ];
+  // "تمام" reaches the Agent (gate does not fire, no ack bypass exists)
+  const out = runPrepare({
+    messages: buildPromptMessagesVNext(bizContext("clinic", "تمام", history)),
+    trigger: { conversation_id: "cv", current_message: "تمام" },
+  });
+  assert.equal(out.is_explicit_human, false);
+  assert.deepEqual(VNEXT.connections["Explicit Human Gate"].main[1], [{ node: "AI Agent", type: "main", index: 0 }]);
+
+  // the transcript shows the acknowledgement exchange as ordinary context
+  assert.match(out.agent_input, /Customer: شكراً\nYou: العفو/);
+  assert.match(out.agent_input, /Current customer request:\nتمام$/);
+
+  // Normalize Result never re-reads the customer's words to decide anything
+  const nr = node(VNEXT, "Normalize Result").parameters.jsCode;
+  assert.doesNotMatch(nr, /current_message|KW_|matchAny|ACK_/);
+
+  // the close tool's boundary lives in its description + no `confirmed` param
+  const closeTool = node(VNEXT, "request_conversation_close");
+  assert.equal(closeTool.parameters.jsonBody.includes("fromAI"), false);
+  assert.match(closeTool.parameters.toolDescription, /Do NOT call it to ASK whether they want to close/i);
+});
+
+// --- Generic multi-language acknowledgement / close semantics (STEP 7) ---
+
+test("acknowledgement-only (any language) never routes to a deterministic close or the human gate", () => {
+  for (const m of ["شكراً", "شكرا كتير", "تمام", "يعطيك العافية", "thanks", "thank you", "ok", "okay", "got it", "👍"]) {
+    const out = runPrepare({ messages: [{ role: "system", content: "S" }], trigger: { current_message: m } });
+    assert.equal(out.is_explicit_human, false, `${m} → Agent path`);
+  }
+  // no acknowledgement classifier / canned reply anywhere in VNext
+  const s = JSON.stringify(VNEXT);
+  assert.doesNotMatch(s, /ACK_THANKS|ACK_OK|ACK_PHRASES|Build Ack Result/);
+});
+
+test("acknowledgement + a real question is a normal turn (not an ack, not a human request)", () => {
+  for (const m of ["تمام بس كم السعر؟", "شكراً، وين الفرع؟", "ok but what are your hours?", "thanks, do you deliver?"]) {
+    assert.equal(runPrepare({ messages: [], trigger: { current_message: m } }).is_explicit_human, false);
+  }
+});
+
+test("a CLEAR explicit end-of-conversation intent still has a path: the close tool + prompt describe exactly that semantics", () => {
+  const s = buildPromptMessagesVNext(bizContext("shop", "خلص، ما بدي شي تاني، شكراً"))[0].content;
+  assert.match(s, /request_conversation_close: call this ONLY when the customer has clearly and explicitly said they want to end the whole conversation/i);
+  const d = node(VNEXT, "request_conversation_close").parameters.toolDescription;
+  assert.match(d, /that's everything, thanks, bye.*I'm done.*ما بدي شي تاني/s);
+  // and the executed-tool path still produces the confirm lifecycle
+  const close = runNormalize({ agent: { output: "تمام.", intermediateSteps: [{ action: { tool: "request_conversation_close" }, observation: JSON.stringify({ quick_reply_action: "closing_confirm", current_step: "closing_confirm" }) }] } });
+  assert.equal(close.action, "close_needs_confirmation");
+  assert.equal(close.quick_reply_action, "closing_confirm");
+});
 
 // --- Specific regressions -----------------------------------------
 
