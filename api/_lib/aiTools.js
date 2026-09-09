@@ -33,6 +33,7 @@
 
 import { formatWorkingHoursText } from "./aiContext.js";
 import { retrieveRelevantKnowledgeHybrid } from "./knowledgeRetrieval.js";
+import { classifyClosingReply } from "./closingReplyClassifier.js";
 
 // V1 intent taxonomy — MUST match supabase/migrations/
 // 20260828_ai_engine_v1_message_intent.sql's CHECK constraint and the
@@ -53,6 +54,13 @@ export const INTENT_VALUES = [
 ];
 
 // The action vocabulary of this endpoint. Anything else is a 400.
+//
+// `classify_closing_reply` is NOT an AI-Agent tool — it is a stateless
+// language judgement the n8n parent workflow calls (cc_classify node) when
+// a customer replies with free text during a closing_confirm step. It is
+// folded in here rather than given its own file to stay within the Vercel
+// Hobby 12-Serverless-Function cap (see the header of api/system-settings.js
+// and api/conversation.js).
 export const TOOL_ACTIONS = [
   "search_knowledge",
   "get_business_facts",
@@ -62,6 +70,7 @@ export const TOOL_ACTIONS = [
   "start_order",
   "continue_order",
   "close_conversation",
+  "classify_closing_reply",
 ];
 
 const KNOWLEDGE_RESULT_LIMIT = 5;
@@ -595,7 +604,7 @@ export async function handleCloseConversation(supabase, { conversationId, confir
     quick_reply_action: "closing_confirm",
     conversation_status: resolved.scope.conversationStatus || "active",
     current_step: "closing_confirm",
-    note: "Ask the customer to confirm they're done (a short yes/continue question). Do not end the conversation yourself.",
+    note: "Done. The system is now showing the customer the confirm/continue choice — you do NOT write that question yourself and you do NOT end the conversation. Reply with nothing, or at most one short warm line; the customer's yes/no is handled deterministically.",
   };
 }
 
@@ -635,6 +644,14 @@ export async function dispatchAiTool(supabase, { action, params }) {
       });
     case "close_conversation":
       return handleCloseConversation(supabase, { conversationId: p.conversation_id, confirmed: p.confirmed === true });
+    case "classify_closing_reply": {
+      // Stateless — no conversation scope. Semantic label of ONE free-text
+      // reply given during closing_confirm: confirm | continue | substantive.
+      // Always resolves (safe default "substantive" on any classifier
+      // failure); shape is { ok: true, decision } for the cc_classify node.
+      const result = await classifyClosingReply(p.text);
+      return { ok: true, decision: result.decision };
+    }
     default:
       return fail(400, "unknown_action", `action must be one of: ${TOOL_ACTIONS.join(", ")}`);
   }

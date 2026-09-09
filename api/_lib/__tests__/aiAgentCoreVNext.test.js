@@ -84,16 +84,18 @@ test("VNext: seven tools, all wired to the AI Agent, all calling /api/ai-tools; 
   assert.match(node(VNEXT, "search_business_knowledge").parameters.toolDescription, /products, services, catalogue, pricing, packages, policies, offers/i);
   assert.match(node(VNEXT, "search_business_knowledge").parameters.toolDescription, /a follow-up where you first resolve from the conversation what the customer is referring to/i);
   // the close tool is Agent-facing REAL-INTENT only: renamed, no `confirmed`
-  // parameter, and its description forbids "ask whether they want to close"
-  // and "the conversation feels finished".
+  // parameter. A clear sign-off (even alongside thanks) MUST trigger it; the
+  // model never writes the confirm question itself.
   const closeTool = node(VNEXT, "request_conversation_close");
   assert.ok(closeTool, "close tool is named request_conversation_close");
   assert.equal(closeTool.parameters.jsonBody.includes("fromAI"), false, "no AI-supplied parameters");
   assert.match(closeTool.parameters.jsonBody, /"confirmed": false/); // hard-coded for the unchanged backend contract
   assert.match(closeTool.parameters.jsonBody, /"action": "close_conversation"/); // backend action unchanged
-  assert.match(closeTool.parameters.toolDescription, /ONLY when the customer has CLEARLY and EXPLICITLY said they want to END the conversation/i);
-  assert.match(closeTool.parameters.toolDescription, /Do NOT call it .* because the customer thanked you or acknowledged your answer/i);
-  assert.match(closeTool.parameters.toolDescription, /Do NOT call it to ASK whether they want to close/i);
+  assert.match(closeTool.parameters.toolDescription, /call this as soon as the customer's own message means they are finished and signing off/i);
+  assert.match(closeTool.parameters.toolDescription, /A thank-you or acknowledgement in the SAME message does not cancel a closing signal/i);
+  assert.match(closeTool.parameters.toolDescription, /Do NOT call it for a bare thanks or acknowledgement with no closing signal/i);
+  assert.match(closeTool.parameters.toolDescription, /do NOT call it when the same message also asks something new or opens a new topic - answer that instead/i);
+  assert.match(closeTool.parameters.toolDescription, /You must NEVER write that "are you sure you're done\?" question yourself/i);
   assert.match(closeTool.parameters.toolDescription, /This tool takes no parameters/i);
 });
 
@@ -334,12 +336,9 @@ for (const biz of ["clinic", "shop", "services", "restaurant"]) {
 
 // --- Live regression: bare "تمام" after "شكراً" must NOT trigger a close ---
 //
-// The AI Agent itself decided a bare acknowledgement meant "close the
-// conversation" and called the close tool with confirmed=false to ASK.
-// Root cause: an Agent-facing close tool that (a) exposed `confirmed` so
-// the model reasoned "not sure they're done -> confirmed=false" and
-// (b) read as "call me to check if they want to close". The fix is the
-// TOOL DECISION BOUNDARY, not a language classifier.
+// A bare acknowledgement with no closing signal is a normal Agent turn —
+// it must not deterministically close and must not be word-classified.
+// (A clear sign-off IS a close — covered by the sibling tests below.)
 
 test("live regression (hours -> شكراً -> تمام): AI path, no deterministic close, no keyword classification", () => {
   const history = [
@@ -367,7 +366,8 @@ test("live regression (hours -> شكراً -> تمام): AI path, no determinist
   // the close tool's boundary lives in its description + no `confirmed` param
   const closeTool = node(VNEXT, "request_conversation_close");
   assert.equal(closeTool.parameters.jsonBody.includes("fromAI"), false);
-  assert.match(closeTool.parameters.toolDescription, /Do NOT call it to ASK whether they want to close/i);
+  assert.match(closeTool.parameters.toolDescription, /Do NOT call it for a bare thanks or acknowledgement with no closing signal/i);
+  assert.match(closeTool.parameters.toolDescription, /You must NEVER write that "are you sure you're done\?" question yourself/i);
 });
 
 // --- Generic multi-language acknowledgement / close semantics (STEP 7) ---
@@ -390,9 +390,10 @@ test("acknowledgement + a real question is a normal turn (not an ack, not a huma
 
 test("a CLEAR explicit end-of-conversation intent still has a path: the close tool + prompt describe exactly that semantics", () => {
   const s = buildPromptMessagesVNext(bizContext("shop", "خلص، ما بدي شي تاني، شكراً"))[0].content;
-  assert.match(s, /request_conversation_close: call this ONLY when the customer has clearly and explicitly said they want to end the whole conversation/i);
+  assert.match(s, /request_conversation_close: call this the moment you understand, from the meaning of the customer's own message, that they are finished and signing off/i);
   const d = node(VNEXT, "request_conversation_close").parameters.toolDescription;
-  assert.match(d, /that's everything, thanks, bye.*I'm done.*ما بدي شي تاني/s);
+  assert.match(d, /that's everything, thanks.*I'm done.*ما بدي شي تاني/s);
+  assert.match(d, /تمام شكراً هيك خلص/); // the exact live-failure message is now an in-scope example
   // and the executed-tool path still produces the confirm lifecycle
   const close = runNormalize({ agent: { output: "تمام.", intermediateSteps: [{ action: { tool: "request_conversation_close" }, observation: JSON.stringify({ quick_reply_action: "closing_confirm", current_step: "closing_confirm" }) }] } });
   assert.equal(close.action, "close_needs_confirmation");

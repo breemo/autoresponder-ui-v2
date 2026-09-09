@@ -6,8 +6,8 @@ import fs from "node:fs";
 // sub-flow (closing_confirm_gate -> cc_route -> cc_classify -> cc_decision
 // -> closing_confirm_switch -> persistence).
 //
-// The MEANING judgement belongs to the model (api/classify-closing-reply
-// -> closingReplyClassifier). What this file guards structurally:
+// The MEANING judgement belongs to the model (/api/ai-tools action
+// classify_closing_reply -> closingReplyClassifier). What this file guards:
 //   1. NOT ONE of the spec's example replies is matched by vocabulary in
 //      the workflow — every free-text reply is deferred to the classifier
 //      with its text passed through byte-for-byte, in any dialect/language.
@@ -87,9 +87,12 @@ for (const [label, wf] of [["Final", FINAL], ["WhatsApp", WA]]) {
     });
   }
 
-  test(`${label}: the classifier HTTP body carries the raw customer text and nothing else`, () => {
+  test(`${label}: the classifier HTTP body carries only the action + the raw customer text`, () => {
     const body = node(wf, "cc_classify").parameters.jsonBody;
-    assert.match(body, /^=\{\s*"text":\s*\{\{ JSON\.stringify\(\$json\.text \|\| ""\) \}\}\s*\}$/);
+    assert.match(body, /"action":\s*"classify_closing_reply"/);
+    assert.match(body, /"text":\s*\{\{ JSON\.stringify\(\$json\.text \|\| ""\) \}\}/);
+    // no KB, profile, transcript, conversation_id — just those two keys
+    assert.doesNotMatch(body, /conversation_id|knowledge|history/i);
   });
 
   // --- 2. each verdict -> the right deterministic transition --------

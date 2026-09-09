@@ -57,7 +57,7 @@ test("VNext prompt: brief, no standing offer of help, acknowledgement = brief, t
   const s = buildSystemMessageVNext(ctx());
   assert.match(s, /Be brief and natural/);
   assert.match(s, /do not end a reply with a standing offer of help or an invitation to ask more/i);
-  assert.match(s, /A thanks or acknowledgement .* is a normal part of the conversation — not a request to end it/i);
+  assert.match(s, /A bare thanks or acknowledgement on its own .* is a normal part of the conversation — not a request to end it/i);
   assert.match(s, /A topic switch is normal/i);
 });
 
@@ -96,18 +96,26 @@ test("VNext prompt: knowledge tooling — use excerpts, call search_business_kno
   assert.match(s, /some may be unrelated — use only what addresses the current request/i);
 });
 
-test("VNext prompt: close is a REAL-INTENT tool — an acknowledgement/thanks is NOT a close, never call it to ASK", () => {
+test("VNext prompt: close is a REAL-INTENT tool — a clear sign-off (even alongside thanks) MUST call it; the model never asks the confirm question itself", () => {
   const s = buildSystemMessageVNext(ctx());
-  assert.match(s, /request_conversation_close: call this ONLY when the customer has clearly and explicitly said they want to end the whole conversation/i);
-  assert.match(s, /Never call it because the customer thanked you or acknowledged an answer, because the chat feels finished, or to ASK whether they want to close/i);
-  assert.match(s, /When you are not sure, do not call it/i);
+  // semantic trigger, not a word list — "the meaning of the customer's own message"
+  assert.match(s, /request_conversation_close: call this the moment you understand, from the meaning of the customer's own message, that they are finished and signing off/i);
+  assert.match(s, /A thank-you or acknowledgement in the SAME message does not cancel that/i);
+  // must NOT close for bare courtesy, and must NOT close for courtesy + a new question
+  assert.match(s, /Do NOT call it for a bare thanks\/acknowledgement with no closing signal/i);
+  assert.match(s, /do NOT call it when the same message also asks something new or opens a new topic — answer that instead/i);
+  // the confirmation prompt/buttons belong to the machinery, not the model
+  assert.match(s, /You must NEVER write that "are you sure you're done\?" question yourself/i);
+  assert.match(s, /if you are about to ask it, call this tool instead/i);
+  assert.match(s, /If you are not sure the customer is closing, do not call it/i);
 });
 
-test("VNext prompt: acknowledgements — one short natural phrase, no filler, no closing step (the live 'تمام' regression)", () => {
+test("VNext prompt: a BARE acknowledgement is still a normal turn (no closing step), but a sign-off in the same message is a close", () => {
   const s = buildSystemMessageVNext(ctx());
-  assert.match(s, /A thanks or acknowledgement .* is a normal part of the conversation — not a request to end it/i);
+  assert.match(s, /A bare thanks or acknowledgement on its own .* with no sign that the customer is finished, is a normal part of the conversation — not a request to end it/i);
   assert.match(s, /Reply with one short, natural phrase and nothing else: no recap .* no invitation to ask more, no "feel free to contact us", no next-step suggestion or upsell/i);
-  assert.match(s, /Do NOT start any conversation-closing step for it/i);
+  assert.match(s, /Do not start any closing step for it/i);
+  assert.match(s, /If the same message ALSO shows the customer is done and signing off, that is a close — see request_conversation_close/i);
   // the old customer-service filler pattern is not encouraged
   assert.match(s, /do not end a reply with a standing offer of help or an invitation to ask more/i);
 });

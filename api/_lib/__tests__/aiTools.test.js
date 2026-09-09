@@ -360,6 +360,11 @@ test("close_conversation: unconfirmed -> confirm step + quick-reply hint, never 
   assert.equal(conv.current_step, "closing_confirm");
   assert.notEqual(conv.conversation_status, "closed");
   assert.equal(tables.messages.find((m) => m.id === "m-A-new").intent, "closing");
+  // Fix B: the note tells the Agent the machinery owns the confirm prompt —
+  // it must NOT write the "are you sure?" question or list options itself.
+  assert.match(res.note, /do NOT write that question yourself/i);
+  assert.match(res.note, /do NOT end the conversation/i);
+  assert.doesNotMatch(res.note, /Ask the customer to confirm/i);
 });
 
 test("close_conversation: confirmed -> closing_confirmed + waiting_human (never a hard 'closed' by the AI)", async () => {
@@ -393,8 +398,38 @@ test("TOOL_ACTIONS + INTENT_VALUES are the agreed sets", () => {
     "start_order",
     "continue_order",
     "close_conversation",
+    "classify_closing_reply",
   ]);
   assert.equal(INTENT_VALUES.length, 12);
+});
+
+// classify_closing_reply — folded into this endpoint (Vercel Hobby
+// 12-function cap). Stateless: no conversation scope, no DB, always
+// resolves to { ok: true, decision } with the safe default on failure.
+test("dispatchAiTool: classify_closing_reply returns { ok, decision } without touching the DB", async () => {
+  const ORIGINAL = process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY; // force the classifier's safe-default path, no network
+  try {
+    const res = await dispatchAiTool(createMockSupabase({}), {
+      action: "classify_closing_reply",
+      params: { text: "يعطيكم العافية" },
+    });
+    assert.equal(res.ok, true);
+    assert.ok(["confirm", "continue", "substantive"].includes(res.decision));
+    assert.equal(res.decision, "substantive"); // safe default with no API key
+    assert.equal("status" in res, false);
+  } finally {
+    if (ORIGINAL === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = ORIGINAL;
+  }
+});
+
+test("dispatchAiTool: classify_closing_reply with no/blank text -> substantive", async () => {
+  for (const params of [{}, { text: "" }, { text: "   " }]) {
+    const res = await dispatchAiTool(createMockSupabase({}), { action: "classify_closing_reply", params });
+    assert.equal(res.ok, true);
+    assert.equal(res.decision, "substantive");
+  }
 });
 
 test("no tool accepts an outbound channel/account selector — the send account is never in a tool payload", async () => {

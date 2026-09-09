@@ -193,10 +193,12 @@ for (const [label, wf] of [["Final", FINAL], ["WhatsApp", WA]]) {
 
 // --- classifier sub-flow wiring ----------------------------------
 
-test("cc_classify targets /api/classify-closing-reply with the AI Tools secret and degrades on error", () => {
+test("cc_classify calls /api/ai-tools with action classify_closing_reply (consolidated — no standalone function), degrades on error", () => {
   for (const wf of [FINAL, WA]) {
     const c = node(wf, "cc_classify");
-    assert.match(c.parameters.url, /\/api\/classify-closing-reply$/);
+    assert.match(c.parameters.url, /\/api\/ai-tools$/);
+    assert.doesNotMatch(c.parameters.url, /classify-closing-reply/);
+    assert.match(c.parameters.jsonBody, /"action":\s*"classify_closing_reply"/);
     assert.equal(c.credentials.httpHeaderAuth.id, "TBATq3Dn0WwGFqLu");
     assert.equal(c.onError, "continueRegularOutput");
     assert.match(c.parameters.jsonBody, /JSON\.stringify\(\$json\.text/);
