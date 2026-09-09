@@ -514,7 +514,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const prep = $items(\"prepare_conversation\", 0, 0)[0].json;\nconst norm = $json;\n\n// أهم سطر 👇\nconst config = norm.config || prep.config || {};\n\n// Scoped closing_confirm follow-up: a SUBSTANTIVE customer message that\n// arrived while the conversation was pending \"closing_confirm\" cancels that\n// pending close. Do NOT carry the stale step forward for this turn — it\n// would otherwise return via normalize_core_result's `|| prep.current_step`\n// fallback and be re-persisted by sync_conversation_v2. Applies ONLY to\n// (decision === \"substantive\" && prep.current_step === \"closing_confirm\");\n// every other step and decision is untouched.\nlet ccDecision = null;\ntry {\n  ccDecision = ($items(\"closing_confirm_gate\", 0, 0)[0] || {}).json?.decision || null;\n} catch (e) {}\nconst cancelStaleClose =\n  ccDecision === \"substantive\" && prep.current_step === \"closing_confirm\";\n\nlet mergedStep = norm.current_step || null;\nif (cancelStaleClose && (mergedStep === \"closing_confirm\" || mergedStep === null)) {\n  mergedStep = null;\n}\n\nreturn [\n  {\n    json: {\n      ...norm,\n      config: config, // 👈 هذا الحل\n      client_id: prep.client_id,\n      sender_id: prep.sender_id,\n      platform: prep.platform,\n      conversation_id: prep.conversation_id,\n      conversation_status: norm.conversation_status || \"active\",\n      current_step: mergedStep,\n      reply_from: prep.reply_from || norm.reply_from,\n          \n    from_norm: norm.reply_from,\n    from_prep: prep.reply_from,\n    selected: prep.reply_from || norm.reply_from\n    }\n  }\n];\n"
+        "jsCode": "const prep = $items(\"prepare_conversation\", 0, 0)[0].json;\nconst norm = $json;\n\n// أهم سطر 👇\nconst config = norm.config || prep.config || {};\n\n// Scoped closing_confirm follow-up: a SUBSTANTIVE customer message that\n// arrived while the conversation was pending \"closing_confirm\" cancels that\n// pending close. Do NOT carry the stale step forward for this turn — it\n// would otherwise return via normalize_core_result's `|| prep.current_step`\n// fallback and be re-persisted by sync_conversation_v2. Applies ONLY to\n// (decision === \"substantive\" && prep.current_step === \"closing_confirm\");\n// every other step and decision is untouched.\nlet ccDecision = null;\ntry {\n  ccDecision = ($items(\"cc_decision\", 0, 0)[0] || {}).json?.decision || null;\n} catch (e) {}\nconst cancelStaleClose =\n  ccDecision === \"substantive\" && prep.current_step === \"closing_confirm\";\n\nlet mergedStep = norm.current_step || null;\nif (cancelStaleClose && (mergedStep === \"closing_confirm\" || mergedStep === null)) {\n  mergedStep = null;\n}\n\nreturn [\n  {\n    json: {\n      ...norm,\n      config: config, // 👈 هذا الحل\n      client_id: prep.client_id,\n      sender_id: prep.sender_id,\n      platform: prep.platform,\n      conversation_id: prep.conversation_id,\n      conversation_status: norm.conversation_status || \"active\",\n      current_step: mergedStep,\n      reply_from: prep.reply_from || norm.reply_from,\n          \n    from_norm: norm.reply_from,\n    from_prep: prep.reply_from,\n    selected: prep.reply_from || norm.reply_from\n    }\n  }\n];\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1389,7 +1389,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{\n(() => {\n  const state = $node[\"state_payload\"].json || {};\n\n  const ccDecision = (() => {\n    try { return ($items(\"closing_confirm_gate\", 0, 0)[0] || {}).json?.decision || null; }\n    catch (e) { return null; }\n  })();\n  const prepStep = ($node[\"prepare_conversation\"].json || {}).current_step || null;\n\n  const payload = { updated_at: $now };\n\n  // conversation_status — unchanged non-downgrade rule: /api/ai-tools is\n  // authoritative for lifecycle; the parent only PERSISTS an escalation\n  // AI-Agent-Core surfaced (waiting_human / closed), never a downgrade.\n  if (state.conversation_status === \"closed\") {\n    payload.conversation_status = \"closed\";\n    payload.closed_at = $now;\n  } else if (state.conversation_status === \"waiting_human\") {\n    payload.conversation_status = \"waiting_human\";\n  }\n\n  // current_step — SAME principle. The /api/ai-tools close tool writes\n  // conversations.current_step = \"closing_confirm\" server-side; this node\n  // used to overwrite it with (state.current_step || null), silently\n  // dropping a pending closing_confirm so the customer's next yes/no\n  // reached closing_confirm_gate with current_step = null.\n  const closeRequested = state.action === \"close_needs_confirmation\";\n  const pendingConfirm = prepStep === \"closing_confirm\";\n  const confirmResolved =\n    ccDecision === \"confirm\" ||\n    ccDecision === \"continue\" ||\n    (ccDecision === \"substantive\" && pendingConfirm);\n\n  if (closeRequested) {\n    payload.current_step = \"closing_confirm\";          // requested this turn\n  } else if (pendingConfirm && !confirmResolved) {\n    payload.current_step = \"closing_confirm\";          // still pending, not resolved this run\n  } else {\n    payload.current_step = state.current_step || null; // legacy behaviour otherwise\n  }\n\n  return payload;\n})()\n}}",
+        "jsonBody": "={{\n(() => {\n  const state = $node[\"state_payload\"].json || {};\n\n  const ccDecision = (() => {\n    try { return ($items(\"cc_decision\", 0, 0)[0] || {}).json?.decision || null; }\n    catch (e) { return null; }\n  })();\n  const prepStep = ($node[\"prepare_conversation\"].json || {}).current_step || null;\n\n  const payload = { updated_at: $now };\n\n  // conversation_status — unchanged non-downgrade rule: /api/ai-tools is\n  // authoritative for lifecycle; the parent only PERSISTS an escalation\n  // AI-Agent-Core surfaced (waiting_human / closed), never a downgrade.\n  if (state.conversation_status === \"closed\") {\n    payload.conversation_status = \"closed\";\n    payload.closed_at = $now;\n  } else if (state.conversation_status === \"waiting_human\") {\n    payload.conversation_status = \"waiting_human\";\n  }\n\n  // current_step — SAME principle. The /api/ai-tools close tool writes\n  // conversations.current_step = \"closing_confirm\" server-side; this node\n  // used to overwrite it with (state.current_step || null), silently\n  // dropping a pending closing_confirm so the customer's next yes/no\n  // reached closing_confirm_gate with current_step = null.\n  const closeRequested = state.action === \"close_needs_confirmation\";\n  const pendingConfirm = prepStep === \"closing_confirm\";\n  const confirmResolved =\n    ccDecision === \"confirm\" ||\n    ccDecision === \"continue\" ||\n    (ccDecision === \"substantive\" && pendingConfirm);\n\n  if (closeRequested) {\n    payload.current_step = \"closing_confirm\";          // requested this turn\n  } else if (pendingConfirm && !confirmResolved) {\n    payload.current_step = \"closing_confirm\";          // still pending, not resolved this run\n  } else {\n    payload.current_step = state.current_step || null; // legacy behaviour otherwise\n  }\n\n  return payload;\n})()\n}}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -1582,7 +1582,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const base = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst integration = $items(\"client_feature\", 0, 0)[0].json;\nconst prep = $items(\"prepare_conversation\", 0, 0)[0].json;\n\nlet messageId = null;\n\ntry {\n  messageId = $items(\"insert message\", 0, 0)[0]?.json?.id || null;\n} catch (e) {\n  messageId = null;\n}\n\n// Scoped closing_confirm follow-up: when a SUBSTANTIVE message cancels a\n// pending \"closing_confirm\" (see closing_confirm_gate), the AI must not see\n// the stale step this turn — otherwise it may re-render the close-confirm\n// prompt/buttons. Only this exact case is overridden; every other step is\n// passed through unchanged.\nlet stepForTurn = prep.current_step || null;\ntry {\n  const ccDecision = ($items(\"closing_confirm_gate\", 0, 0)[0] || {}).json?.decision || null;\n  if (ccDecision === \"substantive\" && stepForTurn === \"closing_confirm\") {\n    stepForTurn = null;\n  }\n} catch (e) {}\n\nreturn [{\n  json: {\n    conversation_id: prep.conversation_id,\n    client_id: prep.client_id || integration.client_id,\n    current_message: base.text || \"\",\n    message_id: messageId,\n    current_step: stepForTurn,\n    channel: base.platform || \"whatsapp\"\n  }\n}];"
+        "jsCode": "const base = $items(\"Code in JavaScript1\", 0, 0)[0].json;\nconst integration = $items(\"client_feature\", 0, 0)[0].json;\nconst prep = $items(\"prepare_conversation\", 0, 0)[0].json;\n\nlet messageId = null;\n\ntry {\n  messageId = $items(\"insert message\", 0, 0)[0]?.json?.id || null;\n} catch (e) {\n  messageId = null;\n}\n\n// Scoped closing_confirm follow-up: when a SUBSTANTIVE message cancels a\n// pending \"closing_confirm\" (see closing_confirm_gate), the AI must not see\n// the stale step this turn — otherwise it may re-render the close-confirm\n// prompt/buttons. Only this exact case is overridden; every other step is\n// passed through unchanged.\nlet stepForTurn = prep.current_step || null;\ntry {\n  const ccDecision = ($items(\"cc_decision\", 0, 0)[0] || {}).json?.decision || null;\n  if (ccDecision === \"substantive\" && stepForTurn === \"closing_confirm\") {\n    stepForTurn = null;\n  }\n} catch (e) {}\n\nreturn [{\n  json: {\n    conversation_id: prep.conversation_id,\n    client_id: prep.client_id || integration.client_id,\n    current_message: base.text || \"\",\n    message_id: messageId,\n    current_step: stepForTurn,\n    channel: base.platform || \"whatsapp\"\n  }\n}];"
       },
       "id": "0ceba59e-d6bc-4d61-a535-abc5bd1cb8fb",
       "name": "Prepare AI Core Input",
@@ -2492,7 +2492,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Deterministic closing-confirm gate.\n// Runs right after the human hard-stop and BEFORE Welcome / Reply Mode /\n// AI processing, and ONLY acts when the conversation is already at\n// current_step === \"closing_confirm\". Emits exactly one of:\n//   confirm     -> customer confirmed -> close deterministically (no AI)\n//   continue    -> customer declined / \"keep going\" -> clear the step (no AI)\n//   substantive -> a real message during closing_confirm -> normal AI path\n//   normal      -> not at closing_confirm -> normal path, untouched\n// Matching is CONSERVATIVE: the whole normalized message must consist only\n// of a small approved affirmative/negative/sign-off vocabulary. No\n// substring test, no AI classification.\nconst prep = $items(\"prepare_conversation\", 0, 0)[0].json || {};\nconst base = $items(\"Code in JavaScript1\", 0, 0)[0].json || {};\n\nconst step = prep.current_step || null;\nconst payload = prep.quick_reply_payload || base.quick_reply_payload || null;\n\nif (step !== \"closing_confirm\") {\n  return [{ json: { decision: \"normal\" } }];\n}\n\nconst CONTINUE_REPLY = {\n  decision: \"continue\",\n  reply: \"تمام 👍 كمّل رسالتك.\",\n  conversation_status: \"active\",\n  current_step: null,\n  intent: \"unknown\",\n  action: null,\n  reply_source: \"system\",\n  reply_from: \"system\",\n  quick_replies: []\n};\n\n// Quick-reply button payloads are unambiguous.\nif (payload === \"CLOSE_CONVERSATION\") {\n  return [{ json: { decision: \"confirm\", _cc: \"payload\" } }];\n}\nif (payload === \"CONTINUE_CONVERSATION\") {\n  return [{ json: { ...CONTINUE_REPLY, _cc: \"payload\" } }];\n}\n\nconst norm = String(base.text || \"\")\n  .toLowerCase()\n  .replace(/\\u0640/g, \"\")\n  .replace(/[\\u064B-\\u0652\\u0670]/g, \"\")\n  .replace(/[إأآ]/g, \"ا\")\n  .replace(/ى/g, \"ي\")\n  .replace(/ة/g, \"ه\")\n  .replace(/ؤ/g, \"و\")\n  .replace(/ئ/g, \"ي\")\n  .replace(/[^\\p{L}\\p{N}\\s]/gu, \" \")\n  .replace(/\\s+/g, \" \")\n  .trim();\n\nconst tokens = norm ? norm.split(\" \") : [];\n\nconst AFFIRM = new Set([\n  \"نعم\",\"ايه\",\"اه\",\"ايوه\",\"ايوا\",\"اجل\",\"اكيد\",\"موافق\",\"جاهز\",\"تمام\",\"تم\",\n  \"خلص\",\"ماشي\",\"حاضر\",\"اوك\",\"اوكي\",\"اوكيه\",\n  \"yes\",\"yeah\",\"yep\",\"yup\",\"ok\",\"okay\",\"sure\",\"done\"\n]);\nconst NEGATE = new Set([\n  \"لا\",\"كمل\",\"كملي\",\"استني\",\"استنا\",\"انتظر\",\"لحظه\",\"دقيقه\",\"بعدين\",\"مش\",\"لسه\",\"لسا\",\n  \"no\",\"wait\",\"later\",\"not\"\n]);\nconst FILLER = new Set([\n  \"شكرا\",\"مشكور\",\"مشكوره\",\"تسلم\",\"تسلمو\",\"يسلمو\",\"يعطيك\",\"العافيه\",\"الله\",\n  \"المحادثه\",\"المحادثة\",\"الحديث\",\"حبيبي\",\"اخي\",\"استاذ\",\n  \"thanks\",\"thank\",\"you\",\"the\",\"chat\",\"please\"\n]);\n\nif (tokens.length === 0 || tokens.length > 5) {\n  return [{ json: { decision: \"substantive\", _cc: \"len\" } }];\n}\n\nconst hasAffirm = tokens.some((t) => AFFIRM.has(t));\nconst hasNegate = tokens.some((t) => NEGATE.has(t));\nconst allKnown = tokens.every((t) => AFFIRM.has(t) || NEGATE.has(t) || FILLER.has(t));\n\nif (allKnown && hasAffirm && !hasNegate) {\n  return [{ json: { decision: \"confirm\", _cc: \"typed\" } }];\n}\nif (allKnown && hasNegate && !hasAffirm) {\n  return [{ json: { ...CONTINUE_REPLY, _cc: \"typed\" } }];\n}\n\nreturn [{ json: { decision: \"substantive\", _cc: \"mixed\" } }];"
+        "jsCode": "// Closing-confirm router.\n//\n// Runs right after the human hard-stop and BEFORE Welcome / Reply Mode /\n// AI processing. Acts only when the conversation is already at\n// current_step === \"closing_confirm\" (the customer was just asked to\n// confirm they are finished). It resolves the UNAMBIGUOUS cases here and\n// hands every free-text reply to the semantic classifier:\n//   normal      -> not at closing_confirm; nothing to do\n//   confirm     -> the CLOSE_CONVERSATION quick-reply button\n//   continue    -> the CONTINUE_CONVERSATION quick-reply button\n//   substantive -> an empty message (never close on nothing)\n//   classify    -> free text -> cc_route -> cc_classify -> cc_decision\n//                  decide confirm | continue | substantive by MEANING\n// There is no affirmative / negative / sign-off vocabulary in this node\n// anymore. Button payloads are never sent to the model.\nconst prep = $items(\"prepare_conversation\", 0, 0)[0].json || {};\nconst base = $items(\"Code in JavaScript1\", 0, 0)[0].json || {};\n\nconst step = prep.current_step || null;\nconst buttonPayload = prep.quick_reply_payload || base.quick_reply_payload || null;\n\nif (step !== \"closing_confirm\") {\n  return [{ json: { decision: \"normal\" } }];\n}\n\n// Quick-reply buttons are unambiguous — resolved here, never sent to the model.\nif (buttonPayload === \"CLOSE_CONVERSATION\") {\n  return [{ json: { decision: \"confirm\", _cc: \"button\" } }];\n}\nif (buttonPayload === \"CONTINUE_CONVERSATION\") {\n  return [{\n    json: {\n      decision: \"continue\",\n      reply: \"تمام 👍 كمّل رسالتك.\",\n      conversation_status: \"active\",\n      current_step: null,\n      intent: \"unknown\",\n      action: null,\n      reply_source: \"system\",\n      reply_from: \"system\",\n      quick_replies: [],\n      _cc: \"button\"\n    }\n  }];\n}\n\nconst text = String(base.text || \"\").trim();\nif (!text) {\n  // Never close on an empty / non-text message.\n  return [{ json: { decision: \"substantive\", _cc: \"empty\" } }];\n}\n\n// Free text -> semantic classifier (cc_route -> cc_classify -> cc_decision).\nreturn [{ json: { decision: \"classify\", text } }];"
       },
       "id": "a7f1c2d3-e4b5-4c6d-8e9f-0a1b2c3d4e01",
       "name": "closing_confirm_gate",
@@ -2501,6 +2501,95 @@
       "position": [
         3600,
         1180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cc-route-classify",
+              "leftValue": "={{ $json.decision }}",
+              "rightValue": "classify",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a7f1c2d3-e4b5-4c6d-8e9f-0a1b2c3d4e05",
+      "name": "cc_route",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3640,
+        1000
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.APP_API_BASE_URL }}/api/classify-closing-reply",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-vercel-protection-bypass",
+              "value": "={{ $env.VERCEL_PROTECTION_BYPASS }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"text\": {{ JSON.stringify($json.text || \"\") }}\n}",
+        "options": {
+          "timeout": 9000
+        }
+      },
+      "id": "a7f1c2d3-e4b5-4c6d-8e9f-0a1b2c3d4e06",
+      "name": "cc_classify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3800,
+        920
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TBATq3Dn0WwGFqLu",
+          "name": "AI Tools Secret"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Single resolved closing-confirm decision. Runs on BOTH branches out of\n// cc_route, so every downstream node reads the FINAL decision from here\n// (never from closing_confirm_gate, whose \"classify\" is not terminal):\n//   * button / guard branch -> pass closing_confirm_gate's decision through\n//   * free-text branch       -> resolve cc_classify's semantic result\n//\n// cc_classify has onError:continueRegularOutput, so ANY failure (network,\n// timeout, non-2xx, invalid body) arrives here WITHOUT a valid decision.\n// SAFE DEFAULT = substantive: never close the conversation on uncertainty.\nconst gate = ($items(\"closing_confirm_gate\", 0, 0)[0] || {}).json || {};\n\nlet classifierRan = false;\nlet classifierResp = {};\ntry {\n  const c = $items(\"cc_classify\", 0, 0)[0];\n  if (c) { classifierRan = true; classifierResp = c.json || {}; }\n} catch (e) {}\n\nconst VALID = [\"confirm\", \"continue\", \"substantive\"];\n\nlet decision;\nif (!classifierRan) {\n  decision = gate.decision || \"normal\";\n} else {\n  const raw =\n    classifierResp && typeof classifierResp.decision === \"string\"\n      ? classifierResp.decision.trim().toLowerCase()\n      : null;\n  decision = VALID.includes(raw) ? raw : \"substantive\";\n}\n\nif (decision === \"continue\") {\n  return [{\n    json: {\n      decision: \"continue\",\n      reply: \"تمام 👍 كمّل رسالتك.\",\n      conversation_status: \"active\",\n      current_step: null,\n      intent: \"unknown\",\n      action: null,\n      reply_source: \"system\",\n      reply_from: \"system\",\n      quick_replies: []\n    }\n  }];\n}\n\nreturn [{ json: { ...gate, decision } }];"
+      },
+      "id": "a7f1c2d3-e4b5-4c6d-8e9f-0a1b2c3d4e07",
+      "name": "cc_decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3720,
+        1080
       ]
     },
     {
@@ -2935,7 +3024,7 @@
       "main": [
         [
           {
-            "node": "closing_confirm_switch",
+            "node": "cc_route",
             "type": "main",
             "index": 0
           }
@@ -3512,6 +3601,46 @@
         [
           {
             "node": "insert auto reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cc_route": {
+      "main": [
+        [
+          {
+            "node": "cc_classify",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "cc_decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cc_classify": {
+      "main": [
+        [
+          {
+            "node": "cc_decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cc_decision": {
+      "main": [
+        [
+          {
+            "node": "closing_confirm_switch",
             "type": "main",
             "index": 0
           }
