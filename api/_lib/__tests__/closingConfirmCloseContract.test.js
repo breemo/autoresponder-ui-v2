@@ -142,8 +142,49 @@ function runNormalizeCore(wf, { sub, baseText = "", integration = {}, prep = {} 
   return new Function("$items", "$json", code)($items, sub)[0].json;
 }
 
-const CLOSE_SUB = {
-  reply: "هل أنت متأكد أنك انتهيت؟", // whatever the model wrote — must be discarded
+// The full closing-confirm contract that normalize_core_result MUST emit
+// once the close tool has run, regardless of the tool-observation shape.
+function assertClosingConfirmContract(out, { arabic }) {
+  assert.equal(out.action, "close_needs_confirmation");
+  assert.equal(out.current_step, "closing_confirm");
+  assert.equal(out.next_step, "closing_confirm");
+  assert.equal(out.quick_reply_action, "closing_confirm");
+  assert.deepEqual(
+    out.quick_replies.map((q) => q.payload),
+    ["CLOSE_CONVERSATION", "CONTINUE_CONVERSATION"]
+  );
+  assert.deepEqual(
+    out.quick_replies.map((q) => q.title),
+    ["نعم", "كمل المحادثة"]
+  );
+  if (arabic) {
+    assert.match(out.reply, /[؀-ۿ]/);
+    assert.match(out.reply, /حابب أتأكد/);
+  } else {
+    assert.doesNotMatch(out.reply, /[؀-ۿ]/);
+    assert.match(out.reply, /Just to confirm/i);
+  }
+  // a close REQUEST keeps the conversation active (only a CONFIRMED close,
+  // handled deterministically elsewhere, moves it to waiting_human)
+  assert.equal(out.conversation_status, "active");
+}
+
+// The exact live failure: close tool executed (action derives from the
+// tool NAME and is reliable), but the langchain tool observation was
+// malformed / unparseable, so quick_reply_action + current_step arrived
+// null, and the model produced a chatty non-canonical wrap-up line.
+const LIVE_FAILURE_SUB = {
+  reply: "تمام 👍 طلبك أكيد — إذا حابب تكمل ولا عندك أي شي ثاني بس اكتب رسالة.",
+  intent: "closing",
+  action: "close_needs_confirmation",
+  quick_reply_action: null,
+  current_step: null,
+  conversation_status: null,
+};
+
+// A clean, fully-populated observation.
+const VALID_OBS_SUB = {
+  reply: "sure",
   intent: "closing",
   action: "close_needs_confirmation",
   quick_reply_action: "closing_confirm",
@@ -152,31 +193,62 @@ const CLOSE_SUB = {
 };
 
 for (const [label, wf] of [["Final", FINAL], ["WhatsApp", WA]]) {
-  test(`${label}: on a close-tool turn, normalize_core_result REPLACES the model's text with the canonical confirm prompt + buttons`, () => {
-    const ar = runNormalizeCore(wf, { sub: CLOSE_SUB, baseText: "تمام شكرا هيك خلص" });
-    assert.notEqual(ar.reply, CLOSE_SUB.reply); // the model's phrasing is not used
-    assert.match(ar.reply, /[؀-ۿ]/); // Arabic customer -> Arabic prompt
-    assert.match(ar.reply, /حابب أتأكد/);
-    assert.equal(ar.current_step, "closing_confirm");
-    assert.equal(ar.action, "close_needs_confirmation");
-    assert.deepEqual(
-      ar.quick_replies.map((q) => q.payload),
-      ["CLOSE_CONVERSATION", "CONTINUE_CONVERSATION"]
-    );
-
-    const en = runNormalizeCore(wf, { sub: CLOSE_SUB, baseText: "ok thanks that's all" });
-    assert.doesNotMatch(en.reply, /[؀-ۿ]/);
-    assert.match(en.reply, /Just to confirm/i);
+  test(`${label}: LIVE FAILURE — tool executed, observation unparseable, model wrote a conversational reply -> full closing-confirm contract is still forced`, () => {
+    const out = runNormalizeCore(wf, { sub: LIVE_FAILURE_SUB, baseText: "تمام شكرا هيك خلص" });
+    assert.notEqual(out.reply, LIVE_FAILURE_SUB.reply); // the model's line must NOT win
+    assertClosingConfirmContract(out, { arabic: true });
   });
 
-  test(`${label}: a NON-close AI turn is untouched — the model's reply passes through, no buttons`, () => {
+  test(`${label}: observation missing ONLY quick_reply_action still forces the whole contract`, () => {
+    const out = runNormalizeCore(wf, {
+      sub: { reply: "ok", intent: "closing", action: "close_needs_confirmation", current_step: null, quick_reply_action: null, conversation_status: "active" },
+      baseText: "that's all, thanks",
+    });
+    assertClosingConfirmContract(out, { arabic: false });
+  });
+
+  test(`${label}: close signalled only via the embedded reply object still forces the contract`, () => {
+    const out = runNormalizeCore(wf, {
+      sub: { reply: JSON.stringify({ action: "close_needs_confirmation", reply: "خلص، شكرًا" }), intent: "unknown", conversation_status: null },
+      baseText: "خلص",
+    });
+    assertClosingConfirmContract(out, { arabic: true });
+  });
+
+  test(`${label}: a VALID observation behaves identically (same forced contract)`, () => {
+    const out = runNormalizeCore(wf, { sub: VALID_OBS_SUB, baseText: "ok thanks that's all" });
+    assert.notEqual(out.reply, VALID_OBS_SUB.reply); // still machinery-owned
+    assertClosingConfirmContract(out, { arabic: false });
+  });
+
+  test(`${label}: a NON-close AI turn is completely untouched — model reply passes through, no step, no buttons`, () => {
     const out = runNormalizeCore(wf, {
       sub: { reply: "We're open 9–5.", intent: "knowledge", action: null, quick_reply_action: null, conversation_status: "active", current_step: null },
       baseText: "what are your hours?",
     });
     assert.equal(out.reply, "We're open 9–5.");
     assert.equal(out.quick_replies, null);
+    assert.equal(out.quick_reply_action, null);
     assert.equal(out.current_step, null);
+    assert.equal(out.action, null);
+  });
+
+  test(`${label}: a handover turn is untouched by the closing-confirm forcing`, () => {
+    const out = runNormalizeCore(wf, {
+      sub: { reply: "A teammate will follow up.", intent: "human_request", action: "human_handover", quick_reply_action: null, conversation_status: "waiting_human", current_step: null },
+      baseText: "بدي احكي مع موظف",
+    });
+    assert.equal(out.action, "human_handover");
+    assert.equal(out.current_step, null);
+    assert.equal(out.quick_replies, null);
+    assert.equal(out.conversation_status, "waiting_human");
+  });
+
+  test(`${label}: normalize_core_result keys the contract on the tool RESULT, not on message text`, () => {
+    const code = node(wf, "normalize_core_result").parameters.jsCode;
+    // the trigger is the normalized action, never a phrase/word scan of base.text
+    assert.match(code, /const closeRequested\s*=\s*\n?\s*coreAction === "close_needs_confirmation"/);
+    assert.doesNotMatch(code, /base\.text.*(خلص|bye|done|thanks|شكرا)/i);
   });
 }
 
