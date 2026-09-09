@@ -399,6 +399,7 @@ test("TOOL_ACTIONS + INTENT_VALUES are the agreed sets", () => {
     "continue_order",
     "close_conversation",
     "classify_closing_reply",
+    "apply_agent_action_v3",
   ]);
   assert.equal(INTENT_VALUES.length, 12);
 });

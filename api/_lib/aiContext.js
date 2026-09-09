@@ -458,6 +458,18 @@ export async function resolveAiContext(supabase, { conversationId, clientId, cur
   const relevantKnowledge = await retrieveKnowledgeSafely(supabase, { clientId, conversationId, queryText: currentMessageText, history, useContextualRetrieval });
   const { locations, locationsListComplete } = await loadLocationsSafely(supabase, clientId);
 
+  // Working-hours resolution: client-wide clients.working_hours is
+  // authoritative. If it is unset but the business has exactly ONE active
+  // location that DOES have hours (the common one-branch case), those are
+  // the business hours — surface them at the profile level so "what are
+  // your hours?" is answerable without the customer naming a branch. With
+  // more than one location, per-branch hours are left on the locations
+  // only (they must not be collapsed into a single "business hours" line).
+  let workingHoursText = formatWorkingHoursText(clientRow.working_hours);
+  if (!workingHoursText && locations.length === 1 && locations[0].working_hours_text) {
+    workingHoursText = locations[0].working_hours_text;
+  }
+
   const context = {
     client: {
       id: clientRow.id,
@@ -468,7 +480,7 @@ export async function resolveAiContext(supabase, { conversationId, clientId, cur
       website: clientRow.website || null,
       timezone: clientRow.timezone || null,
       working_hours: clientRow.working_hours || null,
-      working_hours_text: formatWorkingHoursText(clientRow.working_hours),
+      working_hours_text: workingHoursText,
       // Business Voice + Authoritative Locations — additive alongside the
       // fields above (which remain exactly as before for every client,
       // including one with zero client_locations rows). `locations` is

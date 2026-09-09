@@ -34,6 +34,7 @@
 import { formatWorkingHoursText } from "./aiContext.js";
 import { retrieveRelevantKnowledgeHybrid } from "./knowledgeRetrieval.js";
 import { classifyClosingReply } from "./closingReplyClassifier.js";
+import { V3_ACTIONS } from "./agentResultV3.js";
 
 // V1 intent taxonomy — MUST match supabase/migrations/
 // 20260828_ai_engine_v1_message_intent.sql's CHECK constraint and the
@@ -71,6 +72,12 @@ export const TOOL_ACTIONS = [
   "continue_order",
   "close_conversation",
   "classify_closing_reply",
+  // AI Engine V3: the parent's single "Apply Action" node posts the
+  // Agent's structured decision here; this endpoint performs the ONE
+  // deterministic lifecycle write (reusing the handlers above) and returns
+  // the authoritative { conversation_status, current_step }. Not an
+  // Agent-facing tool.
+  "apply_agent_action_v3",
 ];
 
 const KNOWLEDGE_RESULT_LIMIT = 5;
@@ -609,6 +616,96 @@ export async function handleCloseConversation(supabase, { conversationId, confir
 }
 
 // ---------------------------------------------------------------------
+// AI Engine V3 — deterministic Apply-Action layer
+// ---------------------------------------------------------------------
+// The single General Agent returns a structured decision; the parent's
+// one "Apply Action" node posts it here. This performs AT MOST ONE
+// lifecycle write, reusing the handlers above (so tenancy / CHECK
+// constraints / applyLifecycle discipline are unchanged), and returns the
+// authoritative { conversation_status, current_step } for the parent to
+// persist and send. Language understanding lives ONLY in the Agent — this
+// function only executes a validated action string.
+//
+// Safety: the action is re-validated here (defense in depth against a
+// drifted inline validator in the n8n node). An unknown action, or any
+// handler failure, is treated as "reply" — NEVER a close / handover on
+// uncertainty.
+export async function applyAgentActionV3(supabase, { conversationId, agentAction, agentActionParams }) {
+  const resolved = await resolveConversationScope(supabase, conversationId);
+  if (!resolved.ok) return resolved;
+  const { clientId, conversationId: cid } = resolved.scope;
+  const prevStatus = resolved.scope.conversationStatus || "active";
+  const prevStep = resolved.scope.currentStep || null;
+
+  const p = agentActionParams && typeof agentActionParams === "object" ? agentActionParams : {};
+  let action = typeof agentAction === "string" ? agentAction.trim().toLowerCase() : "reply";
+  if (!V3_ACTIONS.includes(action)) action = "reply";
+
+  const clearPendingStep = async () => {
+    try {
+      const nowIso = new Date().toISOString();
+      await supabase.from("conversations").update({ current_step: null, last_message_at: nowIso }).eq("id", cid).eq("client_id", clientId);
+      await supabase.from("conversation_state").update({ current_step: null, updated_at: nowIso }).eq("client_id", clientId).eq("conversation_id", cid);
+    } catch {
+      // best-effort
+    }
+  };
+
+  if (action === "handover") {
+    const r = await handleRequestHandover(supabase, { conversationId: cid, reason: p.reason });
+    if (!r.ok) return { ok: true, action: "handover", executed: false, error: r.code, conversation_status: prevStatus, current_step: prevStep };
+    return { ok: true, action: "handover", executed: true, conversation_status: "waiting_human", current_step: prevStep };
+  }
+
+  if (action === "save_contact") {
+    let r = await handleUpsertLead(supabase, { conversationId: cid, name: p.name, phone: p.phone });
+    let phoneInvalid = false;
+    if (!r.ok && r.code === "invalid_phone") {
+      phoneInvalid = true;
+      r = p.name ? await handleUpsertLead(supabase, { conversationId: cid, name: p.name }) : { ok: true };
+    }
+    const captured = r.ok && r.action === "lead_saved" && r.captured === true;
+    return {
+      ok: true,
+      action: "save_contact",
+      executed: true,
+      phone_invalid: phoneInvalid,
+      contact: (r && r.lead) || null,
+      conversation_status: prevStatus,
+      current_step: captured ? "contact_captured" : prevStep,
+    };
+  }
+
+  if (action === "request_confirmation") {
+    // handleCloseConversation(confirmed:false) writes current_step =
+    // "closing_confirm" server-side and leaves the conversation active.
+    const r = await handleCloseConversation(supabase, { conversationId: cid, confirmed: false });
+    return {
+      ok: true,
+      action: "request_confirmation",
+      executed: r.ok !== false,
+      conversation_status: "active",
+      current_step: "closing_confirm",
+    };
+  }
+
+  if (action === "close_conversation") {
+    const r = await handleCloseConversation(supabase, { conversationId: cid, confirmed: true });
+    if (!r.ok) return { ok: true, action: "close_conversation", executed: false, error: r.code, conversation_status: prevStatus, current_step: prevStep };
+    return { ok: true, action: "close_conversation", executed: true, conversation_status: "waiting_human", current_step: "closing_confirmed" };
+  }
+
+  // action === "reply" (and any unknown value)
+  if (prevStep === "closing_confirm") {
+    // The customer was mid confirm-to-close and chose to continue / asked
+    // something — drop the pending close deterministically.
+    await clearPendingStep();
+    return { ok: true, action: "reply", executed: true, cleared_pending_close: true, conversation_status: prevStatus, current_step: null };
+  }
+  return { ok: true, action: "reply", executed: false, conversation_status: prevStatus, current_step: prevStep };
+}
+
+// ---------------------------------------------------------------------
 // Dispatch
 // ---------------------------------------------------------------------
 export async function dispatchAiTool(supabase, { action, params }) {
@@ -652,6 +749,12 @@ export async function dispatchAiTool(supabase, { action, params }) {
       const result = await classifyClosingReply(p.text);
       return { ok: true, decision: result.decision };
     }
+    case "apply_agent_action_v3":
+      return applyAgentActionV3(supabase, {
+        conversationId: p.conversation_id,
+        agentAction: p.agent_action,
+        agentActionParams: p.agent_action_params,
+      });
     default:
       return fail(400, "unknown_action", `action must be one of: ${TOOL_ACTIONS.join(", ")}`);
   }

@@ -1,6 +1,7 @@
 import { getSupabaseServerClient } from "./_lib/supabaseServer.js";
 import { resolveAiContext } from "./_lib/aiContext.js";
 import { buildPromptMessages } from "./_lib/promptBuilder.js";
+import { buildPromptMessagesV3 } from "./_lib/promptBuilderV3.js";
 
 // AI Engine V1 — Phase 3: authoritative AI Context endpoint.
 //
@@ -42,6 +43,16 @@ export function buildAiContextResponse(context) {
   return { success: true, context, messages: buildPromptMessages(context) };
 }
 
+// AI Engine V3 — same endpoint, same auth, same resolveAiContext(); the
+// only differences are the leaner V3 system prompt (one JSON-output
+// contract, one read-only tool) and raw-message KB retrieval (no
+// isLikelyFollowUp query rewriting — the one Agent resolves references and
+// calls search_business_knowledge itself). Folded in here rather than a
+// new file to stay within the Vercel Hobby 12-Serverless-Function cap.
+export function buildAiContextV3Response(context) {
+  return { success: true, context, messages: buildPromptMessagesV3(context) };
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ success: false, message: "Method not allowed" });
@@ -63,9 +74,17 @@ export default async function handler(req, res) {
   const conversationId = req.body?.conversation_id;
   const clientId = req.body?.client_id;
   const currentMessageText = req.body?.current_message_text;
+  const isV3 = String(req.body?.format || "").toLowerCase() === "v3";
 
   try {
-    const result = await resolveAiContext(supabase, { conversationId, clientId, currentMessageText });
+    const result = await resolveAiContext(supabase, {
+      conversationId,
+      clientId,
+      currentMessageText,
+      // V3 uses raw-message KB retrieval (like VNext); legacy keeps the
+      // contextual-retrieval query rewriting.
+      useContextualRetrieval: !isV3,
+    });
     if (!result.ok) {
       // Generic messages only — never echoes back which part of the
       // input was wrong beyond what the status code itself implies (see
@@ -73,7 +92,7 @@ export default async function handler(req, res) {
       // are deliberately not distinguished in the response body).
       return res.status(result.status).json({ success: false, message: result.message, code: result.code });
     }
-    const response = buildAiContextResponse(result.context);
+    const response = isV3 ? buildAiContextV3Response(result.context) : buildAiContextResponse(result.context);
     return res.status(200).json(response);
   } catch (error) {
     console.error("ai-context: failed to resolve context:", { code: error?.code, message: error?.message });

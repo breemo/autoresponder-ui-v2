@@ -538,3 +538,57 @@ test("Phase 1: a standalone factual query embeds unchanged end-to-end, even with
 
   assert.equal(capturedInput?.[0], "كم سعر وجبة المشاوي المشكلة؟");
 });
+
+// ---------------------------------------------------------------------
+// AI Engine V3 — working-hours context wiring (issue #2)
+// ---------------------------------------------------------------------
+
+test("V3 context: configured clients.working_hours reaches context.client.working_hours_text", async () => {
+  const supabase = createMockSupabase(baseTables()); // baseTables client-1 has Sun–Sat 09:00–17:00, Fri closed
+  supabase.rpc = async () => ({ data: [], error: null });
+  const result = await resolveAiContext(supabase, { conversationId: "conv-1", clientId: "client-1", currentMessageText: "شو ساعات العمل؟" });
+  assert.equal(result.ok, true);
+  assert.ok(result.context.client.working_hours_text, "working_hours_text must be populated");
+  assert.match(result.context.client.working_hours_text, /09:00.*17:00/s);
+  assert.match(result.context.client.working_hours_text, /Asia\/Hebron/);
+});
+
+test("V3 context: a one-branch business with hours ONLY on its single location surfaces them as business hours", async () => {
+  const tables = baseTables();
+  tables.clients[0].working_hours = null; // no client-wide hours
+  tables.clients[0].timezone = null;
+  tables.client_locations = [
+    {
+      client_id: "client-1",
+      name: "الفرع الوحيد",
+      address: "شارع رفيديا",
+      city: "نابلس",
+      phone: "0599000000",
+      is_primary: true,
+      is_active: true,
+      created_at: "2026-01-01",
+      working_hours: { timezone: "Asia/Hebron", days: { sunday: [{ open: "08:00", close: "16:00" }], monday: [{ open: "08:00", close: "16:00" }] } },
+    },
+  ];
+  const supabase = createMockSupabase(tables);
+  supabase.rpc = async () => ({ data: [], error: null });
+  const result = await resolveAiContext(supabase, { conversationId: "conv-1", clientId: "client-1", currentMessageText: "امتى بتفتحوا؟" });
+  assert.equal(result.ok, true);
+  assert.ok(result.context.client.working_hours_text, "single-location hours must be surfaced as business hours");
+  assert.match(result.context.client.working_hours_text, /08:00.*16:00/s);
+});
+
+test("V3 context: MULTIPLE locations with per-branch hours are NOT collapsed into one business-hours line", async () => {
+  const tables = baseTables();
+  tables.clients[0].working_hours = null;
+  tables.client_locations = [
+    { client_id: "client-1", name: "فرع نابلس", city: "نابلس", is_primary: true, is_active: true, created_at: "2026-01-01", working_hours: { days: { sunday: [{ open: "08:00", close: "16:00" }] } } },
+    { client_id: "client-1", name: "فرع رام الله", city: "رام الله", is_primary: false, is_active: true, created_at: "2026-01-02", working_hours: { days: { sunday: [{ open: "10:00", close: "18:00" }] } } },
+  ];
+  const supabase = createMockSupabase(tables);
+  supabase.rpc = async () => ({ data: [], error: null });
+  const result = await resolveAiContext(supabase, { conversationId: "conv-1", clientId: "client-1", currentMessageText: "ساعات العمل؟" });
+  assert.equal(result.ok, true);
+  assert.equal(result.context.client.working_hours_text, null); // stays per-location only
+  assert.equal(result.context.client.locations.length, 2);
+});
