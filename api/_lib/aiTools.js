@@ -664,14 +664,27 @@ export async function applyAgentActionV3(supabase, { conversationId, agentAction
       phoneInvalid = true;
       r = p.name ? await handleUpsertLead(supabase, { conversationId: cid, name: p.name }) : { ok: true };
     }
-    const captured = r.ok && r.action === "lead_saved" && r.captured === true;
+    const persisted = r.ok && r.action === "lead_saved";
+    const captured = persisted && r.captured === true;
+
+    // Optional chained handover — ONLY when the lead actually persisted AND
+    // the Agent decided the customer wants a person to follow up. Reuses the
+    // existing handover lifecycle (handleRequestHandover -> waiting_human);
+    // no second mechanism. If persistence failed, no handover.
+    let handedOver = false;
+    if (persisted && p.handover_after_save === true) {
+      const h = await handleRequestHandover(supabase, { conversationId: cid, reason: p.reason });
+      handedOver = h.ok === true;
+    }
+
     return {
       ok: true,
       action: "save_contact",
       executed: true,
       phone_invalid: phoneInvalid,
       contact: (r && r.lead) || null,
-      conversation_status: prevStatus,
+      handover_after_save: handedOver,
+      conversation_status: handedOver ? "waiting_human" : prevStatus,
       current_step: captured ? "contact_captured" : prevStep,
     };
   }

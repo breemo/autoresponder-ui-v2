@@ -76,6 +76,8 @@ const VALIDATE_CORPUS = [
   '{"action":"reply","reply":"أهلاً وسهلاً","intent":"greeting"}',
   '{"action":"handover","reply":"رح أحولك لموظف","action_params":{"reason":"شكوى"}}',
   '{"action":"save_contact","reply":"سجلت رقمك","action_params":{"name":"علي","phone":"0599123456"}}',
+  '{"action":"save_contact","reply":"سجّلت بياناتك والفريق رح يتواصل معك","action_params":{"name":"إبراهيم","phone":"0599001852","handover_after_save":true}}',
+  '{"action":"reply","reply":"تمام","action_params":{"handover_after_save":true}}',
   '{"action":"request_confirmation","reply":"متأكد إنك خلصت؟","options":["نعم","كمل"]}',
   '{"action":"close_conversation","reply":"شكراً لتواصلك معنا 🙏"}',
   'prefix text {"action":"reply","reply":"سعر الكشف ٥٠"} suffix',
@@ -134,6 +136,70 @@ test("action save_contact with a bad phone -> name still saved, phone_invalid fl
   assert.equal(r.conversation_status, "active");
   assert.equal(t.leads.length, 1);
   assert.equal(t.leads[0].name, "سميرة");
+});
+
+test("validateAgentResultV3: handover_after_save survives ONLY for save_contact", () => {
+  const on = validateAgentResultV3('{"action":"save_contact","reply":"ok","action_params":{"name":"إبراهيم","phone":"0599001852","handover_after_save":true}}').result;
+  assert.equal(on.action_params.handover_after_save, true);
+  const off = validateAgentResultV3('{"action":"save_contact","reply":"ok","action_params":{"name":"إبراهيم","phone":"0599001852","handover_after_save":false}}').result;
+  assert.equal("handover_after_save" in off.action_params, false);
+  const wrongAction = validateAgentResultV3('{"action":"reply","reply":"ok","action_params":{"handover_after_save":true}}').result;
+  assert.equal("handover_after_save" in wrongAction.action_params, false);
+});
+
+test("save_contact + handover_after_save:true -> lead saved, THEN existing human handover (waiting_human)", async () => {
+  const t = tables();
+  const r = await applyAgentActionV3(createMockSupabase(t), {
+    conversationId: "conv-A",
+    agentAction: "save_contact",
+    agentActionParams: { name: "إبراهيم", phone: "0599001852", handover_after_save: true },
+  });
+  assert.equal(r.action, "save_contact");
+  assert.equal(r.executed, true);
+  assert.equal(r.handover_after_save, true);
+  // lead persisted FIRST
+  assert.equal(t.leads.length, 1);
+  assert.equal(t.leads[0].phone, "0599001852");
+  // then the existing handover lifecycle: same state the `handover` action produces
+  assert.equal(r.conversation_status, "waiting_human");
+  assert.equal(r.current_step, "contact_captured");
+  assert.equal(t.conversations[0].conversation_status, "waiting_human");
+  assert.equal(t.conversations[0].current_step, "contact_captured");
+});
+
+test("save_contact + handover_after_save:false -> lead saved, conversation stays with the AI", async () => {
+  const t = tables();
+  const r = await applyAgentActionV3(createMockSupabase(t), {
+    conversationId: "conv-A",
+    agentAction: "save_contact",
+    agentActionParams: { name: "إبراهيم", phone: "0599001852", handover_after_save: false },
+  });
+  assert.equal(r.handover_after_save, false);
+  assert.equal(t.leads.length, 1);
+  assert.equal(r.conversation_status, "active");
+  assert.equal(r.current_step, "contact_captured");
+  assert.equal(t.conversations[0].conversation_status, "active");
+});
+
+test("save_contact + handover_after_save:true but lead persistence FAILS -> NO handover, stays active", async () => {
+  const t = tables();
+  const base = createMockSupabase(t);
+  const supabase = {
+    from(tbl) {
+      const b = base.from(tbl);
+      if (tbl === "leads") return { ...b, async insert() { return { data: null, error: { message: "db down" } }; } };
+      return b;
+    },
+  };
+  const r = await applyAgentActionV3(supabase, {
+    conversationId: "conv-A",
+    agentAction: "save_contact",
+    agentActionParams: { name: "إبراهيم", phone: "0599001852", handover_after_save: true },
+  });
+  assert.equal(r.handover_after_save, false);
+  assert.equal(t.leads.length, 0);
+  assert.equal(r.conversation_status, "active");
+  assert.equal(t.conversations[0].conversation_status, "active");
 });
 
 test("action request_confirmation -> current_step = closing_confirm, conversation stays active", async () => {
@@ -215,8 +281,10 @@ for (const [label, wf] of [["Final", FINAL], ["WhatsApp", WA]]) {
     assert.equal(out.current_step, "closing_confirmed");
   });
 
-  test(`${label}: on Apply Action HTTP failure the reply still goes out, state falls back to prep (no mutation)`, () => {
-    // applied == the agent result passed through (onError:continueRegularOutput)
+  test(`${label}: Build Reply V3 falls back to prep state when applied carries no lifecycle fields (defensive; no mutation)`, () => {
+    // Apply Action V3 now stops the run on failure, so this is only a
+    // defensive path — if `applied` ever lacks conversation_status/current_step
+    // the reply still uses prep state and never invents a transition.
     const agentResult = { action: "handover", reply: "رح أحولك لموظف", action_params: { reason: "x" } };
     const out = runBuildReply(wf, { agentResult, applied: agentResult, prep: { conversation_status: "active", current_step: null } });
     assert.equal(out.reply, "رح أحولك لموظف");
@@ -530,3 +598,73 @@ test("V3 core: /api/ai-context call matches the legacy core's (auth, credential,
   assert.deepEqual(node(CORE, "When Executed by Another Workflow").parameters, OLD_CORE_LEGACY.nodes.find((n) => n.name === "When Executed by Another Workflow").parameters);
   assert.deepEqual(CORE.settings, OLD_CORE_LEGACY.settings);
 });
+
+// ===================================================================
+// 7. Apply Action V3 — exact request contract
+//    (regression for the live "invalid syntax" failure: the node's
+//     jsonBody had escaped-backslash-quote property access and an
+//     object-literal fallback inside {{ }}, and onError:continue let a
+//     failed action fall through and send a false success confirmation.)
+// ===================================================================
+
+for (const [label, wf] of [["Final", FINAL], ["WhatsApp", WA]]) {
+  const OLD_CLOSE = node(OLD_FINAL, "closing_confirm_close"); // known-working /api/ai-tools POST
+
+  test(`Apply Action V3 (${label}): transport matches the known-working /api/ai-tools node`, () => {
+    const n = node(wf, "Apply Action V3");
+    const p = n.parameters;
+    assert.equal(p.method, "POST");
+    assert.equal(p.url, "={{ $env.APP_API_BASE_URL }}/api/ai-tools");
+    assert.equal(p.authentication, "genericCredentialType");
+    assert.equal(p.genericAuthType, "httpHeaderAuth");
+    assert.equal(p.specifyBody, "json");
+    assert.equal(p.sendBody, true);
+    assert.deepEqual(p.headerParameters, OLD_CLOSE.parameters.headerParameters);
+    assert.deepEqual(n.credentials, OLD_CLOSE.credentials);
+    assert.equal(n.typeVersion, OLD_CLOSE.typeVersion);
+  });
+
+  test(`Apply Action V3 (${label}): jsonBody is valid n8n expression syntax`, () => {
+    const body = node(wf, "Apply Action V3").parameters.jsonBody;
+    // the two constructs n8n rejected with "invalid syntax":
+    assert.doesNotMatch(body, /\\\\"/, "escaped-backslash-quote in a {{ }} expression");
+    assert.doesNotMatch(body, /\|\|\s*\{\}/, "object-literal fallback inside a {{ }} expression");
+    // property access is plain quotes, same style as the sibling node
+    assert.match(body, /\$node\["prepare_conversation"\]\.json\["conversation_id"\]/);
+    assert.match(OLD_CLOSE.parameters.jsonBody, /\$node\["prepare_conversation"\]\.json\["conversation_id"\]/);
+    // mapping: action + params come from the validated Agent result ($json),
+    // conversation_id is anchored to prepare_conversation (never the Agent)
+    assert.match(body, /"action": "apply_agent_action_v3"/);
+    assert.match(body, /"agent_action": \{\{ JSON\.stringify\(\$json\.action \|\| "reply"\) \}\}/);
+    assert.match(body, /"agent_action_params": \{\{ JSON\.stringify\(\$json\.action_params \|\| null\) \}\}/);
+  });
+
+  test(`Apply Action V3 (${label}): body parses as JSON once the expressions resolve (live payload)`, () => {
+    const resolved = node(wf, "Apply Action V3").parameters.jsonBody
+      .replace(/^=/, "")
+      .replace(/"\{\{ \$node\["prepare_conversation"\]\.json\["conversation_id"\] \}\}"/, '"conv-A"')
+      .replace(/\{\{ JSON\.stringify\(\$json\.action \|\| "reply"\) \}\}/, '"save_contact"')
+      .replace(/\{\{ JSON\.stringify\(\$json\.action_params \|\| null\) \}\}/, '{"name":"إبراهيم","phone":"0599001852"}');
+    assert.deepEqual(JSON.parse(resolved), {
+      action: "apply_agent_action_v3",
+      conversation_id: "conv-A",
+      agent_action: "save_contact",
+      agent_action_params: { name: "إبراهيم", phone: "0599001852" },
+    });
+    // and the empty-params case stays valid JSON
+    const empty = node(wf, "Apply Action V3").parameters.jsonBody
+      .replace(/^=/, "")
+      .replace(/"\{\{ \$node\["prepare_conversation"\]\.json\["conversation_id"\] \}\}"/, '"conv-A"')
+      .replace(/\{\{ JSON\.stringify\(\$json\.action \|\| "reply"\) \}\}/, '"reply"')
+      .replace(/\{\{ JSON\.stringify\(\$json\.action_params \|\| null\) \}\}/, "null");
+    assert.deepEqual(JSON.parse(empty).agent_action_params, null);
+  });
+
+  test(`Apply Action V3 (${label}): a failed system action stops the run — no silent false success`, () => {
+    const n = node(wf, "Apply Action V3");
+    assert.notEqual(n.onError, "continueRegularOutput");
+    assert.equal(n.onError, undefined);          // default = stopWorkflow, like the sibling
+    assert.equal(n.alwaysOutputData, undefined); // was paired with continue-on-error
+    assert.equal(OLD_CLOSE.onError, undefined);
+  });
+}

@@ -2541,7 +2541,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"action\": \"apply_agent_action_v3\",\n  \"conversation_id\": \"{{ $node[\\\"prepare_conversation\\\"].json[\\\"conversation_id\\\"] }}\",\n  \"agent_action\": {{ JSON.stringify($json.action || \"reply\") }},\n  \"agent_action_params\": {{ JSON.stringify($json.action_params || {}) }}\n}",
+        "jsonBody": "={\n  \"action\": \"apply_agent_action_v3\",\n  \"conversation_id\": \"{{ $node[\"prepare_conversation\"].json[\"conversation_id\"] }}\",\n  \"agent_action\": {{ JSON.stringify($json.action || \"reply\") }},\n  \"agent_action_params\": {{ JSON.stringify($json.action_params || null) }}\n}",
         "options": {}
       },
       "id": "v3f-apply-action",
@@ -2557,9 +2557,7 @@
           "id": "TBATq3Dn0WwGFqLu",
           "name": "AI Tools Secret"
         }
-      },
-      "onError": "continueRegularOutput",
-      "alwaysOutputData": true
+      }
     },
     {
       "parameters": {

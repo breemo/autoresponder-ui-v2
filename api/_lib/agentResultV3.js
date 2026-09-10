@@ -89,6 +89,13 @@ export function validateAgentResultV3(raw, { fallbackReply = "" } = {}) {
     const val = str(rawParams[key], MAX_PARAM);
     if (val) action_params[key] = val;
   }
+  // save_contact carries one optional boolean: whether the customer
+  // explicitly wants a human to follow up. The Agent decides it
+  // semantically; we only pass the flag through so the executor can chain
+  // the existing handover after a successful save.
+  if (action === "save_contact" && (rawParams.handover_after_save === true || rawParams.handover_after_save === "true")) {
+    action_params.handover_after_save = true;
+  }
 
   const options = [];
   for (const o of Array.isArray(obj.options) ? obj.options : []) {
