@@ -367,7 +367,7 @@ test("close_conversation: unconfirmed -> confirm step + quick-reply hint, never 
   assert.doesNotMatch(res.note, /Ask the customer to confirm/i);
 });
 
-test("close_conversation: confirmed -> closing_confirmed + waiting_human (never a hard 'closed' by the AI)", async () => {
+test("close_conversation: confirmed, default -> closing_confirmed + waiting_human (legacy / VNext core)", async () => {
   const tables = baseTables();
   const res = await handleCloseConversation(createMockSupabase(tables), { conversationId: "conv-A", confirmed: true });
   assert.equal(res.ok, true);
@@ -375,7 +375,17 @@ test("close_conversation: confirmed -> closing_confirmed + waiting_human (never 
   assert.equal(res.current_step, "closing_confirmed");
   const conv = tables.conversations.find((c) => c.id === "conv-A");
   assert.equal(conv.conversation_status, "waiting_human");
-  assert.notEqual(conv.conversation_status, "closed");
+});
+
+test("close_conversation: confirmed with closedStatus='closed' -> terminal closed + closing_confirmed (V3)", async () => {
+  const tables = baseTables();
+  const res = await handleCloseConversation(createMockSupabase(tables), { conversationId: "conv-A", confirmed: true, closedStatus: "closed" });
+  assert.equal(res.ok, true);
+  assert.equal(res.conversation_status, "closed");
+  assert.equal(res.current_step, "closing_confirmed");
+  const conv = tables.conversations.find((c) => c.id === "conv-A");
+  assert.equal(conv.conversation_status, "closed");
+  assert.equal(conv.current_step, "closing_confirmed");
 });
 
 // ---------------------------------------------------------------------

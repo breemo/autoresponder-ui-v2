@@ -550,24 +550,28 @@ export async function handleOrderProgress(supabase, { conversationId, action, it
 // ---------------------------------------------------------------------
 // Tool: close_conversation
 // ---------------------------------------------------------------------
-// Mirrors the CURRENT product behaviour: a customer signalling they are
-// done does NOT hard-close the conversation. It moves to a confirm step
-// (n8n renders the نعم / كمل quick replies deterministically — the Agent
-// never handles those payloads), and an explicit confirmation lands it at
-// 'closing_confirmed' + waiting_human for a human to wrap up. Employees
-// are the only actor that sets conversation_status = 'closed' (portal
-// 'solve'). Reopen behaviour is unchanged — resolve_conversation handles
-// same-day / new-day return.
-export async function handleCloseConversation(supabase, { conversationId, confirmed }) {
+// A customer signalling they are done does NOT hard-close on its own. It
+// moves to a confirm step (n8n renders the نعم / كمل quick replies
+// deterministically — the Agent never handles those payloads). An explicit
+// confirmation then terminates the conversation.
+//
+// `closedStatus` selects the confirmed-close terminal status:
+//   - "waiting_human" (default) — legacy / VNext core: a human wraps up.
+//   - "closed" — AI Engine V3: the confirmed close is terminal for every
+//     channel and every prior open state (see applyAgentActionV3).
+// Either way current_step = 'closing_confirmed'. Reopen behaviour is
+// unchanged — resolve_conversation handles same-day / new-day return.
+export async function handleCloseConversation(supabase, { conversationId, confirmed, closedStatus = "waiting_human" }) {
   const resolved = await resolveConversationScope(supabase, conversationId);
   if (!resolved.ok) return resolved;
   const { clientId, conversationId: cid } = resolved.scope;
 
   if (confirmed === true) {
+    const finalStatus = closedStatus === "closed" ? "closed" : "waiting_human";
     const life = await applyLifecycle(supabase, {
       clientId,
       conversationId: cid,
-      status: "waiting_human",
+      status: finalStatus,
       currentStep: "closing_confirmed",
     });
     if (!life.ok) return fail(500, "close_failed", "Could not close the conversation");
@@ -576,13 +580,13 @@ export async function handleCloseConversation(supabase, { conversationId, confir
       clientId,
       conversationId: cid,
       intent: "closing",
-      metadata: { tool: "close_conversation", confirmed: true },
+      metadata: { tool: "close_conversation", confirmed: true, status: finalStatus },
     });
 
     return {
       ok: true,
       action: "close_confirmed",
-      conversation_status: "waiting_human",
+      conversation_status: finalStatus,
       current_step: "closing_confirmed",
       note: "Thank the customer warmly and let them know the team is available if they need anything else.",
     };
@@ -703,9 +707,15 @@ export async function applyAgentActionV3(supabase, { conversationId, agentAction
   }
 
   if (action === "close_conversation") {
-    const r = await handleCloseConversation(supabase, { conversationId: cid, confirmed: true });
+    // V3: a confirmed close is TERMINAL. handleCloseConversation writes
+    // conversation_status = "closed" + current_step = "closing_confirmed"
+    // via applyLifecycle, from any prior open state (active / waiting_human
+    // / assigned / reopened). The parent's non-downgrade tail can only keep
+    // "closed" (top rank), never revert it, so assignment/handover state
+    // cannot overwrite it afterward.
+    const r = await handleCloseConversation(supabase, { conversationId: cid, confirmed: true, closedStatus: "closed" });
     if (!r.ok) return { ok: true, action: "close_conversation", executed: false, error: r.code, conversation_status: prevStatus, current_step: prevStep };
-    return { ok: true, action: "close_conversation", executed: true, conversation_status: "waiting_human", current_step: "closing_confirmed" };
+    return { ok: true, action: "close_conversation", executed: true, conversation_status: "closed", current_step: "closing_confirmed" };
   }
 
   // action === "reply" (and any unknown value)

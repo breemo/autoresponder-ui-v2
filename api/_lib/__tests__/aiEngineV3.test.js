@@ -212,14 +212,56 @@ test("action request_confirmation -> current_step = closing_confirm, conversatio
   assert.notEqual(t.conversations[0].conversation_status, "closed");
 });
 
-test("action close_conversation -> waiting_human + closing_confirmed (never a hard 'closed' by AI)", async () => {
+test("action close_conversation -> a confirmed close is TERMINAL: closed + closing_confirmed", async () => {
   const t = tables({ current_step: "closing_confirm" });
   const r = await applyAgentActionV3(createMockSupabase(t), { conversationId: "conv-A", agentAction: "close_conversation" });
   assert.equal(r.action, "close_conversation");
-  assert.equal(r.conversation_status, "waiting_human");
+  assert.equal(r.executed, true);
+  assert.equal(r.conversation_status, "closed");
   assert.equal(r.current_step, "closing_confirmed");
-  assert.equal(t.conversations[0].conversation_status, "waiting_human");
-  assert.notEqual(t.conversations[0].conversation_status, "closed");
+  assert.equal(t.conversations[0].conversation_status, "closed");
+  assert.equal(t.conversations[0].current_step, "closing_confirmed");
+  assert.equal(t.conversation_state[0].conversation_status, "closed");
+});
+
+// Approved invariant: a successful close_conversation ends at
+// conversation_status="closed" + current_step="closing_confirmed" from
+// EVERY valid open pre-close state, channel-neutrally.
+for (const [label, pre] of [
+  ["active", { conversation_status: "active" }],
+  ["waiting_human (post-handover)", { conversation_status: "waiting_human" }],
+  ["assigned / claimed", { conversation_status: "waiting_human", assigned_user_id: "user-9", assigned_at: "2026-01-01T00:00:00Z" }],
+  ["reopened (resolver set active)", { conversation_status: "active", current_step: "reopen_confirm" }],
+  ["already closed (idempotent)", { conversation_status: "closed", current_step: "closing_confirmed" }],
+]) {
+  test(`close_conversation invariant: ${label} -> closed + closing_confirmed`, async () => {
+    const t = tables({ current_step: "closing_confirm" });
+    Object.assign(t.conversations[0], pre);
+    Object.assign(t.conversation_state[0], { conversation_status: pre.conversation_status });
+
+    const r = await applyAgentActionV3(createMockSupabase(t), { conversationId: "conv-A", agentAction: "close_conversation" });
+    assert.equal(r.conversation_status, "closed");
+    assert.equal(r.current_step, "closing_confirmed");
+    assert.equal(t.conversations[0].conversation_status, "closed");
+    assert.equal(t.conversations[0].current_step, "closing_confirmed");
+    assert.equal(t.conversation_state[0].conversation_status, "closed");
+    // ownership is never touched by the close
+    assert.equal(t.conversations[0].assigned_user_id, pre.assigned_user_id);
+  });
+}
+
+test("close_conversation is channel-neutral: identical result via each parent workflow", () => {
+  for (const wf of [FINAL, WA]) {
+    for (const platform of ["facebook", "instagram", "telegram", "whatsapp"]) {
+      const out = runBuildReply(wf, {
+        agentResult: { action: "close_conversation", reply: "شكراً لتواصلك معنا 🙏" },
+        applied: { action: "close_conversation", conversation_status: "closed", current_step: "closing_confirmed" },
+        platform,
+      });
+      assert.equal(out.conversation_status, "closed");
+      assert.equal(out.current_step, "closing_confirmed");
+    }
+  }
 });
 
 test("action reply WHILE current_step=closing_confirm -> pending close is cleared deterministically", async () => {
@@ -276,8 +318,8 @@ for (const [label, wf] of [["Final", FINAL], ["WhatsApp", WA]]) {
   });
 
   test(`${label}: lifecycle state comes from Apply Action V3 (authoritative), not the Agent`, () => {
-    const out = runBuildReply(wf, { agentResult: { action: "close_conversation", reply: "شكراً لتواصلك معنا 🙏" }, applied: { action: "close_conversation", conversation_status: "waiting_human", current_step: "closing_confirmed" } });
-    assert.equal(out.conversation_status, "waiting_human");
+    const out = runBuildReply(wf, { agentResult: { action: "close_conversation", reply: "شكراً لتواصلك معنا 🙏" }, applied: { action: "close_conversation", conversation_status: "closed", current_step: "closing_confirmed" } });
+    assert.equal(out.conversation_status, "closed");
     assert.equal(out.current_step, "closing_confirmed");
   });
 
@@ -385,10 +427,10 @@ test("Scenario 8 — clear conversation close -> request_confirmation", async ()
   assert.deepEqual(reply.quick_replies, null); // telegram: text only, still works
 });
 
-test("Scenario 9 — closing confirmation (\"اه خلص\") -> close_conversation", async () => {
+test("Scenario 9 — closing confirmation (\"اه خلص\") -> close_conversation (terminal: closed)", async () => {
   const { applied, db } = await turn('{"action":"close_conversation","reply":"شكراً لتواصلك معنا 🙏 سعدنا بخدمتك.","intent":"closing"}', { current_step: "closing_confirm" });
   assert.equal(applied.action, "close_conversation");
-  assert.equal(db.conversation_status, "waiting_human");
+  assert.equal(db.conversation_status, "closed");
   assert.equal(db.current_step, "closing_confirmed");
 });
 
