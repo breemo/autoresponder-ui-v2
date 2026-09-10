@@ -139,6 +139,7 @@ export async function resolveConversationScope(supabase, conversationId) {
     scope: {
       clientId: conversation.client_id,
       conversationId: conversation.id,
+      contactId: conversation.contact_id || null,
       platform: conversation.platform || identity?.platform || null,
       senderId: identity?.sender_id || null,
       channelKey: identity?.channel_key || null,
@@ -499,22 +500,40 @@ export async function handleUpsertLead(supabase, { conversationId, name, phone, 
   };
 }
 
-// Read-only: the name / phone already stored for this conversation on an
-// earlier turn (public.leads). Used by applyAgentActionV3's save_contact
-// branch to decide whether a "have the team contact me" ask has usable
-// contact data to hand over on, when the current turn carries no new
-// name / phone. Never writes. Degrades to null on any problem.
-async function loadConversationLead(supabase, clientId, conversationId) {
+// Read-only: the name / phone already stored for this CUSTOMER (the
+// Conversation V2 contact_id), across ALL of that contact's conversations
+// for this client — not just the current one. Used by applyAgentActionV3's
+// save_contact branch to decide whether a "have the team contact me" ask
+// has usable contact data to hand over on, when the current turn carries
+// no new name / phone. Identity is contact_id only — never sender_id,
+// never a merge of channel identities. Never writes. Degrades to null on
+// any problem.
+async function loadConversationLead(supabase, clientId, contactId) {
+  if (!contactId) return null;
   try {
-    const { data } = await supabase
-      .from("leads")
-      .select("name, phone")
+    const { data: convRows } = await supabase
+      .from("conversations")
+      .select("id")
       .eq("client_id", clientId)
-      .eq("conversation_id", conversationId)
-      .maybeSingle();
-    if (!data) return null;
-    const name = typeof data.name === "string" ? data.name.trim() : "";
-    const phone = typeof data.phone === "string" ? data.phone.trim() : "";
+      .eq("contact_id", contactId);
+    const conversationIds = (convRows || []).map((r) => r.id).filter(Boolean);
+    if (!conversationIds.length) return null;
+
+    const { data: leadRows } = await supabase
+      .from("leads")
+      .select("name, phone, created_at")
+      .eq("client_id", clientId)
+      .in("conversation_id", conversationIds)
+      .order("created_at", { ascending: false });
+
+    // Newest non-empty value wins, per field, across the contact's leads.
+    let name = "";
+    let phone = "";
+    for (const row of leadRows || []) {
+      if (!name && typeof row.name === "string" && row.name.trim()) name = row.name.trim();
+      if (!phone && typeof row.phone === "string" && row.phone.trim()) phone = row.phone.trim();
+      if (name && phone) break;
+    }
     return name || phone ? { name: name || null, phone: phone || null } : null;
   } catch {
     return null;
@@ -660,6 +679,7 @@ export async function applyAgentActionV3(supabase, { conversationId, agentAction
   const resolved = await resolveConversationScope(supabase, conversationId);
   if (!resolved.ok) return resolved;
   const { clientId, conversationId: cid } = resolved.scope;
+  const contactId = resolved.scope.contactId || null;
   const prevStatus = resolved.scope.conversationStatus || "active";
   const prevStep = resolved.scope.currentStep || null;
 
@@ -701,12 +721,13 @@ export async function applyAgentActionV3(supabase, { conversationId, agentAction
     const capturedNow = savedNow && r.captured === true;
 
     // No new name/phone this turn -> fall back to what an EARLIER turn
-    // already captured for this conversation. Read-only; it only decides
-    // whether a "have the team contact me" ask has usable contact data to
-    // hand over on. Never manufactures data.
+    // already captured for this CUSTOMER (the Conversation V2 contact_id,
+    // across all of their conversations — not just this one). Read-only; it
+    // only decides whether a "have the team contact me" ask has usable
+    // contact data to hand over on. Never manufactures data.
     let contact = savedNow ? r.lead || null : null;
     if (!contact) {
-      const onFile = await loadConversationLead(supabase, clientId, cid);
+      const onFile = await loadConversationLead(supabase, clientId, contactId);
       if (onFile && (onFile.name || onFile.phone)) contact = onFile;
     }
     const haveUsableContact = !!(contact && (contact.name || contact.phone));

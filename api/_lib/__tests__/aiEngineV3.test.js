@@ -223,6 +223,62 @@ test("save_contact + handover_after_save:true + NO new params + contact already 
   assert.equal(t.leads.length, 1); // no duplicate row
 });
 
+test("save_contact + handover_after_save:true — contact captured in an EARLIER conversation (same contact_id) -> Conversation B becomes waiting_human", async () => {
+  const t = tables(); // conv-A / contact-A = the CURRENT conversation (B), no lead of its own
+  // Conversation A: same contact_id, earlier, closed, holds the captured lead
+  t.conversations.push({ id: "conv-OLD", client_id: "client-A", contact_id: "contact-A", channel_identity_id: "ci-A", platform: "whatsapp", conversation_status: "closed", current_step: "closing_confirmed", last_message_at: null });
+  t.leads.push({ client_id: "client-A", conversation_id: "conv-OLD", sender_id: "970590000001", name: "إبراهيم", phone: "0599001852", created_at: "2026-01-01T00:00:00Z" });
+
+  const r = await applyAgentActionV3(createMockSupabase(t), {
+    conversationId: "conv-A",
+    agentAction: "save_contact",
+    agentActionParams: { handover_after_save: true },
+  });
+
+  assert.equal(r.lead_saved, false); // nothing new saved
+  assert.equal(r.contact_on_file, true); // found via contact_id, not conversation_id
+  assert.deepEqual(r.contact, { name: "إبراهيم", phone: "0599001852" });
+  assert.equal(r.handover_after_save, true);
+  assert.equal(r.executed, true);
+  assert.equal(r.conversation_status, "waiting_human");
+  assert.equal(t.conversations.find((c) => c.id === "conv-A").conversation_status, "waiting_human");
+  assert.equal(t.leads.length, 1); // no new lead row on the current conversation
+  assert.equal(t.leads[0].conversation_id, "conv-OLD");
+});
+
+test("contact-on-file lookup is scoped to contact_id, never sender_id, never merges other contacts", async () => {
+  const t = tables();
+  // a DIFFERENT contact, same client, same sender_id string — must NOT leak in
+  t.conversations.push({ id: "conv-X", client_id: "client-A", contact_id: "contact-OTHER", channel_identity_id: "ci-A", platform: "whatsapp", conversation_status: "closed", current_step: null });
+  t.leads.push({ client_id: "client-A", conversation_id: "conv-X", sender_id: "970590000001", name: "شخص آخر", phone: "0500000000", created_at: "2026-05-01T00:00:00Z" });
+
+  const r = await applyAgentActionV3(createMockSupabase(t), {
+    conversationId: "conv-A",
+    agentAction: "save_contact",
+    agentActionParams: { handover_after_save: true },
+  });
+  assert.equal(r.contact_on_file, false);
+  assert.equal(r.contact, null);
+  assert.equal(r.handover_after_save, false);
+  assert.equal(r.conversation_status, "active");
+});
+
+test("contact-on-file picks the NEWEST non-empty name and phone across the contact's conversations", async () => {
+  const t = tables();
+  t.conversations.push({ id: "conv-1", client_id: "client-A", contact_id: "contact-A", channel_identity_id: "ci-A", platform: "whatsapp", conversation_status: "closed", current_step: null });
+  t.conversations.push({ id: "conv-2", client_id: "client-A", contact_id: "contact-A", channel_identity_id: "ci-A", platform: "whatsapp", conversation_status: "closed", current_step: null });
+  t.leads.push({ client_id: "client-A", conversation_id: "conv-1", name: "إبراهيم", phone: null, created_at: "2026-01-01T00:00:00Z" });
+  t.leads.push({ client_id: "client-A", conversation_id: "conv-2", name: null, phone: "0599999999", created_at: "2026-02-01T00:00:00Z" });
+
+  const r = await applyAgentActionV3(createMockSupabase(t), {
+    conversationId: "conv-A",
+    agentAction: "save_contact",
+    agentActionParams: { handover_after_save: true },
+  });
+  assert.deepEqual(r.contact, { name: "إبراهيم", phone: "0599999999" });
+  assert.equal(r.conversation_status, "waiting_human");
+});
+
 test("save_contact + handover_after_save:true + NEW name/phone -> save AND handover still succeed", async () => {
   const t = tables();
   const r = await applyAgentActionV3(createMockSupabase(t), {

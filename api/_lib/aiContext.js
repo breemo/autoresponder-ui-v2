@@ -397,25 +397,43 @@ async function loadLocationsSafely(supabase, clientId) {
   }
 }
 
-// The name / phone already captured for THIS conversation on an earlier
-// turn (public.leads). Context only — surfaced so the Agent knows the
-// details are on file and can hand a "call me back" over instead of
-// re-asking. Degrades to null on any problem, exactly like the helpers
-// above. Never drives routing.
-async function loadConversationContactSafely(supabase, { clientId, conversationId }) {
+// The name / phone already captured for this CUSTOMER — the Conversation
+// V2 contact_id, across ALL of that contact's conversations for this
+// client, not just the current one. A returning customer whose details
+// were taken in an earlier (now-closed) conversation is still recognised
+// (leads is conversation-scoped; identity is contact-scoped). Identity is
+// contact_id only — never sender_id, never a merge of channel identities.
+// Context only; read-only; never drives routing. Degrades to null on any
+// problem, exactly like the helpers above.
+async function loadConversationContactSafely(supabase, { clientId, contactId }) {
+  if (!contactId) return null;
   try {
-    const { data } = await supabase
-      .from("leads")
-      .select("name, phone")
+    const { data: convRows } = await supabase
+      .from("conversations")
+      .select("id")
       .eq("client_id", clientId)
-      .eq("conversation_id", conversationId)
-      .maybeSingle();
-    if (!data) return null;
-    const name = typeof data.name === "string" ? data.name.trim() : "";
-    const phone = typeof data.phone === "string" ? data.phone.trim() : "";
+      .eq("contact_id", contactId);
+    const conversationIds = (convRows || []).map((r) => r.id).filter(Boolean);
+    if (!conversationIds.length) return null;
+
+    const { data: leadRows } = await supabase
+      .from("leads")
+      .select("name, phone, created_at")
+      .eq("client_id", clientId)
+      .in("conversation_id", conversationIds)
+      .order("created_at", { ascending: false });
+
+    // Newest non-empty value wins, per field, across the contact's leads.
+    let name = "";
+    let phone = "";
+    for (const row of leadRows || []) {
+      if (!name && typeof row.name === "string" && row.name.trim()) name = row.name.trim();
+      if (!phone && typeof row.phone === "string" && row.phone.trim()) phone = row.phone.trim();
+      if (name && phone) break;
+    }
     return name || phone ? { name: name || null, phone: phone || null } : null;
   } catch (error) {
-    console.warn("aiContext: contact-on-file lookup threw, continuing with contact_on_file: null", { clientId, conversationId, message: error?.message });
+    console.warn("aiContext: contact-on-file lookup threw, continuing with contact_on_file: null", { clientId, contactId, message: error?.message });
     return null;
   }
 }
@@ -480,7 +498,7 @@ export async function resolveAiContext(supabase, { conversationId, clientId, cur
   const history = await loadHistory(supabase, { clientId, conversationId });
   const relevantKnowledge = await retrieveKnowledgeSafely(supabase, { clientId, conversationId, queryText: currentMessageText, history, useContextualRetrieval });
   const { locations, locationsListComplete } = await loadLocationsSafely(supabase, clientId);
-  const contactOnFile = await loadConversationContactSafely(supabase, { clientId, conversationId });
+  const contactOnFile = await loadConversationContactSafely(supabase, { clientId, contactId: conversation.contact_id });
 
   // Working-hours resolution: client-wide clients.working_hours is
   // authoritative. If it is unset but the business has exactly ONE active

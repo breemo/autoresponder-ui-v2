@@ -23,6 +23,11 @@ export function createMockSupabase(tables) {
           filtered = filtered.filter((row) => row[col] === val);
           return builder;
         },
+        in(col, values) {
+          const set = new Set(Array.isArray(values) ? values : []);
+          filtered = filtered.filter((row) => set.has(row[col]));
+          return builder;
+        },
         order(col, opts) {
           const ascending = opts?.ascending !== false;
           filtered = [...filtered].sort((a, b) => {

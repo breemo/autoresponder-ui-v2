@@ -102,16 +102,22 @@ test("scenario 8: reply_mode resolves from the account table when populated (fac
   assert.equal(result.context.account.reply_mode_source, "account");
 });
 
-test("context.conversation.contact_on_file carries the name/phone captured earlier for this conversation (null when none)", async () => {
-  const noLead = createMockSupabase(baseTables());
-  const r1 = await resolveAiContext(noLead, { conversationId: "conv-1", clientId: "client-1", currentMessageText: "hi" });
+test("context.conversation.contact_on_file spans the CONTACT's conversations (V2), newest lead per field wins, other contacts excluded", async () => {
+  // nothing captured anywhere -> null
+  const r1 = await resolveAiContext(createMockSupabase(baseTables()), { conversationId: "conv-1", clientId: "client-1", currentMessageText: "hi" });
   assert.equal(r1.ok, true);
   assert.equal(r1.context.conversation.contact_on_file, null);
 
   const tables = baseTables();
+  // conv-1 and conv-2 are the SAME contact (contact-1); a different contact's conversation is a decoy
+  tables.conversations.push({ id: "conv-other", client_id: "client-1", contact_id: "contact-XX", channel_identity_id: "ci-1", platform: "facebook", conversation_status: "closed", current_step: null });
   tables.leads = [
-    { client_id: "client-1", conversation_id: "conv-1", sender_id: "s", name: "إبراهيم", phone: "0599001852" },
-    { client_id: "client-1", conversation_id: "conv-2", sender_id: "s", name: "OTHER", phone: "0000000000" },
+    // captured earlier, on the contact's OTHER conversation — must still be found when resolving conv-1
+    { client_id: "client-1", conversation_id: "conv-2", sender_id: "s", name: "إبراهيم", phone: "0599001852", created_at: "2026-02-01T00:00:00Z" },
+    // older lead for the same contact — superseded per field
+    { client_id: "client-1", conversation_id: "conv-1", sender_id: "s", name: "إبراهيم القديم", phone: null, created_at: "2026-01-01T00:00:00Z" },
+    // a DIFFERENT contact's lead — must never leak in
+    { client_id: "client-1", conversation_id: "conv-other", sender_id: "s", name: "شخص آخر", phone: "0000000000", created_at: "2026-03-01T00:00:00Z" },
   ];
   const r2 = await resolveAiContext(createMockSupabase(tables), { conversationId: "conv-1", clientId: "client-1", currentMessageText: "بدي تتواصلو معي" });
   assert.equal(r2.ok, true);

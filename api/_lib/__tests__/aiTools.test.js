@@ -132,6 +132,7 @@ test("resolveConversationScope: derives client_id + sender_id from the conversat
   assert.equal(r.scope.clientId, "client-A");
   assert.equal(r.scope.senderId, "970590000001");
   assert.equal(r.scope.platform, "whatsapp");
+  assert.equal(r.scope.contactId, "contact-A"); // Conversation V2 canonical customer identity
 });
 
 // ---------------------------------------------------------------------
