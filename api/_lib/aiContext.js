@@ -397,6 +397,29 @@ async function loadLocationsSafely(supabase, clientId) {
   }
 }
 
+// The name / phone already captured for THIS conversation on an earlier
+// turn (public.leads). Context only — surfaced so the Agent knows the
+// details are on file and can hand a "call me back" over instead of
+// re-asking. Degrades to null on any problem, exactly like the helpers
+// above. Never drives routing.
+async function loadConversationContactSafely(supabase, { clientId, conversationId }) {
+  try {
+    const { data } = await supabase
+      .from("leads")
+      .select("name, phone")
+      .eq("client_id", clientId)
+      .eq("conversation_id", conversationId)
+      .maybeSingle();
+    if (!data) return null;
+    const name = typeof data.name === "string" ? data.name.trim() : "";
+    const phone = typeof data.phone === "string" ? data.phone.trim() : "";
+    return name || phone ? { name: name || null, phone: phone || null } : null;
+  } catch (error) {
+    console.warn("aiContext: contact-on-file lookup threw, continuing with contact_on_file: null", { clientId, conversationId, message: error?.message });
+    return null;
+  }
+}
+
 export async function resolveAiContext(supabase, { conversationId, clientId, currentMessageText, useContextualRetrieval = true }) {
   if (!conversationId || !clientId) {
     return fail(400, "missing_input", "conversation_id and client_id are required");
@@ -457,6 +480,7 @@ export async function resolveAiContext(supabase, { conversationId, clientId, cur
   const history = await loadHistory(supabase, { clientId, conversationId });
   const relevantKnowledge = await retrieveKnowledgeSafely(supabase, { clientId, conversationId, queryText: currentMessageText, history, useContextualRetrieval });
   const { locations, locationsListComplete } = await loadLocationsSafely(supabase, clientId);
+  const contactOnFile = await loadConversationContactSafely(supabase, { clientId, conversationId });
 
   // Working-hours resolution: client-wide clients.working_hours is
   // authoritative. If it is unset but the business has exactly ONE active
@@ -516,6 +540,9 @@ export async function resolveAiContext(supabase, { conversationId, clientId, cur
       current_step: conversation.current_step,
       history,
       current_message_text: currentMessageText || "",
+      // Context only — name / phone already captured for this conversation
+      // on an earlier turn (or null). Never used for routing.
+      contact_on_file: contactOnFile,
     },
     relevant_knowledge: relevantKnowledge, // always an array — [] on any retrieval problem, never thrown (see retrieveKnowledgeSafely above).
   };

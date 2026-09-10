@@ -90,19 +90,32 @@ function buildActionsSectionV3() {
   ].join("\n");
 }
 
-function buildConversationStateSectionV3(currentStep) {
+function buildConversationStateSectionV3(currentStep, contactOnFile) {
+  const onFile = [];
+  if (contactOnFile && (contactOnFile.name || contactOnFile.phone)) {
+    const parts = [];
+    if (contactOnFile.name) parts.push(`name: ${contactOnFile.name}`);
+    if (contactOnFile.phone) parts.push(`phone: ${contactOnFile.phone}`);
+    onFile.push(
+      `Contact details already on file for this customer (${parts.join(", ")}). Do not ask for them again. If they ask the team to call / contact them back, their details are already saved — a teammate can follow up.`
+    );
+  }
+
   if (currentStep === "closing_confirm") {
     return [
       "## Conversation state",
+      ...onFile,
       "current_step = closing_confirm — LAST turn you asked the customer to confirm they are finished. THIS message is their answer. Decide from its MEANING, in any language:",
       '  * they agree they are done (yes / اه / نعم / تمام / يعطيكم العافية / that\'s all) -> action "close_conversation".',
       '  * they want to keep going, are unsure, or ask ANYTHING else -> action "reply": answer them normally. The pending close is cleared for you automatically — do not ask them to confirm again.',
     ].join("\n");
   }
   if (currentStep === "contact_captured") {
-    return "## Conversation state\ncurrent_step = contact_captured — the customer's name and phone are already on file. Do not ask for them again.";
+    onFile.push("current_step = contact_captured — the customer's name and phone are already on file. Do not ask for them again.");
   }
-  return null;
+
+  if (!onFile.length) return null;
+  return ["## Conversation state", ...onFile].join("\n");
 }
 
 function buildOutputContractV3() {
@@ -126,7 +139,9 @@ export function buildSystemMessageV3(context) {
   const client = context.client || {};
   const account = context.account || {};
   const aiBehavior = context.ai_behavior || {};
-  const currentStep = (context.conversation && context.conversation.current_step) || null;
+  const conversation = context.conversation || {};
+  const currentStep = conversation.current_step || null;
+  const contactOnFile = conversation.contact_on_file || null;
 
   return [
     `You are the AI assistant for ${client.business_name || "this business"}. You speak AS the business ("we", "our"), briefly and naturally, in the customer's language.`,
@@ -135,7 +150,7 @@ export function buildSystemMessageV3(context) {
     buildGroundingSectionV3(aiBehavior),
     buildKnowledgeToolSectionV3(),
     buildActionsSectionV3(),
-    buildConversationStateSectionV3(currentStep),
+    buildConversationStateSectionV3(currentStep, contactOnFile),
     buildSecuritySection(),
     buildKnowledgeExcerpts(context.relevant_knowledge),
     buildOutputContractV3(),

@@ -202,6 +202,89 @@ test("save_contact + handover_after_save:true but lead persistence FAILS -> NO h
   assert.equal(t.conversations[0].conversation_status, "active");
 });
 
+// ---- "have the team contact me" when details were captured earlier -----
+
+test("save_contact + handover_after_save:true + NO new params + contact already on file -> handover, waiting_human", async () => {
+  const t = tables();
+  t.leads.push({ client_id: "client-A", conversation_id: "conv-A", sender_id: "s", name: "إبراهيم", phone: "0599001852" });
+  const r = await applyAgentActionV3(createMockSupabase(t), {
+    conversationId: "conv-A",
+    agentAction: "save_contact",
+    agentActionParams: { handover_after_save: true },
+  });
+  assert.equal(r.action, "save_contact");
+  assert.equal(r.lead_saved, false); // nothing new written
+  assert.equal(r.contact_on_file, true); // used the earlier-captured row
+  assert.deepEqual(r.contact, { name: "إبراهيم", phone: "0599001852" });
+  assert.equal(r.handover_after_save, true);
+  assert.equal(r.executed, true);
+  assert.equal(r.conversation_status, "waiting_human");
+  assert.equal(t.conversations[0].conversation_status, "waiting_human");
+  assert.equal(t.leads.length, 1); // no duplicate row
+});
+
+test("save_contact + handover_after_save:true + NEW name/phone -> save AND handover still succeed", async () => {
+  const t = tables();
+  const r = await applyAgentActionV3(createMockSupabase(t), {
+    conversationId: "conv-A",
+    agentAction: "save_contact",
+    agentActionParams: { name: "سميرة", phone: "0598111222", handover_after_save: true },
+  });
+  assert.equal(r.lead_saved, true);
+  assert.equal(r.handover_after_save, true);
+  assert.equal(r.executed, true);
+  assert.equal(t.leads.length, 1);
+  assert.equal(t.leads[0].phone, "0598111222");
+  assert.equal(r.conversation_status, "waiting_human");
+  assert.equal(t.conversations[0].conversation_status, "waiting_human");
+  assert.equal(t.conversations[0].current_step, "contact_captured");
+});
+
+test("save_contact + handover_after_save:true + NO contact data anywhere -> no false 'saved', no handover, stays active", async () => {
+  const t = tables();
+  const r = await applyAgentActionV3(createMockSupabase(t), {
+    conversationId: "conv-A",
+    agentAction: "save_contact",
+    agentActionParams: { handover_after_save: true },
+  });
+  assert.equal(r.lead_saved, false);
+  assert.equal(r.contact_on_file, false);
+  assert.equal(r.contact, null);
+  assert.equal(r.handover_after_save, false);
+  assert.equal(r.executed, false); // honest: nothing happened
+  assert.equal(r.conversation_status, "active");
+  assert.equal(t.leads.length, 0);
+  assert.equal(t.conversations[0].conversation_status, "active");
+});
+
+test("direct handover action is unaffected by the save_contact contact-on-file path", async () => {
+  const t = tables();
+  t.leads.push({ client_id: "client-A", conversation_id: "conv-A", sender_id: "s", name: "إبراهيم", phone: "0599001852" });
+  const r = await applyAgentActionV3(createMockSupabase(t), {
+    conversationId: "conv-A",
+    agentAction: "handover",
+    agentActionParams: { reason: "بدي احكي مع حدا" },
+  });
+  assert.equal(r.action, "handover");
+  assert.equal(r.executed, true);
+  assert.equal(r.conversation_status, "waiting_human");
+  assert.equal(t.conversations[0].conversation_status, "waiting_human");
+});
+
+test("save_contact contact-on-file handover is channel-neutral (both parents build the same reply shape)", () => {
+  for (const wf of [FINAL, WA]) {
+    for (const platform of ["facebook", "instagram", "telegram", "whatsapp"]) {
+      const out = runBuildReply(wf, {
+        agentResult: { action: "save_contact", reply: "تمام، معنا رقمك وحدا من الفريق رح يتواصل معك." },
+        applied: { action: "save_contact", conversation_status: "waiting_human", current_step: "contact_captured" },
+        platform,
+      });
+      assert.equal(out.conversation_status, "waiting_human");
+      assert.equal(out.current_step, "contact_captured");
+    }
+  }
+});
+
 test("action request_confirmation -> current_step = closing_confirm, conversation stays active", async () => {
   const t = tables();
   const r = await applyAgentActionV3(createMockSupabase(t), { conversationId: "conv-A", agentAction: "request_confirmation" });
@@ -334,6 +417,62 @@ for (const [label, wf] of [["Final", FINAL], ["WhatsApp", WA]]) {
     assert.equal(out.current_step, null);
   });
 }
+
+// ---------------------------------------------------------------------
+// 3b. Build Reply V3 — deterministic false-success guard
+//     A deterministic action that Apply Action V3 reports executed:false
+//     must NOT keep the Agent's (possibly success-claiming) text.
+// ---------------------------------------------------------------------
+const GENERIC_FALLBACK = "شكراً لتواصلك معنا 🙏 سيتم الرد عليك بأقرب وقت ممكن";
+const AGENT_SUCCESS_TEXT = "تم تدوين بياناتك وسيتواصل معك الفريق";
+
+for (const [label, wf] of [["Final", FINAL], ["WhatsApp", WA]]) {
+  for (const platform of ["facebook", "instagram", "telegram", "whatsapp"]) {
+    for (const action of ["save_contact", "handover", "close_conversation"]) {
+      test(`${label}/${platform}: ${action} + executed:false -> generic fallback, NOT the Agent's success text`, () => {
+        const out = runBuildReply(wf, {
+          agentResult: { action, reply: AGENT_SUCCESS_TEXT, intent: "x" },
+          applied: { action, executed: false, conversation_status: "active", current_step: null },
+          platform,
+        });
+        assert.notEqual(out.reply, AGENT_SUCCESS_TEXT);
+        assert.equal(out.reply, GENERIC_FALLBACK);
+      });
+    }
+
+    test(`${label}/${platform}: executed:false uses the CONFIGURED fallback when one is set`, () => {
+      const out = runBuildReply(wf, {
+        agentResult: { action: "save_contact", reply: AGENT_SUCCESS_TEXT },
+        applied: { action: "save_contact", executed: false, conversation_status: "active", current_step: null },
+        integration: { default_reply: "رسالة احتياطية معدّة" },
+        platform,
+      });
+      assert.equal(out.reply, "رسالة احتياطية معدّة");
+    });
+
+    test(`${label}/${platform}: successful deterministic action keeps the Agent reply`, () => {
+      const out = runBuildReply(wf, {
+        agentResult: { action: "handover", reply: "رح أحوّلك لموظف يساعدك" },
+        applied: { action: "handover", executed: true, conversation_status: "waiting_human", current_step: null },
+        platform,
+      });
+      assert.equal(out.reply, "رح أحوّلك لموظف يساعدك");
+    });
+
+    test(`${label}/${platform}: a normal reply action is never touched by the guard`, () => {
+      const out = runBuildReply(wf, {
+        agentResult: { action: "reply", reply: "سعر الكشف ٥٠ شيكل" },
+        applied: { action: "reply", executed: false, conversation_status: "active", current_step: null },
+        platform,
+      });
+      assert.equal(out.reply, "سعر الكشف ٥٠ شيكل");
+    });
+  }
+}
+
+test("Build Reply V3 guard code is byte-identical across both V3 parents", () => {
+  assert.equal(node(FINAL, "Build Reply V3").parameters.jsCode, node(WA, "Build Reply V3").parameters.jsCode);
+});
 
 // ===================================================================
 // 4. The 13 required scenarios — end to end (validate -> apply)

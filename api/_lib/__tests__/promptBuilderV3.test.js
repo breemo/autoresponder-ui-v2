@@ -67,6 +67,24 @@ test("closing state instruction appears ONLY when current_step = closing_confirm
   assert.match(s, /pending close is cleared for you automatically/i);
 });
 
+test("contact_on_file is surfaced as context only (name + phone), and absent when there is nothing on file", () => {
+  assert.doesNotMatch(buildSystemMessageV3(ctx()), /Contact details already on file/);
+
+  const s = buildSystemMessageV3(ctx({ conversation: { contact_on_file: { name: "إبراهيم", phone: "0599001852" } } }));
+  assert.match(s, /## Conversation state/);
+  assert.match(s, /Contact details already on file for this customer/);
+  assert.match(s, /name: إبراهيم/);
+  assert.match(s, /phone: 0599001852/);
+  assert.match(s, /Do not ask for them again/i);
+  // context only — it does not tell the model which action to pick
+  assert.doesNotMatch(s, /Contact details already on file[^\n]*action "(handover|save_contact)"/);
+
+  // phone-only row still renders
+  const p = buildSystemMessageV3(ctx({ conversation: { contact_on_file: { phone: "0599001852" } } }));
+  assert.match(p, /phone: 0599001852/);
+  assert.doesNotMatch(p, /name:/);
+});
+
 test("options are a display hint only — correctness never depends on a button", () => {
   const s = buildSystemMessageV3(ctx());
   assert.match(s, /"options" .* is a DISPLAY HINT ONLY/i);

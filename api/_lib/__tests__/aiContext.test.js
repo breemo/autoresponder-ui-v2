@@ -102,6 +102,22 @@ test("scenario 8: reply_mode resolves from the account table when populated (fac
   assert.equal(result.context.account.reply_mode_source, "account");
 });
 
+test("context.conversation.contact_on_file carries the name/phone captured earlier for this conversation (null when none)", async () => {
+  const noLead = createMockSupabase(baseTables());
+  const r1 = await resolveAiContext(noLead, { conversationId: "conv-1", clientId: "client-1", currentMessageText: "hi" });
+  assert.equal(r1.ok, true);
+  assert.equal(r1.context.conversation.contact_on_file, null);
+
+  const tables = baseTables();
+  tables.leads = [
+    { client_id: "client-1", conversation_id: "conv-1", sender_id: "s", name: "إبراهيم", phone: "0599001852" },
+    { client_id: "client-1", conversation_id: "conv-2", sender_id: "s", name: "OTHER", phone: "0000000000" },
+  ];
+  const r2 = await resolveAiContext(createMockSupabase(tables), { conversationId: "conv-1", clientId: "client-1", currentMessageText: "بدي تتواصلو معي" });
+  assert.equal(r2.ok, true);
+  assert.deepEqual(r2.context.conversation.contact_on_file, { name: "إبراهيم", phone: "0599001852" });
+});
+
 test("scenario 9: reply_mode falls back to legacy config when the account table has no usable reply_mode (whatsapp)", async () => {
   const supabase = createMockSupabase(baseTables());
   const result = await resolveAiContext(supabase, { conversationId: "conv-2", clientId: "client-1", currentMessageText: "hi" });
