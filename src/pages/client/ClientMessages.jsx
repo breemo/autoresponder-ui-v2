@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowLeftIcon, PhotoIcon, DocumentIcon, MicrophoneIcon, XMarkIcon, InformationCircleIcon } from "@heroicons/react/24/outline";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
 import ChannelIcon from "../../lib/channelIcons.jsx";
 import LinkifiedText from "../../components/LinkifiedText.jsx";
+import { appendUniqueMessages, prependUniqueMessages, deriveMessageCursors } from "../../lib/messagePagination.js";
 import {
   MESSAGE_TYPES,
   isMediaMessageType,
@@ -788,6 +789,33 @@ export default function ClientMessages() {
   const lastLoadedConversationRef = useRef(null);
   const selectedConversationIdRef = useRef(null);
 
+  // Message Pagination / Load Older Messages (frontend-only, additive).
+  // Conversation open loads only the newest PAGE_SIZE messages; older
+  // pages are fetched on demand and prepended; the 5s poll/post-send
+  // follow-up fetch ONLY messages newer than the newest loaded one and
+  // append them — neither ever re-fetches or discards already-loaded
+  // history. oldestCursorRef/newestCursorRef always mirror the first/last
+  // row of conversationMessages (kept in sync by the effect below); a
+  // request captures conversationId at start and is discarded if the user
+  // has since switched away (see fetchInitialMessages/loadOlderMessages/
+  // fetchAndAppendNewerMessages).
+  const PAGE_SIZE = 50;
+  const [hasMoreOlder, setHasMoreOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const oldestCursorRef = useRef(null);
+  const newestCursorRef = useRef(null);
+  // Set right before an older page is prepended; consumed by the
+  // scroll-preserving useLayoutEffect below, then cleared. Never set for
+  // the initial load or a newer/poll append — those don't need it (the
+  // existing jump-to-bottom / append-at-bottom behavior already handles
+  // those correctly).
+  const pendingScrollRestoreRef = useRef(null);
+  // Desktop hover-near-top reveal + the touch/mobile equivalent
+  // (scrolled near the top of the loaded history) — see
+  // handleMessagesScroll and the floating control's render below.
+  const [hoveringTop, setHoveringTop] = useState(false);
+  const [nearTopScroll, setNearTopScroll] = useState(false);
+
   // Revokes the previous attachment's object URL (if any) whenever the
   // attachment changes or the component unmounts — avoids leaking memory
   // across repeated select/remove cycles.
@@ -867,51 +895,137 @@ export default function ClientMessages() {
     }
   }
 
-  // `silent: true` refetches in the background (used after sending a human
-  // reply, to reveal the outbound message n8n stores) without toggling the
-  // loading spinner or the page-level error banner. Returns the fetched rows
-  // so callers can check whether a new message has appeared yet.
-  async function fetchConversationMessages(conversationId, { silent = false } = {}) {
-    if (!conversationId || !clientId) return null;
+  // Historical messages are read through the server-side, service-role
+  // endpoint (Conversation Model V2 read-path cleanup) — a direct browser
+  // supabase.from("messages") query here is subject to `messages` RLS on
+  // the anon key and was silently returning an empty set, so the center
+  // panel showed "no messages" for conversations the (service-role) list
+  // endpoint had already counted correctly. client_id is derived
+  // server-side from the actor's membership; conversation_id stays the V2
+  // conversations.id.
+  //
+  // Message Pagination / Load Older Messages — three call shapes against
+  // the SAME additive, opt-in ?limit= endpoint (api/_lib/
+  // conversationMessagesPage.js):
+  //   fetchInitialMessages       — conversation open: newest PAGE_SIZE only
+  //   loadOlderMessages          — explicit "Load older" click: the next
+  //                                 page strictly before the oldest loaded
+  //                                 cursor, prepended
+  //   fetchAndAppendNewerMessages — the 5s poll + the post-send follow-up:
+  //                                 only rows strictly after the newest
+  //                                 loaded cursor, appended
+  // None of the three ever re-fetches or replaces the full history, so an
+  // older page the user pulled in can never be discarded by a later poll.
 
+  function mapMessageRows(rawRows) {
+    return (rawRows || []).map((m) => ({ ...m, message_text: getMessageText(m) }));
+  }
+
+  // Conversation open: the newest PAGE_SIZE messages only.
+  async function fetchInitialMessages(conversationId) {
+    if (!conversationId || !clientId) return;
+
+    setLoadingMessages(true);
+    setError("");
     try {
-      if (!silent) {
-        setLoadingMessages(true);
-        setError("");
-      }
-
-      // Historical messages are read through the server-side, service-role
-      // endpoint (Conversation Model V2 read-path cleanup) — a direct
-      // browser supabase.from("messages") query here is subject to
-      // `messages` RLS on the anon key and was silently returning an empty
-      // set, so the center panel showed "no messages" for conversations
-      // the (service-role) list endpoint had already counted correctly.
-      // client_id is derived server-side from the actor's membership;
-      // conversation_id stays the V2 conversations.id.
       const response = await fetch(
-        `/api/conversation?resource=messages&actor_user_id=${encodeURIComponent(user?.id)}&conversation_id=${encodeURIComponent(conversationId)}`
+        `/api/conversation?resource=messages&actor_user_id=${encodeURIComponent(user?.id)}` +
+          `&conversation_id=${encodeURIComponent(conversationId)}&limit=${PAGE_SIZE}`
       );
       const payload = await response.json().catch(() => ({}));
+
+      // The user may have already switched to a different conversation by
+      // the time this resolves — discard rather than paint the wrong chat.
+      if (selectedConversationIdRef.current !== conversationId) return;
 
       if (!response.ok || payload?.success === false) {
         throw new Error(payload?.message || t("messagesPage.errorFetchMessages"));
       }
 
-      const data = payload.messages || [];
-      const rows = data.map((m) => ({ ...m, message_text: getMessageText(m) }));
-      // Performance patch: same reasoning as fetchConversations above —
-      // skip the state update when this poll returned exactly what's
-      // already displayed, so the (currently unpaginated) message list
-      // doesn't re-render every 5s for no reason. The request/response
-      // themselves, and what's returned to callers below, are unchanged.
-      setConversationMessages((prev) => (rowsEqual(prev, rows) ? prev : rows));
-      return rows;
+      setConversationMessages(mapMessageRows(payload.messages));
+      setHasMoreOlder(!!payload.has_more);
     } catch (err) {
       console.error(err);
-      if (!silent) setError(t("messagesPage.errorFetchMessages"));
-      return null;
+      if (selectedConversationIdRef.current === conversationId) setError(t("messagesPage.errorFetchMessages"));
     } finally {
-      if (!silent) setLoadingMessages(false);
+      if (selectedConversationIdRef.current === conversationId) setLoadingMessages(false);
+    }
+  }
+
+  // "Load older": the next page strictly before the oldest loaded cursor,
+  // prepended. Captures scrollHeight/scrollTop right before the state
+  // update so the scroll-preserving useLayoutEffect below can restore the
+  // exact visible position once the taller content is painted.
+  async function loadOlderMessages() {
+    const conversationId = selectedConversationIdRef.current;
+    const cursor = oldestCursorRef.current;
+    if (!conversationId || !cursor || loadingOlder || !hasMoreOlder) return;
+
+    setLoadingOlder(true);
+    try {
+      const response = await fetch(
+        `/api/conversation?resource=messages&actor_user_id=${encodeURIComponent(user?.id)}` +
+          `&conversation_id=${encodeURIComponent(conversationId)}&limit=${PAGE_SIZE}` +
+          `&before_created_at=${encodeURIComponent(cursor.created_at)}&before_id=${encodeURIComponent(cursor.id)}`
+      );
+      const payload = await response.json().catch(() => ({}));
+
+      if (selectedConversationIdRef.current !== conversationId) return; // switched away — discard
+
+      if (!response.ok || payload?.success === false) {
+        throw new Error(payload?.message || t("messagesPage.errorFetchMessages"));
+      }
+
+      const olderRows = mapMessageRows(payload.messages);
+      if (olderRows.length > 0) {
+        const el = messagesScrollRef.current;
+        pendingScrollRestoreRef.current = el ? { prevScrollHeight: el.scrollHeight, prevScrollTop: el.scrollTop } : null;
+        setConversationMessages((prev) => prependUniqueMessages(prev, olderRows));
+      }
+      setHasMoreOlder(!!payload.has_more);
+    } catch (err) {
+      console.error(err);
+      // Silent — matches the existing poll's error handling. The control
+      // stays visible/clickable so the employee can simply retry.
+    } finally {
+      if (selectedConversationIdRef.current === conversationId) setLoadingOlder(false);
+    }
+  }
+
+  // 5s poll + post-send follow-up: only rows strictly after the newest
+  // loaded cursor, appended. Returns the number of genuinely new rows
+  // appended (0 for an empty/no-op result, or a stale/switched-away
+  // response) so refreshMessagesAfterSend can stop its own retries early —
+  // an empty result never touches state, so React renders nothing for it.
+  async function fetchAndAppendNewerMessages(conversationId) {
+    if (!conversationId || !clientId) return 0;
+    const cursor = newestCursorRef.current;
+    if (!cursor) return 0; // nothing loaded yet for this conversation — the initial fetch owns that
+
+    try {
+      const response = await fetch(
+        `/api/conversation?resource=messages&actor_user_id=${encodeURIComponent(user?.id)}` +
+          `&conversation_id=${encodeURIComponent(conversationId)}&limit=${PAGE_SIZE}` +
+          `&after_created_at=${encodeURIComponent(cursor.created_at)}&after_id=${encodeURIComponent(cursor.id)}`
+      );
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok || payload?.success === false) return 0;
+      if (selectedConversationIdRef.current !== conversationId) return 0; // switched away — discard
+
+      const newerRows = mapMessageRows(payload.messages);
+      if (newerRows.length === 0) return 0;
+
+      let appendedCount = 0;
+      setConversationMessages((prev) => {
+        const merged = appendUniqueMessages(prev, newerRows);
+        appendedCount = merged === prev ? 0 : merged.length - prev.length;
+        return merged;
+      });
+      return appendedCount;
+    } catch (err) {
+      console.error(err);
+      return 0;
     }
   }
 
@@ -1110,16 +1224,17 @@ export default function ClientMessages() {
   // After a successful send, n8n still needs to deliver through the channel
   // and insert the outbound row — poll a few times with backoff instead of
   // inserting a local fake message. Bails out early if the user has since
-  // switched conversations.
-  async function refreshMessagesAfterSend(conversationId, previousCount) {
+  // switched conversations, or as soon as the new row (or any other new
+  // row) has actually been appended.
+  async function refreshMessagesAfterSend(conversationId) {
     const delaysMs = [600, 1200, 2000];
 
     for (const delay of delaysMs) {
       await new Promise((resolve) => setTimeout(resolve, delay));
       if (selectedConversationIdRef.current !== conversationId) return;
 
-      const rows = await fetchConversationMessages(conversationId, { silent: true });
-      if (rows && rows.length > previousCount) return;
+      const appended = await fetchAndAppendNewerMessages(conversationId);
+      if (appended > 0) return;
     }
   }
 
@@ -1243,7 +1358,6 @@ export default function ClientMessages() {
     setSendError("");
 
     const conversationId = selectedConversationId;
-    const previousCount = conversationMessages.length;
     const pendingAttachment = attachment;
 
     // Optimistic echo — shown immediately, reconciled away by the poll when
@@ -1293,7 +1407,7 @@ export default function ClientMessages() {
 
       setDraft("");
       setAttachment(null);
-      refreshMessagesAfterSend(conversationId, previousCount);
+      refreshMessagesAfterSend(conversationId);
     } catch (err) {
       console.error(err);
       // The send failed — drop the echo so the composer's error banner is
@@ -1336,12 +1450,16 @@ export default function ClientMessages() {
   // of which exists in this architecture. Polling the two service-role
   // endpoints keeps the tenant boundary intact.
   //
-  // Two cadences: the open thread (5s) reveals new inbound/outbound
-  // messages — including media rows, which flow through the exact same
-  // fetchConversationMessages mapping and MediaAttachment renderer as a
-  // historical load; the list (12s) surfaces new conversations, preview
-  // text, counts and lifecycle changes. Both are silent (no spinner, no
-  // error banner) and pause while the tab is hidden. selectedConversationId
+  // Two cadences, unchanged (5s / 12s, silent, paused while the tab is
+  // hidden): the open thread reveals new inbound/outbound messages —
+  // including media rows, which flow through the exact same
+  // mapMessageRows mapping and MediaAttachment renderer as a historical
+  // load; the list surfaces new conversations, preview text, counts and
+  // lifecycle changes. What changed (Message Pagination / Load Older) is
+  // ONLY the message poll's fetch scope: fetchAndAppendNewerMessages asks
+  // for messages strictly newer than the newest loaded cursor and appends
+  // them, instead of re-fetching (and potentially discarding already
+  // loaded older pages of) the full/latest history. selectedConversationId
   // is read from its ref so the interval never appends another
   // conversation's messages into the open thread.
   useEffect(() => {
@@ -1350,7 +1468,7 @@ export default function ClientMessages() {
     const pollMessages = () => {
       if (document.hidden) return;
       const convId = selectedConversationIdRef.current;
-      if (convId) fetchConversationMessages(convId, { silent: true });
+      if (convId) fetchAndAppendNewerMessages(convId);
     };
     const pollList = () => {
       if (document.hidden) return;
@@ -1406,21 +1524,59 @@ export default function ClientMessages() {
 
     // Switching conversations abandons any in-progress draft/error/
     // attachment/optimistic echo for the previous one rather than carrying
-    // it over to the newly selected chat.
+    // it over to the newly selected chat. Also resets the pagination state
+    // (Message Pagination / Load Older Messages): the cursors are cleared
+    // synchronously here — not left to the cursor-sync effect below, which
+    // only reacts once fetchInitialMessages' new rows actually land — so a
+    // poll tick firing in the brief gap before that resolves cannot use a
+    // stale (previous conversation's) cursor against the newly-selected
+    // conversation_id.
     setDraft("");
     setSendError("");
     setAttachment(null);
     setCardOpen(false);
     setPendingOutbound([]);
+    setHasMoreOlder(false);
+    setLoadingOlder(false);
+    oldestCursorRef.current = null;
+    newestCursorRef.current = null;
+    pendingScrollRestoreRef.current = null;
 
     if (selectedConversationId) {
-      fetchConversationMessages(selectedConversationId);
+      fetchInitialMessages(selectedConversationId);
       fetchSelectedLead(selectedConversationId);
     } else {
       setConversationMessages([]);
       setSelectedLead(null);
     }
   }, [selectedConversationId]);
+
+  // Keeps oldestCursorRef/newestCursorRef in sync with whatever is
+  // actually displayed — the single source of truth for both
+  // loadOlderMessages' before_* cursor and fetchAndAppendNewerMessages'
+  // after_* cursor, recomputed after every initial load / older-prepend /
+  // newer-append. O(1) (first/last of an already-ascending array), so this
+  // is not a meaningful re-render cost even for a long conversation.
+  useEffect(() => {
+    const { oldest, newest } = deriveMessageCursors(conversationMessages);
+    oldestCursorRef.current = oldest;
+    newestCursorRef.current = newest;
+  }, [conversationMessages]);
+
+  // Restores the user's exact visible scroll position after an older page
+  // is prepended — runs synchronously after the DOM reflects the taller
+  // content but before the browser paints, so there is no visible jump.
+  // A no-op on every other conversationMessages change (initial load,
+  // newer/poll append): pendingScrollRestoreRef is only ever set by
+  // loadOlderMessages, right before its setConversationMessages call.
+  useLayoutEffect(() => {
+    const pending = pendingScrollRestoreRef.current;
+    if (!pending) return;
+    pendingScrollRestoreRef.current = null;
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight - pending.prevScrollHeight + pending.prevScrollTop;
+  }, [conversationMessages]);
 
   // Reconcile optimistic echoes against what the poll actually returned:
   // drop an echo once its persisted row is in conversationMessages, and
@@ -1456,6 +1612,14 @@ export default function ClientMessages() {
     if (!el) return;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     isNearBottomRef.current = distanceFromBottom < 80;
+
+    // Touch/mobile equivalent of the desktop hover reveal for the
+    // floating "Load older" control (no hover on touch) — reuses this
+    // same, already-existing scroll handler; no new listener/library.
+    // Same-value bail keeps this from forcing a re-render on every scroll
+    // pixel, only when the near-top state actually flips.
+    const nearTop = el.scrollTop < 80;
+    setNearTopScroll((prev) => (prev === nearTop ? prev : nearTop));
   }
 
   // Jump to the latest message whenever a (new) conversation finishes loading.
@@ -1873,7 +2037,14 @@ export default function ClientMessages() {
                 </div>
               </div>
 
-              <div ref={messagesScrollRef} onScroll={handleMessagesScroll} className="min-h-0 flex-1 overflow-y-auto bg-slate-50/40 p-3">
+              {/* Message Pagination / Load Older Messages — the floating
+                  "Load older" control below is positioned against THIS
+                  wrapper (not the scrollable element itself), so it never
+                  scrolls with the message content and reserves zero
+                  permanent vertical space — it only ever overlays the top
+                  of the viewport, shown/hidden by opacity. */}
+              <div className="relative min-h-0 flex-1">
+              <div ref={messagesScrollRef} onScroll={handleMessagesScroll} className="h-full overflow-y-auto bg-slate-50/40 p-3">
                 {loadingMessages ? (
                   <div className="p-8 text-center text-sm text-slate-500">{t("messagesPage.loadingMessages")}</div>
                 ) : visibleMessages.length === 0 ? (
@@ -1923,6 +2094,37 @@ export default function ClientMessages() {
                     })}
                   </div>
                 )}
+              </div>
+
+              {/* Load-older floating control — Message Pagination v1.
+                  Absolutely positioned against the wrapper above (never
+                  the scrollable element), so it is never part of the
+                  message layout and never pushes anything down; entirely
+                  absent from the DOM once hasMoreOlder is false. The
+                  outer div is the actual "near the top" hover-detection
+                  zone (bigger than the chip itself — the chip starts
+                  invisible, so hovering only the chip would be
+                  undiscoverable); the chip fades in on hover (desktop) or
+                  on scrolling near the top (touch/mobile — nearTopScroll,
+                  from the existing onScroll handler above). */}
+              {hasMoreOlder && !loadingMessages && (
+                <div
+                  className="pointer-events-auto absolute inset-x-0 top-0 z-10 flex h-16 justify-center"
+                  onMouseEnter={() => setHoveringTop(true)}
+                  onMouseLeave={() => setHoveringTop(false)}
+                >
+                  <button
+                    type="button"
+                    onClick={loadOlderMessages}
+                    disabled={loadingOlder}
+                    className={`mt-2 h-fit rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-xs font-bold text-slate-600 shadow-md backdrop-blur transition-opacity duration-150 disabled:cursor-wait ${
+                      hoveringTop || nearTopScroll ? "opacity-100" : "pointer-events-none opacity-0"
+                    }`}
+                  >
+                    {loadingOlder ? t("messagesPage.loadingOlderMessages", "⟳ جاري التحميل...") : t("messagesPage.loadOlderMessages", "↑ رسائل أقدم")}
+                  </button>
+                </div>
+              )}
               </div>
 
               {/* px-3 pt-3 + a safe-area-aware pb (instead of p-3) so the

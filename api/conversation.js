@@ -7,6 +7,7 @@ import { handleHumanReply } from "./_lib/humanReply.js";
 import { handleContactEnrich } from "./_lib/contactEnrich.js";
 import { handleDashboardSummary } from "./_lib/dashboardSummary.js";
 import { handleTeamPerformance } from "./_lib/teamPerformance.js";
+import { fetchConversationMessagesPage } from "./_lib/conversationMessagesPage.js";
 
 // Conversation Card V1 — API consolidation Merge #1: this single domain
 // endpoint replaces the former api/conversation-card.js (read-only
@@ -63,6 +64,15 @@ import { handleTeamPerformance } from "./_lib/teamPerformance.js";
 //     -> historical conversation messages (created_at ASC), moved
 //        server-side from ClientMessages.jsx's former direct browser
 //        supabase.from("messages") query
+//     Message Pagination / Load Older Messages — additive, opt-in via
+//     &limit=: omitted, this branch is byte-identical to before (full
+//     history, no `has_more`). With &limit=N, add optionally ONE of:
+//       &before_created_at=&before_id=  -> the next older page (strictly
+//         before that (created_at, id) cursor)
+//       &after_created_at=&after_id=    -> everything strictly newer than
+//         that cursor (used for polling/append, never a full re-fetch)
+//     and the response becomes { success, messages, has_more }. See
+//     api/_lib/conversationMessagesPage.js for the query/cursor logic.
 //   POST /api/conversation
 //     { action: "add_note" | "edit_note" | "delete_note", actor_user_id,
 //       conversation_id?, note_id?, body? }
@@ -353,6 +363,32 @@ async function handleConversationMessages(req, res, supabase) {
   const conversationId = req.query?.conversation_id;
   if (!conversationId) {
     return res.status(400).json({ success: false, message: "conversation_id is required" });
+  }
+
+  // Message Pagination / Load Older Messages — additive, opt-in via
+  // &limit=. Omitted entirely, this falls straight through to the original
+  // unbounded query below, byte-identical to before this feature. See
+  // api/_lib/conversationMessagesPage.js for the cursor/query logic.
+  if (req.query?.limit !== undefined) {
+    const result = await fetchConversationMessagesPage(supabase, {
+      clientId: actor.membership.client_id,
+      conversationId,
+      limit: req.query.limit,
+      beforeCreatedAt: req.query.before_created_at,
+      beforeId: req.query.before_id,
+      afterCreatedAt: req.query.after_created_at,
+      afterId: req.query.after_id,
+    });
+
+    if (!result.ok) {
+      if (result.error) console.error("conversation: failed to load paginated conversation messages:", result.error);
+      return res.status(result.status).json({
+        success: false,
+        message: result.status === 400 ? result.message : "فشل في جلب رسائل المحادثة",
+      });
+    }
+
+    return res.status(200).json({ success: true, messages: result.messages, has_more: result.has_more });
   }
 
   const { data, error } = await supabase
