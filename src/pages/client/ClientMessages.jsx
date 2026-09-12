@@ -799,7 +799,7 @@ export default function ClientMessages() {
   // request captures conversationId at start and is discarded if the user
   // has since switched away (see fetchInitialMessages/loadOlderMessages/
   // fetchAndAppendNewerMessages).
-  const PAGE_SIZE = 50;
+  const PAGE_SIZE = 30;
   const [hasMoreOlder, setHasMoreOlder] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const oldestCursorRef = useRef(null);

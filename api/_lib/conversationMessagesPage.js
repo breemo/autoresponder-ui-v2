@@ -24,7 +24,7 @@
 //     AFTER that cursor (used to append newly arrived messages without
 //     ever re-fetching or discarding already-loaded history).
 
-export const DEFAULT_PAGE_LIMIT = 50;
+export const DEFAULT_PAGE_LIMIT = 30;
 const MAX_PAGE_LIMIT = 200;
 // Safety cap only — far above how many messages could realistically land
 // in one 5s poll interval or one post-send follow-up window. Never limits
