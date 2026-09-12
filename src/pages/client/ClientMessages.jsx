@@ -4,6 +4,7 @@ import { ArrowLeftIcon, PhotoIcon, DocumentIcon, MicrophoneIcon, XMarkIcon, Info
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
 import ChannelIcon from "../../lib/channelIcons.jsx";
+import LinkifiedText from "../../components/LinkifiedText.jsx";
 import {
   MESSAGE_TYPES,
   isMediaMessageType,
@@ -1814,7 +1815,15 @@ export default function ClientMessages() {
                               />
                             )}
                             {(!isMedia || captionText || msg._pending) && (
-                              <div className="whitespace-pre-wrap break-words text-sm leading-6">{isMedia ? (captionText || msg.media_file_name || "") : captionText || "—"}</div>
+                              <div className="whitespace-pre-wrap break-words text-sm leading-6">
+                                {captionText ? (
+                                  <LinkifiedText text={captionText} />
+                                ) : isMedia ? (
+                                  msg.media_file_name || ""
+                                ) : (
+                                  "—"
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>
