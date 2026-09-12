@@ -6,6 +6,7 @@ import { useAuth } from "../../context/AuthContext.jsx";
 import ChannelIcon from "../../lib/channelIcons.jsx";
 import LinkifiedText from "../../components/LinkifiedText.jsx";
 import { appendUniqueMessages, prependUniqueMessages, deriveMessageCursors } from "../../lib/messagePagination.js";
+import { appendOlderConversations, upsertConversations, deriveConversationCursor } from "../../lib/conversationListPagination.js";
 import {
   MESSAGE_TYPES,
   isMediaMessageType,
@@ -65,40 +66,6 @@ function getMessageText(msg = {}) {
     msg.answer ??
     ""
   );
-}
-
-// Shallow equality for an array of flat row objects (a `messages` page or
-// a conversations-list page), used ONLY to decide whether a background
-// poll's result actually differs from what's already on screen — so a
-// no-op poll can skip its setState and the re-render it would otherwise
-// force. Compares every own key on each row (not a hand-picked subset),
-// so it can never silently miss a field that changed; one level deep for
-// the handful of small nested objects a conversation row can carry
-// (assigned_user / system_assigned_user / whatsapp_instance) — everything
-// else here is already a primitive. Never changes what's fetched or when;
-// purely a render-skip, not a data/freshness change.
-function rowsEqual(prev, next) {
-  if (prev === next) return true;
-  if (!Array.isArray(prev) || !Array.isArray(next) || prev.length !== next.length) return false;
-  for (let i = 0; i < prev.length; i += 1) {
-    const a = prev[i];
-    const b = next[i];
-    if (a === b) continue;
-    if (!a || !b) return false;
-    const aKeys = Object.keys(a);
-    if (aKeys.length !== Object.keys(b).length) return false;
-    for (const key of aKeys) {
-      const av = a[key];
-      const bv = b[key];
-      if (av === bv) continue;
-      if (av && bv && typeof av === "object" && typeof bv === "object") {
-        if (JSON.stringify(av) !== JSON.stringify(bv)) return false;
-        continue;
-      }
-      return false;
-    }
-  }
-  return true;
 }
 
 function directionLabel(direction, t) {
@@ -764,6 +731,45 @@ export default function ClientMessages() {
   const [channel, setChannel] = useState("all");
   const [status, setStatus] = useState("all");
   const [leadsOnly, setLeadsOnly] = useState(false);
+  // Debounced copy of `search` — the input itself still updates instantly
+  // (setSearch on every keystroke, for responsive typing), but the
+  // server-side search request (Conversation List Pagination) only fires
+  // 300ms after typing pauses, so it isn't re-sent on every keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(handle);
+  }, [search]);
+
+  // Conversation List Pagination (frontend-only, additive). Initial load
+  // fetches only the newest CONVERSATIONS_PAGE_SIZE conversations; older
+  // pages are fetched on scroll-near-bottom and appended; the 12s poll
+  // fetches ONLY conversations whose last_message_at/updated_at changed
+  // since the last check and upserts them (never a full re-fetch, never
+  // discards already-loaded older pages). Search/channel/status/leadsOnly
+  // now run server-side (see the reset effect below) instead of a
+  // client-side .filter() over the full list.
+  const CONVERSATIONS_PAGE_SIZE = 30;
+  const [hasMoreConversations, setHasMoreConversations] = useState(false);
+  const [loadingMoreConversations, setLoadingMoreConversations] = useState(false);
+  // Total conversations matching the ACTIVE search/channel/status/leadsOnly
+  // criteria (server-computed, not just the loaded/rendered count) — set
+  // from fetchInitialConversations' response only; a "load more" page and
+  // the delta poll don't change the total, so they leave this untouched.
+  // null until the first response arrives.
+  const [totalConversationsCount, setTotalConversationsCount] = useState(null);
+  const conversationsCursorRef = useRef(null); // {last_message_at, id} | null — oldest loaded conversation
+  const conversationsWatermarkRef = useRef(null); // server_time from the last successful list fetch — the delta poll's `since`
+  // A serialized signature of whichever search/channel/status/leadsOnly
+  // combination is currently "active" — captured by each request at send
+  // time and compared at resolve time, so a response for filters the user
+  // has since changed away from is discarded rather than applied (rapid
+  // filter/search changes, or a poll resolving after a filter change).
+  const activeConversationFiltersRef = useRef("");
+  const conversationListScrollRef = useRef(null);
+  // Every distinct WhatsApp channel_key seen across any page/delta loaded
+  // so far — see applyWhatsappInstanceKeys below.
+  const whatsappChannelKeysRef = useRef(new Set());
 
   // Reply composer (Phase 2B): sends via /api/conversation (action:
   // "human_reply"), never inserts
@@ -844,39 +850,84 @@ export default function ClientMessages() {
   // `silent: true` refetches the list in the background (used by the poll
   // that stands in for browser Realtime — see the polling effect below)
   // without toggling the list spinner or the page-level error banner.
-  async function fetchConversations({ silent = false } = {}) {
+  // Conversation List Pagination — query-param builder shared by all three
+  // fetch functions below. Search/channel/status/leadsOnly now run
+  // server-side (api/_lib/conversationListPage.js), across the full
+  // client dataset, instead of the old client-side .filter() over
+  // whatever happened to already be loaded.
+  function buildConversationListParams({ status: s, channel: c, leadsOnly: lo, search: q }) {
+    const params = new URLSearchParams();
+    params.set("resource", "list");
+    params.set("actor_user_id", user?.id || "");
+    if (s && s !== "all") params.set("status", s);
+    if (c && c !== "all") params.set("channel", c);
+    if (lo) params.set("leads_only", "1");
+    if (q && q.trim()) params.set("search", q.trim());
+    return params;
+  }
+
+  function currentConversationFilters() {
+    return { status, channel, leadsOnly, search: debouncedSearch };
+  }
+
+  function applyWhatsappInstanceKeys(rows) {
+    // Small identifier only appears once it's actually needed to
+    // disambiguate — a client with a single WhatsApp number keeps exactly
+    // today's appearance. Accumulated across every page/delta loaded (not
+    // reset per fetch) since a second number can legitimately only exist
+    // in a conversation outside the currently loaded page(s) — the count
+    // of distinct numbers a client has is a client-wide fact, not a
+    // per-page one.
+    let added = false;
+    for (const row of rows) {
+      if (row.platform?.toLowerCase() === "whatsapp" && row.channel_key && !whatsappChannelKeysRef.current.has(row.channel_key)) {
+        whatsappChannelKeysRef.current.add(row.channel_key);
+        added = true;
+      }
+    }
+    if (added) setMultipleWhatsappNumbers(whatsappChannelKeysRef.current.size > 1);
+  }
+
+  // Initial load, and the reset triggered by every search/filter change
+  // (see the effect below): the newest CONVERSATIONS_PAGE_SIZE
+  // conversations matching the active filters, replacing whatever was
+  // loaded before.
+  async function fetchInitialConversations() {
     if (!clientId || !user?.id) return;
 
-    try {
-      if (!silent) {
-        setLoadingConversations(true);
-        setError("");
-      }
+    const filters = currentConversationFilters();
+    const signature = JSON.stringify(filters);
+    activeConversationFiltersRef.current = signature;
 
-      const response = await fetch(`/api/conversation?resource=list&actor_user_id=${encodeURIComponent(user.id)}`);
+    setLoadingConversations(true);
+    setError("");
+    try {
+      const params = buildConversationListParams(filters);
+      params.set("limit", String(CONVERSATIONS_PAGE_SIZE));
+
+      const response = await fetch(`/api/conversation?${params.toString()}`);
       const data = await response.json().catch(() => ({}));
+
+      // The user may have already changed the search/filters by the time
+      // this resolves — discard rather than paint the wrong list.
+      if (activeConversationFiltersRef.current !== signature) return;
 
       if (!response.ok || data?.success === false) {
         throw new Error(data?.message || t("messagesPage.errorFetchConversations"));
       }
 
       const merged = data.conversations || [];
+      applyWhatsappInstanceKeys(merged);
 
-      // Small identifier only appears once it's actually needed to
-      // disambiguate — a client with a single WhatsApp number keeps
-      // exactly today's appearance.
-      const distinctWhatsappChannelKeys = new Set(
-        merged.filter((c) => c.platform?.toLowerCase() === "whatsapp" && c.channel_key).map((c) => c.channel_key)
-      );
-      setMultipleWhatsappNumbers(distinctWhatsappChannelKeys.size > 1);
-
-      // Performance patch: skip the state update (and the full sidebar
-      // re-render it would force) when this poll's list is identical to
-      // what's already shown — the request itself still runs on exactly
-      // the same schedule as before; only a genuine no-op render is
-      // avoided. See rowsEqual's own comment for why this can't silently
-      // miss a real change.
-      setConversations((prev) => (rowsEqual(prev, merged) ? prev : merged));
+      setConversations(merged);
+      setHasMoreConversations(!!data.has_more);
+      // total_count is always returned by the paginated endpoint's
+      // initial-page response (see api/_lib/conversationListPage.js); the
+      // ?? guards only the legacy/unbounded response shape, which has no
+      // such field.
+      setTotalConversationsCount(data.total_count ?? null);
+      conversationsWatermarkRef.current = data.server_time || null;
+      conversationsCursorRef.current = deriveConversationCursor(merged);
       // Auto-selecting the first conversation here is safe on every
       // viewport, including mobile: selectedConversationId is purely
       // "which conversation's content is loaded" — it no longer also
@@ -889,9 +940,93 @@ export default function ClientMessages() {
       setSelectedConversationId((current) => (current && merged.some((c) => c.conversation_id === current) ? current : merged[0]?.conversation_id || null));
     } catch (err) {
       console.error(err);
-      if (!silent) setError(t("messagesPage.errorFetchConversations"));
+      if (activeConversationFiltersRef.current === signature) setError(t("messagesPage.errorFetchConversations"));
     } finally {
-      if (!silent) setLoadingConversations(false);
+      if (activeConversationFiltersRef.current === signature) setLoadingConversations(false);
+    }
+  }
+
+  // Scroll-near-bottom: the next older page, appended below what's
+  // already loaded. Never replaces or discards already-loaded rows.
+  async function loadMoreConversations() {
+    if (!clientId || !user?.id || loadingMoreConversations || !hasMoreConversations) return;
+    const cursor = conversationsCursorRef.current;
+    if (!cursor) return;
+
+    const filters = currentConversationFilters();
+    const signature = JSON.stringify(filters);
+
+    setLoadingMoreConversations(true);
+    try {
+      const params = buildConversationListParams(filters);
+      params.set("limit", String(CONVERSATIONS_PAGE_SIZE));
+      if (cursor.last_message_at) params.set("before_last_message_at", cursor.last_message_at);
+      params.set("before_id", cursor.id);
+
+      const response = await fetch(`/api/conversation?${params.toString()}`);
+      const data = await response.json().catch(() => ({}));
+
+      if (activeConversationFiltersRef.current !== signature) return; // filters changed while loading — discard
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(data?.message || t("messagesPage.errorFetchConversations"));
+      }
+
+      const olderRows = data.conversations || [];
+      applyWhatsappInstanceKeys(olderRows);
+
+      setConversations((prev) => {
+        const merged = appendOlderConversations(prev, olderRows);
+        conversationsCursorRef.current = deriveConversationCursor(merged);
+        return merged;
+      });
+      setHasMoreConversations(!!data.has_more);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingMoreConversations(false);
+    }
+  }
+
+  // 12s poll (unchanged cadence): only conversations whose
+  // last_message_at OR updated_at changed since the last check (a
+  // wall-clock watermark returned by the server on every previous
+  // fetch — never the browser's own clock, and never derived from a
+  // specific row, since a lifecycle-only change on an already-loaded
+  // conversation can bump updated_at without last_message_at moving at
+  // all). Upserts by conversation_id and re-sorts — never a full
+  // re-fetch, never discards an already-loaded older page.
+  async function pollConversationsDelta() {
+    if (!clientId || !user?.id) return;
+    const since = conversationsWatermarkRef.current;
+    if (!since) return; // nothing loaded yet for the current filters
+
+    const filters = currentConversationFilters();
+    const signature = JSON.stringify(filters);
+
+    try {
+      const params = buildConversationListParams(filters);
+      params.set("since", since);
+
+      const response = await fetch(`/api/conversation?${params.toString()}`);
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.success === false) return;
+      if (activeConversationFiltersRef.current !== signature) return; // filters changed meanwhile — discard
+
+      if (data.server_time) conversationsWatermarkRef.current = data.server_time;
+
+      const changedRows = data.conversations || [];
+      if (changedRows.length === 0) return;
+      applyWhatsappInstanceKeys(changedRows);
+
+      setConversations((prev) => {
+        const merged = upsertConversations(prev, changedRows);
+        conversationsCursorRef.current = deriveConversationCursor(merged);
+        return merged;
+      });
+    } catch (err) {
+      console.error(err);
     }
   }
 
@@ -1427,9 +1562,18 @@ export default function ClientMessages() {
     }
   }
 
+  // Initial load AND every search/channel/status/leadsOnly change: reset
+  // pagination (cursor + has_more) and fetch page 1 under the new filters
+  // — search/filters must never just narrow whatever happened to already
+  // be loaded, and must never try to "continue" a cursor across a filter
+  // change.
   useEffect(() => {
-    if (clientId) fetchConversations();
-  }, [clientId]);
+    if (!clientId) return;
+    conversationsCursorRef.current = null;
+    setHasMoreConversations(false);
+    fetchInitialConversations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId, debouncedSearch, channel, status, leadsOnly]);
 
   // New messages: lightweight background polling of the same server-side
   // endpoints the rest of this page already uses.
@@ -1472,7 +1616,7 @@ export default function ClientMessages() {
     };
     const pollList = () => {
       if (document.hidden) return;
-      fetchConversations({ silent: true });
+      pollConversationsDelta();
     };
     const onVisible = () => {
       if (document.hidden) return;
@@ -1492,17 +1636,13 @@ export default function ClientMessages() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, user?.id]);
 
-  const filteredConversations = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return conversations.filter((conv) => {
-      const haystack = `${conv.customer_name || ""} ${conv.sender || ""} ${conv.last_message || ""} ${conv.sender_id || ""} ${conv.lead_name || ""} ${conv.lead_phone || ""} ${conv.conversation_id || ""}`.toLowerCase();
-      const matchesSearch = !q || haystack.includes(q);
-      const matchesChannel = channel === "all" || conv.channel === channel || conv.platform === channel;
-      const matchesStatus = status === "all" || conv.conversation_status === status;
-      const matchesLead = !leadsOnly || conv.has_lead;
-      return matchesSearch && matchesChannel && matchesStatus && matchesLead;
-    });
-  }, [conversations, search, channel, status, leadsOnly]);
+  // Conversation List Pagination: search/channel/status/leadsOnly are now
+  // applied server-side (see fetchInitialConversations/the reset effect
+  // above) across the FULL client dataset, not just whatever happened to
+  // already be loaded — `conversations` already IS the filtered list.
+  // Kept as its own identifier (rather than renaming every reference
+  // below) purely to keep this change's diff minimal.
+  const filteredConversations = conversations;
 
   useEffect(() => {
     if (filteredConversations.length === 0) {
@@ -1622,6 +1762,18 @@ export default function ClientMessages() {
     setNearTopScroll((prev) => (prev === nearTop ? prev : nearTop));
   }
 
+  // Conversation List Pagination — infinite scroll: loads the next page
+  // automatically once the sidebar is scrolled near its bottom.
+  // loadMoreConversations already guards on loadingMoreConversations/
+  // hasMoreConversations, so repeated scroll events (and the trailing
+  // event once has_more becomes false) are safe no-ops.
+  function handleConversationListScroll() {
+    const el = conversationListScrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distanceFromBottom < 150) loadMoreConversations();
+  }
+
   // Jump to the latest message whenever a (new) conversation finishes loading.
   // If the user is mid-conversation and already scrolled near the bottom,
   // keep following new messages; if they scrolled up to read older ones,
@@ -1713,7 +1865,7 @@ export default function ClientMessages() {
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
       <div className="flex shrink-0 items-center justify-end">
-        <button onClick={fetchConversations} className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50">↻ {t("common.refresh")}</button>
+        <button onClick={() => fetchInitialConversations()} className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50">↻ {t("common.refresh")}</button>
       </div>
 
       {error && <div className="shrink-0 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>}
@@ -1755,7 +1907,11 @@ export default function ClientMessages() {
             <div className="mb-2 flex items-center justify-between gap-3">
               <div>
                 <h2 className="font-bold text-slate-950">{t("messagesPage.listTitle")}</h2>
-                <p className="mt-1 text-xs text-slate-500">{t("messagesPage.countSuffix", { count: filteredConversations.length })}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {totalConversationsCount !== null && totalConversationsCount > filteredConversations.length
+                    ? t("messagesPage.countSuffixOfTotal", { count: filteredConversations.length, total: totalConversationsCount })
+                    : t("messagesPage.countSuffix", { count: filteredConversations.length })}
+                </p>
               </div>
               <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-600">Live</span>
             </div>
@@ -1786,7 +1942,7 @@ export default function ClientMessages() {
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto p-2">
+          <div className="flex-1 min-h-0 overflow-y-auto p-2" ref={conversationListScrollRef} onScroll={handleConversationListScroll}>
             {loadingConversations ? (
               <div className="p-8 text-center text-sm text-slate-500">{t("messagesPage.loadingConversations")}</div>
             ) : filteredConversations.length === 0 ? (
@@ -1882,6 +2038,15 @@ export default function ClientMessages() {
                   </button>
                 );
               })
+            )}
+            {/* Conversation List Pagination — no visible page numbers/
+                button; the next page loads automatically on scroll (see
+                handleConversationListScroll). This tiny row only occupies
+                space while actually loading, and never renders once
+                hasMoreConversations is false — no permanent layout
+                change. */}
+            {loadingMoreConversations && (
+              <div className="p-2 text-center text-[11px] text-slate-400">{t("messagesPage.loadingMoreConversations", "…")}</div>
             )}
           </div>
         </aside>

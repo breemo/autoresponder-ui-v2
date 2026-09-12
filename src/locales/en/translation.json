@@ -755,6 +755,7 @@
   "messagesPage": {
     "listTitle": "Conversations List",
     "countSuffix": "{{count}} conversations shown",
+    "countSuffixOfTotal": "{{count}} of {{total}} conversations",
     "searchPlaceholder": "Search by name, number, message, or conversation ID...",
     "allChannels": "All Channels",
     "allStatuses": "All Statuses",

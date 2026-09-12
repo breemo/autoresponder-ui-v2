@@ -755,6 +755,7 @@
   "messagesPage": {
     "listTitle": "قائمة المحادثات",
     "countSuffix": "{{count}} محادثة ظاهرة",
+    "countSuffixOfTotal": "{{count}} من أصل {{total}} محادثة",
     "searchPlaceholder": "ابحث بالاسم، الرقم، الرسالة، أو رقم المحادثة...",
     "allChannels": "كل القنوات",
     "allStatuses": "كل الحالات",

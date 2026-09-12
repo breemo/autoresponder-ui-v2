@@ -33,8 +33,27 @@ function splitTopLevel(str, sep) {
   return parts;
 }
 
+// Conversation List Pagination extended this to also recognize
+// `col.is.null` and `col.in.(v1,v2,v3)` (the null-last_message_at bucket
+// filter and the search fan-out's trusted-uuid-list translation query) and
+// `col.ilike."pattern"` (SQL LIKE-style % / _ wildcards, case-insensitive
+// — the search fan-out's free-text conditions).
 function parseOrCondition(cond) {
-  const m = cond.trim().match(/^([a-zA-Z_]+)\.([a-z]+)\."(.*)"$/);
+  const trimmed = cond.trim();
+  const isNullMatch = trimmed.match(/^([a-zA-Z_]+)\.is\.null$/);
+  if (isNullMatch) return { col: isNullMatch[1], op: "isnull" };
+  const inMatch = trimmed.match(/^([a-zA-Z_]+)\.in\.\((.*)\)$/);
+  if (inMatch) {
+    return {
+      col: inMatch[1],
+      op: "in",
+      values: inMatch[2]
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    };
+  }
+  const m = trimmed.match(/^([a-zA-Z_]+)\.([a-z]+)\."(.*)"$/);
   if (!m) return null;
   return { col: m[1], op: m[2], value: m[3] };
 }
@@ -51,9 +70,20 @@ function compareForOr(rowVal, value) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+function likePatternToRegex(pattern) {
+  const escaped = String(pattern)
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/%/g, ".*")
+    .replace(/_/g, ".");
+  return new RegExp(`^${escaped}$`, "i");
+}
+
 function evalOrCondition(row, cond) {
   const parsed = parseOrCondition(cond);
   if (!parsed) return false;
+  if (parsed.op === "isnull") return row[parsed.col] === null || row[parsed.col] === undefined;
+  if (parsed.op === "in") return row[parsed.col] !== undefined && parsed.values.includes(String(row[parsed.col]));
+  if (parsed.op === "ilike") return typeof row[parsed.col] === "string" && likePatternToRegex(parsed.value).test(row[parsed.col]);
   const cmp = compareForOr(row[parsed.col], parsed.value);
   if (parsed.op === "eq") return cmp === 0;
   if (parsed.op === "lt") return cmp < 0;
@@ -79,9 +109,20 @@ export function createMockSupabase(tables) {
       let mode = "select"; // "select" | "delete" | "update"
       let updatePayload = null;
       let sortSpecs = [];
+      // Conversation List Pagination (total_count): { count: "exact", head:
+      // true } support, matching the precedent already established in
+      // api/_lib/__tests__/dashboardSummary.test.js's own local mock —
+      // count reflects the fully-filtered row set regardless of any
+      // subsequent .limit() (real Postgres head:true behavior); head:true
+      // returns null data (no rows transferred).
+      let wantCount = false;
+      let wantHead = false;
+      let preLimitCount = null;
 
       const builder = {
-        select() {
+        select(_col, opts) {
+          if (opts && opts.count) wantCount = true;
+          if (opts && opts.head) wantHead = true;
           return builder;
         },
         eq(col, val) {
@@ -93,24 +134,59 @@ export function createMockSupabase(tables) {
           filtered = filtered.filter((row) => set.has(row[col]));
           return builder;
         },
+        is(col, value) {
+          filtered =
+            value === null
+              ? filtered.filter((row) => row[col] === null || row[col] === undefined)
+              : filtered.filter((row) => row[col] === value);
+          return builder;
+        },
+        lt(col, value) {
+          filtered = filtered.filter((row) => compareForOr(row[col], value) < 0);
+          return builder;
+        },
+        gt(col, value) {
+          filtered = filtered.filter((row) => compareForOr(row[col], value) > 0);
+          return builder;
+        },
+        ilike(col, pattern) {
+          const regex = likePatternToRegex(pattern);
+          filtered = filtered.filter((row) => typeof row[col] === "string" && regex.test(row[col]));
+          return builder;
+        },
         or(filterStr) {
           const clauses = splitTopLevel(String(filterStr || ""), ",");
           filtered = filtered.filter((row) => clauses.some((clause) => evalOrClause(row, clause)));
           return builder;
         },
+        // Conversation List Pagination: null-aware, matching Postgres's own
+        // NULLS FIRST/LAST semantics (default nullsFirst = !ascending, same
+        // as real Postgres, unless the caller passes an explicit value —
+        // this codebase's new callers always do). A pre-existing
+        // single-column .order() call with no nulls in its fixture data is
+        // completely unaffected.
         order(col, opts) {
           const ascending = opts?.ascending !== false;
-          sortSpecs = [...sortSpecs, { col, ascending }];
+          const nullsFirst = opts?.nullsFirst !== undefined ? opts.nullsFirst : !ascending;
+          sortSpecs = [...sortSpecs, { col, ascending, nullsFirst }];
           filtered = [...filtered].sort((a, b) => {
             for (const spec of sortSpecs) {
-              if (a[spec.col] < b[spec.col]) return spec.ascending ? -1 : 1;
-              if (a[spec.col] > b[spec.col]) return spec.ascending ? 1 : -1;
+              const av = a[spec.col];
+              const bv = b[spec.col];
+              const aNull = av === null || av === undefined;
+              const bNull = bv === null || bv === undefined;
+              if (aNull && bNull) continue;
+              if (aNull) return spec.nullsFirst ? -1 : 1;
+              if (bNull) return spec.nullsFirst ? 1 : -1;
+              if (av < bv) return spec.ascending ? -1 : 1;
+              if (av > bv) return spec.ascending ? 1 : -1;
             }
             return 0;
           });
           return builder;
         },
         limit(n) {
+          preLimitCount = filtered.length;
           filtered = filtered.slice(0, n);
           return builder;
         },
@@ -155,7 +231,9 @@ export function createMockSupabase(tables) {
             for (const row of filtered) Object.assign(row, updatePayload);
             return Promise.resolve({ data: filtered, error: null }).then(resolve, reject);
           }
-          return Promise.resolve({ data: filtered, error: null }).then(resolve, reject);
+          const result = { data: wantHead ? null : filtered, error: null };
+          if (wantCount) result.count = preLimitCount !== null ? preLimitCount : filtered.length;
+          return Promise.resolve(result).then(resolve, reject);
         },
       };
 
