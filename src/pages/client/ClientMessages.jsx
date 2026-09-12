@@ -66,6 +66,40 @@ function getMessageText(msg = {}) {
   );
 }
 
+// Shallow equality for an array of flat row objects (a `messages` page or
+// a conversations-list page), used ONLY to decide whether a background
+// poll's result actually differs from what's already on screen — so a
+// no-op poll can skip its setState and the re-render it would otherwise
+// force. Compares every own key on each row (not a hand-picked subset),
+// so it can never silently miss a field that changed; one level deep for
+// the handful of small nested objects a conversation row can carry
+// (assigned_user / system_assigned_user / whatsapp_instance) — everything
+// else here is already a primitive. Never changes what's fetched or when;
+// purely a render-skip, not a data/freshness change.
+function rowsEqual(prev, next) {
+  if (prev === next) return true;
+  if (!Array.isArray(prev) || !Array.isArray(next) || prev.length !== next.length) return false;
+  for (let i = 0; i < prev.length; i += 1) {
+    const a = prev[i];
+    const b = next[i];
+    if (a === b) continue;
+    if (!a || !b) return false;
+    const aKeys = Object.keys(a);
+    if (aKeys.length !== Object.keys(b).length) return false;
+    for (const key of aKeys) {
+      const av = a[key];
+      const bv = b[key];
+      if (av === bv) continue;
+      if (av && bv && typeof av === "object" && typeof bv === "object") {
+        if (JSON.stringify(av) !== JSON.stringify(bv)) return false;
+        continue;
+      }
+      return false;
+    }
+  }
+  return true;
+}
+
 function directionLabel(direction, t) {
   if (["in", "inbound"].includes(direction)) return t("common.inbound");
   if (["out", "outbound"].includes(direction)) return t("common.outbound");
@@ -311,22 +345,61 @@ function ConversationCard({ conversationId, actorUserId, variant, open, onClose 
   const [savingNoteId, setSavingNoteId] = useState(null);
   const [deletingNoteId, setDeletingNoteId] = useState(null);
 
+  // Performance patch (frontend-only, read-only-safe): the drawer variant
+  // is only ever visible once the user explicitly opens it (the panel
+  // variant, xl+, is always visible while a conversation is selected and
+  // keeps fetching immediately, unchanged). Before this, BOTH variants
+  // fetched on every conversationId change regardless of `open`, so every
+  // conversation switch fired /api/conversation (card) + ?resource=notes
+  // TWICE — once from each variant — even though the drawer is auto-closed
+  // on every switch (see setCardOpen(false) below) and, on desktop, never
+  // shown at all. `loadedForRef` fetches the drawer's data lazily, exactly
+  // once per conversation, the first time it's actually opened — reopening
+  // it again without switching conversations does not refetch (matching
+  // today's behavior of never refetching on a pure open/close toggle), and
+  // any in-progress note draft/edit is preserved across a close+reopen
+  // exactly as before, since the component itself still stays mounted the
+  // whole time — only the network calls are skipped while hidden. Display
+  // state is still reset immediately on every conversationId change (even
+  // while hidden) so there is nothing stale to flash the instant it opens.
+  const loadedForRef = useRef(null);
+
   useEffect(() => {
     if (!conversationId || !actorUserId) {
       setCard(null);
       setNotes([]);
+      loadedForRef.current = null;
       return;
     }
+
+    if (loadedForRef.current === conversationId) {
+      // Already loaded (or currently loading) this conversation's data in
+      // this instance — an `open` toggle alone must never re-fetch or
+      // clear it.
+      return;
+    }
+
+    const isHiddenDrawer = variant === "drawer" && !open;
 
     let cancelled = false;
     setCard(null);
     setCardError("");
-    setCardLoading(true);
     setNotes([]);
     setNotesError("");
-    setNotesLoading(true);
     setNoteDraft("");
     setEditingNoteId(null);
+
+    if (isHiddenDrawer) {
+      setCardLoading(false);
+      setNotesLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    loadedForRef.current = conversationId;
+    setCardLoading(true);
+    setNotesLoading(true);
 
     const qs = `actor_user_id=${encodeURIComponent(actorUserId)}&conversation_id=${encodeURIComponent(conversationId)}`;
 
@@ -365,7 +438,7 @@ function ConversationCard({ conversationId, actorUserId, variant, open, onClose 
     return () => {
       cancelled = true;
     };
-  }, [conversationId, actorUserId]);
+  }, [conversationId, actorUserId, variant, open]);
 
   async function handleAddNote() {
     const body = noteDraft.trim();
@@ -769,7 +842,13 @@ export default function ClientMessages() {
       );
       setMultipleWhatsappNumbers(distinctWhatsappChannelKeys.size > 1);
 
-      setConversations(merged);
+      // Performance patch: skip the state update (and the full sidebar
+      // re-render it would force) when this poll's list is identical to
+      // what's already shown — the request itself still runs on exactly
+      // the same schedule as before; only a genuine no-op render is
+      // avoided. See rowsEqual's own comment for why this can't silently
+      // miss a real change.
+      setConversations((prev) => (rowsEqual(prev, merged) ? prev : merged));
       // Auto-selecting the first conversation here is safe on every
       // viewport, including mobile: selectedConversationId is purely
       // "which conversation's content is loaded" — it no longer also
@@ -820,7 +899,12 @@ export default function ClientMessages() {
 
       const data = payload.messages || [];
       const rows = data.map((m) => ({ ...m, message_text: getMessageText(m) }));
-      setConversationMessages(rows);
+      // Performance patch: same reasoning as fetchConversations above —
+      // skip the state update when this poll returned exactly what's
+      // already displayed, so the (currently unpaginated) message list
+      // doesn't re-render every 5s for no reason. The request/response
+      // themselves, and what's returned to callers below, are unchanged.
+      setConversationMessages((prev) => (rowsEqual(prev, rows) ? prev : rows));
       return rows;
     } catch (err) {
       console.error(err);
@@ -1389,7 +1473,15 @@ export default function ClientMessages() {
     }
   }, [visibleMessages, selectedConversationId]);
 
-  const selectedConversation = filteredConversations.find((c) => c.conversation_id === selectedConversationId) || null;
+  // Performance patch: this was a plain `const`, so the O(n) scan re-ran on
+  // EVERY render of this page (every poll tick, every composer keystroke,
+  // every sending/attachment state change) — not only when the selection
+  // or the list actually changed. Memoized: identical result, computed
+  // only when one of those two actually changes.
+  const selectedConversation = useMemo(
+    () => filteredConversations.find((c) => c.conversation_id === selectedConversationId) || null,
+    [filteredConversations, selectedConversationId]
+  );
   const conversationStatus = selectedConversation?.conversation_status || "active";
 
   // Human Takeover ownership (display/UX layer only — the authoritative
