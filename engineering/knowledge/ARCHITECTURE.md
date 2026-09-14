@@ -28,7 +28,7 @@ Platform → n8n webhook (`inbound/:platform/:channelKey`) → resolve `client_f
 Browser → Supabase REST API directly (via `src/lib/supabaseClient.js`). There is no custom backend API layer for reading/writing clients, plans, features, messages, leads, auto-replies, quick replies, etc. — see [[SUPABASE]] and [[DATABASE]].
 
 **WhatsApp number provisioning:**
-Client UI → `POST /api/create-whatsapp-instance` (Vercel serverless function, see [[BACKEND]]) → forwards to the n8n gateway webhook (`N8N_EVOLUTION_GATEWAY_URL`) → n8n calls the assigned Evolution API server and writes to `client_whatsapp`.
+Client UI → `POST /api/create-whatsapp-instance` (Vercel serverless function, see [[BACKEND]]) → forwards to the n8n gateway webhook (URL read from the current environment's own Supabase `system_settings.evolution_api_gateway_workflow_url` row, not an env var — DEV/PROD separation) → n8n calls the assigned Evolution API server and writes to `client_whatsapp`.
 
 ## Authentication & authorization model
 

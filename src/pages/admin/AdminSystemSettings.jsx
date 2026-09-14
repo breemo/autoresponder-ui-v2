@@ -7,11 +7,14 @@ const inputClass =
 
 const cardClass = "rounded-3xl border border-slate-200 bg-white shadow-sm";
 
-// Kept 1:1 with the api/system-settings.js allowlist. The two *_workflow_id
-// keys are the only ones consumed at runtime (parent workflows' Execute
-// Workflow node); every *_url key is administration/reference only.
+// Kept 1:1 with the api/system-settings.js allowlist. human_reply_webhook_url
+// and evolution_api_gateway_workflow_url are consumed at runtime directly by
+// Vercel serverless functions (Vercel -> n8n fetch); the two *_workflow_id
+// keys are consumed at runtime by n8n itself (parent workflows' Execute
+// Workflow node); every other *_url key is administration/reference only.
 const EMPTY = {
   human_reply_webhook_url: "",
+  evolution_api_gateway_workflow_url: "",
   ai_agent_core_workflow_url: "",
   ai_agent_core_workflow_id: "",
   inbound_media_core_workflow_url: "",
@@ -159,6 +162,25 @@ export default function AdminSystemSettings() {
             <p className="mt-1 text-xs text-slate-500">
               رابط n8n Human Reply workflow المستخدم عند إرسال رد الموظف. مطلوب — رابط واحد
               مشترك بين جميع العملاء (السلوك الحالي دون تغيير).
+            </p>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-bold">
+              Evolution API Gateway — Workflow URL
+            </label>
+            <input
+              className={inputClass}
+              value={settings.evolution_api_gateway_workflow_url}
+              onChange={(e) => setField("evolution_api_gateway_workflow_url", e.target.value)}
+              placeholder="https://n8n.../webhook/evolution-api-gateway"
+              dir="ltr"
+              disabled={busy}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              رابط n8n Evolution API Gateway workflow المستخدم عند إنشاء/ربط/مزامنة/حذف أرقام
+              واتساب. لكل بيئة (Production / Development) قيمة خاصة بها في قاعدة بياناتها —
+              لا يوجد رابط مشترك بين البيئتين.
             </p>
           </div>
 

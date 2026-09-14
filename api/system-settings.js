@@ -10,6 +10,14 @@ import { computeAdminOverview } from "./_lib/adminOverview.js";
 //
 //   human_reply_webhook_url            – URL. Consumed by api/_lib/humanReply.js
 //                                        (Vercel -> n8n). UNCHANGED behavior.
+//   evolution_api_gateway_workflow_url – URL. Consumed by
+//                                        api/create-whatsapp-instance.js
+//                                        (Vercel -> n8n), the same
+//                                        environment-scoped Supabase
+//                                        system_settings row pattern as
+//                                        human_reply_webhook_url — DEV and
+//                                        PROD each read their own project's
+//                                        row, no env-var/if-else needed.
 //   ai_agent_core_workflow_id          – n8n workflow ID. Consumed by the parent
 //                                        workflows' Execute Workflow node
 //                                        (resourceLocator "id" mode expression).
@@ -32,7 +40,7 @@ import { computeAdminOverview } from "./_lib/adminOverview.js";
 // api/_lib/adminOverview.js. (Folded in here rather than a new file — the
 // deploy is already at the 12-Serverless-Function Hobby cap, and this
 // endpoint is already the platform-admin one.)
-const WEBHOOK_KEYS = new Set(["human_reply_webhook_url"]);
+const WEBHOOK_KEYS = new Set(["human_reply_webhook_url", "evolution_api_gateway_workflow_url"]);
 const ID_KEYS = new Set(["ai_agent_core_workflow_id", "inbound_media_core_workflow_id"]);
 const URL_KEYS = new Set(["ai_agent_core_workflow_url", "inbound_media_core_workflow_url"]);
 

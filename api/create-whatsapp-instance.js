@@ -3,6 +3,7 @@ import { resolveActingMembership, actorHasPermission } from "./_lib/clientAuthz.
 import { PERMISSIONS } from "../src/lib/permissions.js";
 
 const WHATSAPP_FEATURE_SLUG = "whatsapp_evolution";
+const SETTING_KEY = "evolution_api_gateway_workflow_url";
 
 // Proxies WhatsApp Evolution instance management (create/connect/sync/delete)
 // to the n8n gateway workflow. Historically this was an unauthenticated thin
@@ -116,9 +117,29 @@ export default async function handler(req, res) {
     }
   }
 
-  try {
-    const webhookUrl = process.env.N8N_EVOLUTION_GATEWAY_URL;
+  // DEV/PROD separation: read from THIS environment's own Supabase
+  // system_settings table (never process.env) — same pattern as
+  // api/_lib/humanReply.js's SETTING_KEY lookup. The web app's Supabase
+  // client is already environment-scoped (DEV web -> DEV Supabase, PROD
+  // web -> PROD Supabase), so no env var, no if/else, and the same code
+  // path naturally calls each environment's own Evolution API Gateway
+  // workflow.
+  const { data: setting, error: settingError } = await supabase
+    .from("system_settings")
+    .select("value")
+    .eq("key", SETTING_KEY)
+    .maybeSingle();
 
+  const webhookUrl = setting?.value;
+
+  if (settingError || !webhookUrl) {
+    return res.status(500).json({
+      success: false,
+      message: "Evolution API Gateway workflow URL is not configured",
+    });
+  }
+
+  try {
     const response = await fetch(webhookUrl, {
       method: "POST",
       headers: {

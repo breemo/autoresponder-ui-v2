@@ -14,7 +14,7 @@
 ```
 - Build tool: Vite (`vite build`, configured via `vite.config.js` with `outDir: 'dist'` and `base: './'` — the comment in that file notes `base: './'` is specifically needed to fix an asset-path issue on Vercel).
 - `api/create-whatsapp-instance.js` is auto-deployed as a Vercel serverless function via Vercel's file-system convention for the `api/` directory (see [[BACKEND]]).
-- Required env vars referenced in code: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (frontend, see [[SUPABASE]]), `VITE_WEBHOOK_BASE_URL` (frontend, used to build integration webhook URLs shown to clients/admins), `N8N_EVOLUTION_GATEWAY_URL` (serverless function, see [[BACKEND]]). No values are stored in this repo, as expected.
+- Required env vars referenced in code: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (frontend, see [[SUPABASE]]), `VITE_WEBHOOK_BASE_URL` (frontend, used to build integration webhook URLs shown to clients/admins). No values are stored in this repo, as expected. The Evolution API Gateway URL is no longer an env var — it's the `evolution_api_gateway_workflow_url` row in each environment's own Supabase `system_settings` table (DEV/PROD separation; see [[BACKEND]]).
 
 ## Package manager ambiguity
 
