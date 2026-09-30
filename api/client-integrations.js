@@ -1,3 +1,4 @@
+import { handleClientFacebook } from "./_lib/clientFacebook.js";
 import { getSupabaseServerClient } from "./_lib/supabaseServer.js";
 import { resolveActingMembership, actorHasPermission } from "./_lib/clientAuthz.js";
 import { PERMISSIONS } from "../src/lib/permissions.js";
@@ -137,7 +138,24 @@ async function checkConnectionLimit(supabase, planId, featureId, currentCount) {
   return { allowed: true };
 }
 
+// Vercel Hobby Function-count consolidation: ?resource=facebook dispatches
+// to the former top-level api/client-facebook.js (Multi-Account Stage 2B
+// Facebook Page CRUD, now api/_lib/clientFacebook.js) — unchanged behavior,
+// its own GET+POST handling and its own authorization. Requests without
+// ?resource keep this file's existing behavior exactly.
+//   GET  /api/client-integrations?resource=facebook&actor_user_id=
+//   POST /api/client-integrations?resource=facebook { action, actor_user_id, ... }
+// Pure, synchronous routing decision — unit-testable without Supabase.
+export function resolveIntegrationsResource(req) {
+  if (req.query?.resource === "facebook") return "facebook";
+  return null;
+}
+
 export default async function handler(req, res) {
+  if (resolveIntegrationsResource(req) === "facebook") {
+    return handleClientFacebook(req, res);
+  }
+
   if (req.method !== "POST") {
     return res.status(405).json({ success: false, message: "Method not allowed" });
   }

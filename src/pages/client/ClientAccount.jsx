@@ -79,7 +79,7 @@ export default function ClientAccount() {
     setSaving(true);
 
     try {
-      const response = await fetch("/api/change-password", {
+      const response = await fetch("/api/client-router?resource=password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

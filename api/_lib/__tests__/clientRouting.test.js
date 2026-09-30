@@ -22,6 +22,10 @@ test("?resource=locations routes to api/_lib/clientLocations.js", () => {
   assert.equal(resolveClientRoute({ query: { resource: "locations", actor_user_id: "u1" } }), "locations");
 });
 
+test("?resource=password routes to the former api/change-password.js logic", () => {
+  assert.equal(resolveClientRoute({ query: { resource: "password" } }), "password");
+});
+
 test("an unrecognized resource returns a controlled null (handler responds 400 'Unknown resource')", () => {
   assert.equal(resolveClientRoute({ query: { resource: "integrations" } }), null);
   assert.equal(resolveClientRoute({ query: { resource: "not_a_real_resource" } }), null);

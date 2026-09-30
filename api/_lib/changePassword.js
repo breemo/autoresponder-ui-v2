@@ -1,18 +1,24 @@
-import { getSupabaseServerClient } from "./_lib/supabaseServer.js";
+import { getSupabaseServerClient } from "./supabaseServer.js";
 
 const MIN_PASSWORD_LENGTH = 8;
 
 // Self-service password change — used by ClientAccount.jsx, including the
-// mandatory first-login flow (must_change_password). Kept as a separate
-// endpoint from api/client-users.js because it operates on the caller's
-// OWN row only and re-verifies their current password, rather than relying
-// on team_management authorization like the team-management actions do.
+// mandatory first-login flow (must_change_password). Kept separate from
+// api/_lib/clientUsers.js's team-management actions because it operates on
+// the caller's OWN row only and re-verifies their current password, rather
+// than relying on team_management authorization.
 //
 // This re-verification is a real credential check (unlike actor_user_id
 // alone elsewhere in this app) — the caller must prove they know the
 // current password before it's replaced, regardless of who they claim to
 // be in the request body.
-export default async function handler(req, res) {
+//
+// Vercel Hobby Function-count consolidation: this file was formerly the
+// top-level api/change-password.js, now dispatched from api/client-router.js
+// (?resource=password) instead of being its own deployed Vercel Function.
+// Behavior, validation, and every response are completely unchanged —
+// only the public URL changed (ClientAccount.jsx updated accordingly).
+export async function handleChangePassword(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ success: false, message: "Method not allowed" });
   }
