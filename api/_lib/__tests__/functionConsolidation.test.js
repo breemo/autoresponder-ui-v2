@@ -140,9 +140,10 @@ test("no source code or n8n workflow calls the removed endpoints", () => {
   assert.deepEqual(hits, []);
 });
 
-test("the removed top-level functions are gone and the deploy stays under the 12-function Hobby cap", () => {
+test("the removed top-level functions are gone and the deploy stays within the 12-function Hobby cap", () => {
   const fns = fs.readdirSync(path.join(ROOT, "api")).filter((n) => n.endsWith(".js"));
   assert.ok(!fns.includes("change-password.js"));
   assert.ok(!fns.includes("client-facebook.js"));
-  assert.ok(fns.length <= 11, `expected <= 11 top-level functions (room for api/widget.js), got ${fns.length}: ${fns.join(", ")}`);
+  assert.ok(fns.includes("widget.js"), "Website Chat api/widget.js uses the freed slot");
+  assert.ok(fns.length <= 12, `expected <= 12 top-level functions (Vercel Hobby cap), got ${fns.length}: ${fns.join(", ")}`);
 });

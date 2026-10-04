@@ -3,6 +3,11 @@ import { resolveActingMembership, actorHasPermission } from "./clientAuthz.js";
 import { PERMISSIONS } from "../../src/lib/permissions.js";
 import { loadConversationGate, humanTakeoverBlock } from "./conversationOwnership.js";
 import {
+  resolveWebsiteChatReplyTarget,
+  buildWebsiteChatHumanReplyRow,
+  persistWebsiteChatHumanReply,
+} from "./websiteChatHumanReply.js";
+import {
   MESSAGE_TYPES,
   MEDIA_MESSAGE_TYPES,
   MEDIA_BUCKET,
@@ -147,6 +152,33 @@ export async function handleHumanReply(req, res) {
   const block = humanTakeoverBlock(gate, actor.user.id);
   if (block) {
     return res.status(403).json({ success: false, message: block.message, code: block.code });
+  }
+
+  // Website Chat: no external provider — persist the reply directly; the
+  // visitor's widget picks it up by polling. Other platforms continue to
+  // the n8n Human Reply workflow below, unchanged.
+  const websiteChat = await resolveWebsiteChatReplyTarget(supabase, actor.membership.client_id, conversation_id);
+  if (websiteChat.isWebsiteChat) {
+    if (isMediaMessage) {
+      return res.status(400).json({ success: false, message: "Website Chat supports text replies only", code: "MEDIA_NOT_SUPPORTED" });
+    }
+    if (!websiteChat.senderId) {
+      return res.status(500).json({ success: false, message: "فشل إرسال الرد" });
+    }
+    const saved = await persistWebsiteChatHumanReply(
+      supabase,
+      buildWebsiteChatHumanReplyRow({
+        clientId: actor.membership.client_id,
+        conversationId: conversation_id,
+        senderId: websiteChat.senderId,
+        message,
+        sentByUserId: actor.user.id,
+      })
+    );
+    if (!saved) {
+      return res.status(500).json({ success: false, message: "فشل إرسال الرد" });
+    }
+    return res.status(200).json({ success: true });
   }
 
   // No subscription/entitlement check here — see the architecture note

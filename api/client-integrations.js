@@ -1,4 +1,6 @@
 import { handleClientFacebook } from "./_lib/clientFacebook.js";
+import { handleWebsiteChatSettings, isWebsiteChatFeatureId } from "./_lib/websiteChatAccounts.js";
+import { createWebsiteChatRepo } from "./_lib/websiteChatRepo.js";
 import { getSupabaseServerClient } from "./_lib/supabaseServer.js";
 import { resolveActingMembership, actorHasPermission } from "./_lib/clientAuthz.js";
 import { PERMISSIONS } from "../src/lib/permissions.js";
@@ -145,16 +147,48 @@ async function checkConnectionLimit(supabase, planId, featureId, currentCount) {
 // ?resource keep this file's existing behavior exactly.
 //   GET  /api/client-integrations?resource=facebook&actor_user_id=
 //   POST /api/client-integrations?resource=facebook { action, actor_user_id, ... }
+// Website Chat (Phase 2 foundation): ?resource=website_chat dispatches to
+// api/_lib/websiteChatAccounts.js (multi-site CRUD, server-generated keys).
+// The generic add/set_active/save_config actions below refuse the
+// website_chat feature so its server-owned keys can't be overwritten.
 // Pure, synchronous routing decision — unit-testable without Supabase.
 export function resolveIntegrationsResource(req) {
   if (req.query?.resource === "facebook") return "facebook";
+  if (req.query?.resource === "website_chat") return "website_chat";
   return null;
 }
 
+// Returns true when it has already responded (request refused).
+async function refuseGenericWebsiteChatMutation(req, res) {
+  const featureId = req.body?.feature_id;
+  if (req.method !== "POST" || !featureId) return false;
+  let supabase;
+  try {
+    supabase = getSupabaseServerClient();
+  } catch {
+    return false; // the existing path answers "Server is not configured"
+  }
+  try {
+    if (await isWebsiteChatFeatureId(createWebsiteChatRepo(supabase), featureId)) {
+      res.status(400).json({ success: false, message: "Website Chat is managed via resource=website_chat" });
+      return true;
+    }
+    return false;
+  } catch {
+    res.status(500).json({ success: false, message: "Failed to verify integration type" });
+    return true;
+  }
+}
+
 export default async function handler(req, res) {
-  if (resolveIntegrationsResource(req) === "facebook") {
+  const resource = resolveIntegrationsResource(req);
+  if (resource === "facebook") {
     return handleClientFacebook(req, res);
   }
+  if (resource === "website_chat") {
+    return handleWebsiteChatSettings(req, res);
+  }
+  if (await refuseGenericWebsiteChatMutation(req, res)) return;
 
   if (req.method !== "POST") {
     return res.status(405).json({ success: false, message: "Method not allowed" });
