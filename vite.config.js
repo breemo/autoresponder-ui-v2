@@ -56,11 +56,17 @@ export default defineConfig({
         // manifest. Deliberately does NOT include any runtime-fetched data;
         // this only ever matches files vite build actually emits into dist/.
         globPatterns: ['**/*.{js,css,html,svg,png,woff,woff2,ico}'],
+        // Website Chat widget (public/widget/*) is embedded on customer
+        // sites and must always be fetched fresh from the network — never
+        // precached by the dashboard's service worker.
+        globIgnores: ['widget/**'],
         // A hard navigation to /api/* should never happen (those are
         // fetch()-only endpoints, never link/navigation targets), but this
         // keeps the SPA shell's navigation fallback from ever being able to
         // intercept one even in that unexpected case.
-        navigateFallbackDenylist: [/^\/api\//],
+        // /widget/* (Website Chat iframe page) must never fall back to the
+        // SPA shell either.
+        navigateFallbackDenylist: [/^\/api\//, /^\/widget\//],
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: true,

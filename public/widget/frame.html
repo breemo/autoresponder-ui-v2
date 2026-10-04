@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'"
+    />
+    <title>Chat</title>
+    <link rel="stylesheet" href="./frame.css" />
+  </head>
+  <body>
+    <div class="wc" id="wc-root" data-state="loading">
+      <header class="wc-header">
+        <span class="wc-title" id="wc-title"></span>
+        <button type="button" class="wc-close" id="wc-close" aria-label="Close">&times;</button>
+      </header>
+      <div class="wc-banner" id="wc-banner" role="status" hidden></div>
+      <main class="wc-messages" id="wc-messages" aria-live="polite"></main>
+      <div class="wc-notice" id="wc-notice" role="alert" hidden></div>
+      <form class="wc-composer" id="wc-composer" autocomplete="off">
+        <textarea id="wc-input" class="wc-input" rows="1" maxlength="2000" disabled></textarea>
+        <button type="submit" id="wc-send" class="wc-send" disabled></button>
+      </form>
+    </div>
+    <script type="module" src="./frame.js"></script>
+  </body>
+</html>

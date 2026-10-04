@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Website Chat — demo host page</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 40px; color: #0f172a; max-width: 720px; }
+      code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; }
+      .warn { color: #b45309; }
+    </style>
+  </head>
+  <body>
+    <h1>Website Chat — demo host page</h1>
+    <p>
+      Manual test page. It loads the <strong>same</strong> <code>/widget/embed.js</code> a customer embeds.
+      Usage: <code>/widget/demo.html?key=wcpk_…&amp;lang=ar|en&amp;position=left|right</code>
+    </p>
+    <p>
+      The site's <em>allowed domains</em> must include this page's host (<code id="host"></code>), otherwise the
+      widget correctly reports "not available".
+    </p>
+    <p id="status" class="warn"></p>
+    <script>
+      (function () {
+        document.getElementById("host").textContent = location.hostname;
+        var q = new URLSearchParams(location.search);
+        var key = q.get("key") || "";
+        if (!/^wcpk_[A-Za-z0-9_-]{32}$/.test(key)) {
+          document.getElementById("status").textContent = "Add ?key=<public widget key> to the URL.";
+          return;
+        }
+        // Exactly what a customer snippet does: a <script> tag pointing at embed.js.
+        var s = document.createElement("script");
+        s.src = "/widget/embed.js";
+        s.async = true;
+        s.setAttribute("data-key", key);
+        if (q.get("lang")) s.setAttribute("data-lang", q.get("lang"));
+        if (q.get("position")) s.setAttribute("data-position", q.get("position"));
+        document.body.appendChild(s);
+      })();
+    </script>
+  </body>
+</html>
