@@ -697,34 +697,52 @@ export async function applyAgentActionV3(supabase, { conversationId, agentAction
     }
   };
 
-  if (action === "handover") {
-    const r = await handleRequestHandover(supabase, { conversationId: cid, reason: p.reason });
-    if (!r.ok) return { ok: true, action: "handover", executed: false, error: r.code, conversation_status: prevStatus, current_step: prevStep };
-    return { ok: true, action: "handover", executed: true, conversation_status: "waiting_human", current_step: prevStep };
-  }
-
-  if (action === "save_contact") {
+  // Persist whatever name/phone the Agent extracted (best effort). An
+  // invalid phone falls back to saving the name alone. Never throws.
+  const saveContactParams = async () => {
     const newName = typeof p.name === "string" && p.name.trim() ? p.name : null;
     const newPhone = typeof p.phone === "string" && p.phone.trim() ? p.phone : null;
-
     let r = { ok: false, code: "nothing_to_save" };
     let phoneInvalid = false;
     if (newName || newPhone) {
-      r = await handleUpsertLead(supabase, { conversationId: cid, name: newName, phone: newPhone });
-      if (!r.ok && r.code === "invalid_phone") {
-        phoneInvalid = true;
-        r = newName ? await handleUpsertLead(supabase, { conversationId: cid, name: newName }) : { ok: false, code: "invalid_phone" };
+      try {
+        r = await handleUpsertLead(supabase, { conversationId: cid, name: newName, phone: newPhone });
+        if (!r.ok && r.code === "invalid_phone") {
+          phoneInvalid = true;
+          r = newName ? await handleUpsertLead(supabase, { conversationId: cid, name: newName }) : { ok: false, code: "invalid_phone" };
+        }
+      } catch {
+        r = { ok: false, code: "lead_write_failed" };
       }
     }
-
     const savedNow = r.ok && r.action === "lead_saved";
-    const capturedNow = savedNow && r.captured === true;
+    return { r, savedNow, capturedNow: savedNow && r.captured === true, phoneInvalid };
+  };
 
-    // No new name/phone this turn -> fall back to what an EARLIER turn
-    // already captured for this CUSTOMER (the Conversation V2 contact_id,
-    // across all of their conversations — not just this one). Read-only; it
-    // only decides whether a "have the team contact me" ask has usable
-    // contact data to hand over on. Never manufactures data.
+  // SAVE CONTACT != HANDOVER. "handover" is the ONLY V3 action that moves a
+  // conversation to waiting_human. When the same customer message also
+  // carries contact details, the Agent includes name/phone here and they
+  // are saved FIRST — but a lead-save problem (invalid phone, write
+  // failure) never blocks the handover the customer asked for.
+  if (action === "handover") {
+    const saved = await saveContactParams();
+    const leadInfo = { lead_saved: saved.savedNow, phone_invalid: saved.phoneInvalid };
+    const stepAfterSave = saved.capturedNow ? "contact_captured" : prevStep;
+    const r = await handleRequestHandover(supabase, { conversationId: cid, reason: p.reason });
+    if (!r.ok) return { ok: true, action: "handover", executed: false, error: r.code, ...leadInfo, conversation_status: prevStatus, current_step: stepAfterSave };
+    return { ok: true, action: "handover", executed: true, ...leadInfo, conversation_status: "waiting_human", current_step: stepAfterSave };
+  }
+
+  // save_contact persists contact data ONLY. It never hands over (a stale
+  // `handover_after_save` from an older output is ignored); the AI keeps
+  // the conversation.
+  if (action === "save_contact") {
+    const { r, savedNow, capturedNow, phoneInvalid } = await saveContactParams();
+
+    // No new name/phone this turn -> report what an EARLIER turn already
+    // captured for this CUSTOMER (the Conversation V2 contact_id, across
+    // all of their conversations). Read-only, informational; never
+    // manufactures data and never changes the lifecycle.
     let contact = savedNow ? r.lead || null : null;
     if (!contact) {
       const onFile = await loadConversationLead(supabase, clientId, contactId);
@@ -732,27 +750,15 @@ export async function applyAgentActionV3(supabase, { conversationId, agentAction
     }
     const haveUsableContact = !!(contact && (contact.name || contact.phone));
 
-    // Optional chained handover — the customer asked for a person to follow
-    // up AND we have usable contact data (saved now, or already on file).
-    // Reuses the existing handover lifecycle (handleRequestHandover ->
-    // waiting_human); no second mechanism. With no usable contact data
-    // anywhere there is nothing to hand over on, and we do NOT report a save.
-    let handedOver = false;
-    if (haveUsableContact && p.handover_after_save === true) {
-      const h = await handleRequestHandover(supabase, { conversationId: cid, reason: p.reason });
-      handedOver = h.ok === true;
-    }
-
     return {
       ok: true,
       action: "save_contact",
-      executed: savedNow || handedOver,
+      executed: savedNow,
       lead_saved: savedNow,
       contact_on_file: haveUsableContact && !savedNow,
       phone_invalid: phoneInvalid,
       contact: contact || null,
-      handover_after_save: handedOver,
-      conversation_status: handedOver ? "waiting_human" : prevStatus,
+      conversation_status: prevStatus,
       current_step: capturedNow ? "contact_captured" : prevStep,
     };
   }

@@ -42,7 +42,7 @@ test("actions are described by MEANING, with no keyword/phrase lists", () => {
   const s = buildSystemMessageV3(ctx());
   assert.match(s, /"handover" — the customer clearly asks for a human/i);
   assert.match(s, /"save_contact" — the customer gives their name and\/or phone/i);
-  assert.match(s, /INCLUDING when they ask you to contact them, call them back/i);
+  assert.match(s, /wants a person or the team to contact them, call them back or follow up with them/i);
   assert.match(s, /NEVER tell the customer you cannot contact them/i);
   assert.match(s, /"request_confirmation" — the customer signals the conversation is over/i);
   assert.match(s, /"close_conversation" — ONLY when the Conversation state below says you already asked/i);
@@ -168,4 +168,33 @@ test("messages: transcript bounded to the last 6 turns", () => {
   for (let i = 1; i <= 10; i++) history.push({ role: "user", content: `q${i}` }, { role: "assistant", content: `a${i}` });
   const messages = buildPromptMessagesV3(ctx({ conversation: { history, current_message_text: "now" } }));
   assert.equal(messages.slice(1, -1).length, 6);
+});
+
+// ---- SAVE CONTACT != HANDOVER (D4 Step C Smoke Finding #3) ------------
+const actionLine = (s, action) => s.split("\n").find((l) => l.startsWith(`- "${action}" —`)) || "";
+
+test("save_contact means SAVE ONLY: no handover, no promised team follow-up", () => {
+  const line = actionLine(buildSystemMessageV3(ctx()), "save_contact");
+  assert.ok(line);
+  assert.match(line, /ONLY saves their details/i);
+  assert.match(line, /does NOT pass the conversation to a person — you keep helping them/i);
+  assert.match(line, /continue the conversation/i);
+  assert.match(line, /Do NOT say a teammate will contact them just because they shared their details/i);
+  assert.doesNotMatch(line, /the team will reach out/i);
+  assert.match(line, /use "handover" instead \(with their name\/phone\)/i);
+});
+
+test("handover is the only action to a person and carries name / phone / reason", () => {
+  const line = actionLine(buildSystemMessageV3(ctx()), "handover");
+  assert.match(line, /This is the ONLY action that passes the conversation to a person/i);
+  assert.match(line, /"reason"/);
+  assert.match(line, /"name"\?/);
+  assert.match(line, /"phone"\?/);
+  assert.match(line, /saved before the handover/i);
+});
+
+test("the V3 output contract no longer mentions handover_after_save", () => {
+  const s = buildSystemMessageV3(ctx());
+  assert.doesNotMatch(s, /handover_after_save/);
+  assert.match(s, /"action_params" carries only the keys the chosen action needs \("name", "phone", "reason"\)/);
 });

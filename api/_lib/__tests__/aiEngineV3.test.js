@@ -75,6 +75,7 @@ function tables(overrides = {}) {
 const VALIDATE_CORPUS = [
   '{"action":"reply","reply":"أهلاً وسهلاً","intent":"greeting"}',
   '{"action":"handover","reply":"رح أحولك لموظف","action_params":{"reason":"شكوى"}}',
+  '{"action":"handover","reply":"تمام، حدا من الفريق رح يتواصل معك","action_params":{"name":"إبراهيم","phone":"0599001852","reason":"بدو حدا يتصل فيه"}}',
   '{"action":"save_contact","reply":"سجلت رقمك","action_params":{"name":"علي","phone":"0599123456"}}',
   '{"action":"save_contact","reply":"سجّلت بياناتك والفريق رح يتواصل معك","action_params":{"name":"إبراهيم","phone":"0599001852","handover_after_save":true}}',
   '{"action":"reply","reply":"تمام","action_params":{"handover_after_save":true}}',
@@ -88,9 +89,19 @@ const VALIDATE_CORPUS = [
   "",
 ];
 
+// The live n8n node still passes a stale save_contact `handover_after_save`
+// through (not changed — the DEV runtime export is the source of truth);
+// the module drops it and applyAgentActionV3 ignores it (SAVE CONTACT !=
+// HANDOVER). Everything else must match exactly.
+function withoutStaleFlag(result) {
+  const { handover_after_save, ...params } = result.action_params || {};
+  void handover_after_save;
+  return { ...result, action_params: params };
+}
+
 test("V3 core Validate node produces the same result as validateAgentResultV3 for every corpus case", () => {
   for (const raw of VALIDATE_CORPUS) {
-    const fromNode = runValidateNode(raw, "FB");
+    const fromNode = withoutStaleFlag(runValidateNode(raw, "FB"));
     const fromModule = validateAgentResultV3(raw, { fallbackReply: "FB" }).result;
     assert.deepEqual(fromNode, fromModule, `mismatch for: ${JSON.stringify(raw)}`);
   }
@@ -138,50 +149,103 @@ test("action save_contact with a bad phone -> name still saved, phone_invalid fl
   assert.equal(t.leads[0].name, "سميرة");
 });
 
-test("validateAgentResultV3: handover_after_save survives ONLY for save_contact", () => {
-  const on = validateAgentResultV3('{"action":"save_contact","reply":"ok","action_params":{"name":"إبراهيم","phone":"0599001852","handover_after_save":true}}').result;
-  assert.equal(on.action_params.handover_after_save, true);
-  const off = validateAgentResultV3('{"action":"save_contact","reply":"ok","action_params":{"name":"إبراهيم","phone":"0599001852","handover_after_save":false}}').result;
-  assert.equal("handover_after_save" in off.action_params, false);
-  const wrongAction = validateAgentResultV3('{"action":"reply","reply":"ok","action_params":{"handover_after_save":true}}').result;
-  assert.equal("handover_after_save" in wrongAction.action_params, false);
+// ---- SAVE CONTACT != HANDOVER (Smoke Finding #3) ---------------------
+// save_contact persists contact data ONLY; "handover" is the only action
+// that moves a conversation to waiting_human, optionally saving name/phone
+// first. A stale handover_after_save never hands over.
+
+test("validateAgentResultV3: handover_after_save is dropped for every action", () => {
+  for (const action of ["save_contact", "reply", "handover"]) {
+    const r = validateAgentResultV3(`{"action":"${action}","reply":"ok","action_params":{"name":"إبراهيم","phone":"0599001852","handover_after_save":true}}`).result;
+    assert.equal("handover_after_save" in r.action_params, false, action);
+  }
 });
 
-test("save_contact + handover_after_save:true -> lead saved, THEN existing human handover (waiting_human)", async () => {
+test("validateAgentResultV3: handover keeps name / phone / reason", () => {
+  const r = validateAgentResultV3('{"action":"handover","reply":"ok","action_params":{"name":"إبراهيم","phone":"0599001852","reason":"اتصال","junk":"x"}}').result;
+  assert.equal(r.action, "handover");
+  assert.deepEqual(r.action_params, { name: "إبراهيم", phone: "0599001852", reason: "اتصال" });
+});
+
+test("save_contact {name, phone} -> lead saved, conversation stays active (no handover)", async () => {
+  const t = tables();
+  const r = await applyAgentActionV3(createMockSupabase(t), { conversationId: "conv-A", agentAction: "save_contact", agentActionParams: { name: "إبراهيم", phone: "0599001852" } });
+  assert.equal(r.action, "save_contact");
+  assert.equal(r.executed, true);
+  assert.equal(r.lead_saved, true);
+  assert.equal(t.leads.length, 1);
+  assert.equal(r.conversation_status, "active");
+  assert.equal(r.current_step, "contact_captured");
+  assert.equal(t.conversations[0].conversation_status, "active");
+  assert.equal(t.conversation_state[0].conversation_status, "active");
+});
+
+test("save_contact with a STALE handover_after_save:true -> lead saved, still active, no handover", async () => {
   const t = tables();
   const r = await applyAgentActionV3(createMockSupabase(t), {
     conversationId: "conv-A",
     agentAction: "save_contact",
     agentActionParams: { name: "إبراهيم", phone: "0599001852", handover_after_save: true },
   });
-  assert.equal(r.action, "save_contact");
+  assert.equal(r.lead_saved, true);
+  assert.equal("handover_after_save" in r, false);
+  assert.equal(r.conversation_status, "active");
+  assert.equal(t.conversations[0].conversation_status, "active");
+  assert.equal(t.messages.some((m) => m.intent === "human_request"), false);
+});
+
+test("save_contact with NO new data (contact already on file, stale flag) -> nothing saved, no handover", async () => {
+  const t = tables();
+  t.leads.push({ client_id: "client-A", conversation_id: "conv-A", sender_id: "s", name: "إبراهيم", phone: "0599001852" });
+  const r = await applyAgentActionV3(createMockSupabase(t), { conversationId: "conv-A", agentAction: "save_contact", agentActionParams: { handover_after_save: true } });
+  assert.equal(r.lead_saved, false);
+  assert.equal(r.executed, false);
+  assert.equal(r.contact_on_file, true);
+  assert.equal(r.conversation_status, "active");
+  assert.equal(t.conversations[0].conversation_status, "active");
+  assert.equal(t.leads.length, 1);
+});
+
+test("save_contact with no data anywhere -> no false 'saved', stays active", async () => {
+  const t = tables();
+  const r = await applyAgentActionV3(createMockSupabase(t), { conversationId: "conv-A", agentAction: "save_contact", agentActionParams: {} });
+  assert.equal(r.lead_saved, false);
+  assert.equal(r.executed, false);
+  assert.equal(r.contact, null);
+  assert.equal(r.conversation_status, "active");
+  assert.equal(t.leads.length, 0);
+});
+
+test("handover {name, phone, reason} -> contact saved FIRST, then waiting_human", async () => {
+  const t = tables();
+  const r = await applyAgentActionV3(createMockSupabase(t), {
+    conversationId: "conv-A",
+    agentAction: "handover",
+    agentActionParams: { name: "إبراهيم", phone: "0599001852", reason: "بدو حدا من الفريق يتواصل معه" },
+  });
+  assert.equal(r.action, "handover");
   assert.equal(r.executed, true);
-  assert.equal(r.handover_after_save, true);
-  // lead persisted FIRST
+  assert.equal(r.lead_saved, true);
   assert.equal(t.leads.length, 1);
   assert.equal(t.leads[0].phone, "0599001852");
-  // then the existing handover lifecycle: same state the `handover` action produces
   assert.equal(r.conversation_status, "waiting_human");
   assert.equal(r.current_step, "contact_captured");
   assert.equal(t.conversations[0].conversation_status, "waiting_human");
   assert.equal(t.conversations[0].current_step, "contact_captured");
 });
 
-test("save_contact + handover_after_save:false -> lead saved, conversation stays with the AI", async () => {
+test("handover with an INVALID phone -> name saved, phone_invalid flagged, handover still happens", async () => {
   const t = tables();
-  const r = await applyAgentActionV3(createMockSupabase(t), {
-    conversationId: "conv-A",
-    agentAction: "save_contact",
-    agentActionParams: { name: "إبراهيم", phone: "0599001852", handover_after_save: false },
-  });
-  assert.equal(r.handover_after_save, false);
-  assert.equal(t.leads.length, 1);
-  assert.equal(r.conversation_status, "active");
-  assert.equal(r.current_step, "contact_captured");
-  assert.equal(t.conversations[0].conversation_status, "active");
+  const r = await applyAgentActionV3(createMockSupabase(t), { conversationId: "conv-A", agentAction: "handover", agentActionParams: { name: "سميرة", phone: "abc", reason: "اتصال" } });
+  assert.equal(r.phone_invalid, true);
+  assert.equal(r.lead_saved, true);
+  assert.equal(t.leads[0].name, "سميرة");
+  assert.equal(r.executed, true);
+  assert.equal(r.conversation_status, "waiting_human");
+  assert.equal(t.conversations[0].conversation_status, "waiting_human");
 });
 
-test("save_contact + handover_after_save:true but lead persistence FAILS -> NO handover, stays active", async () => {
+test("handover when the lead save FAILS -> handover still happens", async () => {
   const t = tables();
   const base = createMockSupabase(t);
   const supabase = {
@@ -191,151 +255,74 @@ test("save_contact + handover_after_save:true but lead persistence FAILS -> NO h
       return b;
     },
   };
-  const r = await applyAgentActionV3(supabase, {
-    conversationId: "conv-A",
-    agentAction: "save_contact",
-    agentActionParams: { name: "إبراهيم", phone: "0599001852", handover_after_save: true },
-  });
-  assert.equal(r.handover_after_save, false);
+  const r = await applyAgentActionV3(supabase, { conversationId: "conv-A", agentAction: "handover", agentActionParams: { name: "إبراهيم", phone: "0599001852", reason: "اتصال" } });
+  assert.equal(r.lead_saved, false);
   assert.equal(t.leads.length, 0);
-  assert.equal(r.conversation_status, "active");
-  assert.equal(t.conversations[0].conversation_status, "active");
-});
-
-// ---- "have the team contact me" when details were captured earlier -----
-
-test("save_contact + handover_after_save:true + NO new params + contact already on file -> handover, waiting_human", async () => {
-  const t = tables();
-  t.leads.push({ client_id: "client-A", conversation_id: "conv-A", sender_id: "s", name: "إبراهيم", phone: "0599001852" });
-  const r = await applyAgentActionV3(createMockSupabase(t), {
-    conversationId: "conv-A",
-    agentAction: "save_contact",
-    agentActionParams: { handover_after_save: true },
-  });
-  assert.equal(r.action, "save_contact");
-  assert.equal(r.lead_saved, false); // nothing new written
-  assert.equal(r.contact_on_file, true); // used the earlier-captured row
-  assert.deepEqual(r.contact, { name: "إبراهيم", phone: "0599001852" });
-  assert.equal(r.handover_after_save, true);
   assert.equal(r.executed, true);
   assert.equal(r.conversation_status, "waiting_human");
   assert.equal(t.conversations[0].conversation_status, "waiting_human");
-  assert.equal(t.leads.length, 1); // no duplicate row
 });
 
-test("save_contact + handover_after_save:true — contact captured in an EARLIER conversation (same contact_id) -> Conversation B becomes waiting_human", async () => {
-  const t = tables(); // conv-A / contact-A = the CURRENT conversation (B), no lead of its own
-  // Conversation A: same contact_id, earlier, closed, holds the captured lead
-  t.conversations.push({ id: "conv-OLD", client_id: "client-A", contact_id: "contact-A", channel_identity_id: "ci-A", platform: "whatsapp", conversation_status: "closed", current_step: "closing_confirmed", last_message_at: null });
-  t.leads.push({ client_id: "client-A", conversation_id: "conv-OLD", sender_id: "970590000001", name: "إبراهيم", phone: "0599001852", created_at: "2026-01-01T00:00:00Z" });
+test("handover {reason} only -> waiting_human, no lead write", async () => {
+  const t = tables();
+  const r = await applyAgentActionV3(createMockSupabase(t), { conversationId: "conv-A", agentAction: "handover", agentActionParams: { reason: "بدي احكي مع حدا" } });
+  assert.equal(r.executed, true);
+  assert.equal(r.lead_saved, false);
+  assert.equal(t.leads.length, 0);
+  assert.equal(r.conversation_status, "waiting_human");
+  assert.equal(r.current_step, null);
+});
 
-  const r = await applyAgentActionV3(createMockSupabase(t), {
-    conversationId: "conv-A",
-    agentAction: "save_contact",
-    agentActionParams: { handover_after_save: true },
-  });
-
-  assert.equal(r.lead_saved, false); // nothing new saved
-  assert.equal(r.contact_on_file, true); // found via contact_id, not conversation_id
-  assert.deepEqual(r.contact, { name: "إبراهيم", phone: "0599001852" });
-  assert.equal(r.handover_after_save, true);
+test("contact already on file (this conversation) + handover -> waiting_human, no duplicate lead", async () => {
+  const t = tables();
+  t.leads.push({ client_id: "client-A", conversation_id: "conv-A", sender_id: "s", name: "إبراهيم", phone: "0599001852" });
+  const r = await applyAgentActionV3(createMockSupabase(t), { conversationId: "conv-A", agentAction: "handover", agentActionParams: { reason: "اتصلوا فيي" } });
   assert.equal(r.executed, true);
   assert.equal(r.conversation_status, "waiting_human");
-  assert.equal(t.conversations.find((c) => c.id === "conv-A").conversation_status, "waiting_human");
-  assert.equal(t.leads.length, 1); // no new lead row on the current conversation
-  assert.equal(t.leads[0].conversation_id, "conv-OLD");
+  assert.equal(t.conversations[0].conversation_status, "waiting_human");
+  assert.equal(t.leads.length, 1);
 });
 
-test("contact-on-file lookup is scoped to contact_id, never sender_id, never merges other contacts", async () => {
+test("contact captured in an EARLIER conversation (same contact_id) + handover -> Conversation B waiting_human", async () => {
   const t = tables();
-  // a DIFFERENT contact, same client, same sender_id string — must NOT leak in
+  t.conversations.push({ id: "conv-OLD", client_id: "client-A", contact_id: "contact-A", channel_identity_id: "ci-A", platform: "whatsapp", conversation_status: "closed", current_step: "closing_confirmed", last_message_at: null });
+  t.leads.push({ client_id: "client-A", conversation_id: "conv-OLD", sender_id: "970590000001", name: "إبراهيم", phone: "0599001852", created_at: "2026-01-01T00:00:00Z" });
+  const r = await applyAgentActionV3(createMockSupabase(t), { conversationId: "conv-A", agentAction: "handover", agentActionParams: { reason: "اتصلوا فيي" } });
+  assert.equal(r.conversation_status, "waiting_human");
+  assert.equal(t.conversations.find((c) => c.id === "conv-A").conversation_status, "waiting_human");
+  assert.equal(t.leads.length, 1);
+});
+
+test("contact-on-file lookup (save_contact, informational) is scoped to contact_id, never sender_id", async () => {
+  const t = tables();
   t.conversations.push({ id: "conv-X", client_id: "client-A", contact_id: "contact-OTHER", channel_identity_id: "ci-A", platform: "whatsapp", conversation_status: "closed", current_step: null });
   t.leads.push({ client_id: "client-A", conversation_id: "conv-X", sender_id: "970590000001", name: "شخص آخر", phone: "0500000000", created_at: "2026-05-01T00:00:00Z" });
-
-  const r = await applyAgentActionV3(createMockSupabase(t), {
-    conversationId: "conv-A",
-    agentAction: "save_contact",
-    agentActionParams: { handover_after_save: true },
-  });
+  const r = await applyAgentActionV3(createMockSupabase(t), { conversationId: "conv-A", agentAction: "save_contact", agentActionParams: {} });
   assert.equal(r.contact_on_file, false);
   assert.equal(r.contact, null);
-  assert.equal(r.handover_after_save, false);
   assert.equal(r.conversation_status, "active");
 });
 
-test("contact-on-file picks the NEWEST non-empty name and phone across the contact's conversations", async () => {
+test("contact-on-file (save_contact, informational) picks the NEWEST non-empty name and phone", async () => {
   const t = tables();
   t.conversations.push({ id: "conv-1", client_id: "client-A", contact_id: "contact-A", channel_identity_id: "ci-A", platform: "whatsapp", conversation_status: "closed", current_step: null });
   t.conversations.push({ id: "conv-2", client_id: "client-A", contact_id: "contact-A", channel_identity_id: "ci-A", platform: "whatsapp", conversation_status: "closed", current_step: null });
   t.leads.push({ client_id: "client-A", conversation_id: "conv-1", name: "إبراهيم", phone: null, created_at: "2026-01-01T00:00:00Z" });
   t.leads.push({ client_id: "client-A", conversation_id: "conv-2", name: null, phone: "0599999999", created_at: "2026-02-01T00:00:00Z" });
-
-  const r = await applyAgentActionV3(createMockSupabase(t), {
-    conversationId: "conv-A",
-    agentAction: "save_contact",
-    agentActionParams: { handover_after_save: true },
-  });
+  const r = await applyAgentActionV3(createMockSupabase(t), { conversationId: "conv-A", agentAction: "save_contact", agentActionParams: {} });
   assert.deepEqual(r.contact, { name: "إبراهيم", phone: "0599999999" });
-  assert.equal(r.conversation_status, "waiting_human");
-});
-
-test("save_contact + handover_after_save:true + NEW name/phone -> save AND handover still succeed", async () => {
-  const t = tables();
-  const r = await applyAgentActionV3(createMockSupabase(t), {
-    conversationId: "conv-A",
-    agentAction: "save_contact",
-    agentActionParams: { name: "سميرة", phone: "0598111222", handover_after_save: true },
-  });
-  assert.equal(r.lead_saved, true);
-  assert.equal(r.handover_after_save, true);
-  assert.equal(r.executed, true);
-  assert.equal(t.leads.length, 1);
-  assert.equal(t.leads[0].phone, "0598111222");
-  assert.equal(r.conversation_status, "waiting_human");
-  assert.equal(t.conversations[0].conversation_status, "waiting_human");
-  assert.equal(t.conversations[0].current_step, "contact_captured");
-});
-
-test("save_contact + handover_after_save:true + NO contact data anywhere -> no false 'saved', no handover, stays active", async () => {
-  const t = tables();
-  const r = await applyAgentActionV3(createMockSupabase(t), {
-    conversationId: "conv-A",
-    agentAction: "save_contact",
-    agentActionParams: { handover_after_save: true },
-  });
-  assert.equal(r.lead_saved, false);
-  assert.equal(r.contact_on_file, false);
-  assert.equal(r.contact, null);
-  assert.equal(r.handover_after_save, false);
-  assert.equal(r.executed, false); // honest: nothing happened
   assert.equal(r.conversation_status, "active");
-  assert.equal(t.leads.length, 0);
-  assert.equal(t.conversations[0].conversation_status, "active");
 });
 
-test("direct handover action is unaffected by the save_contact contact-on-file path", async () => {
-  const t = tables();
-  t.leads.push({ client_id: "client-A", conversation_id: "conv-A", sender_id: "s", name: "إبراهيم", phone: "0599001852" });
-  const r = await applyAgentActionV3(createMockSupabase(t), {
-    conversationId: "conv-A",
-    agentAction: "handover",
-    agentActionParams: { reason: "بدي احكي مع حدا" },
-  });
-  assert.equal(r.action, "handover");
-  assert.equal(r.executed, true);
-  assert.equal(r.conversation_status, "waiting_human");
-  assert.equal(t.conversations[0].conversation_status, "waiting_human");
-});
-
-test("save_contact contact-on-file handover is channel-neutral (both parents build the same reply shape)", () => {
+test("save_contact result is channel-neutral: both parents keep the conversation active", () => {
   for (const wf of [FINAL, WA]) {
     for (const platform of ["facebook", "instagram", "telegram", "whatsapp"]) {
       const out = runBuildReply(wf, {
-        agentResult: { action: "save_contact", reply: "تمام، معنا رقمك وحدا من الفريق رح يتواصل معك." },
-        applied: { action: "save_contact", conversation_status: "waiting_human", current_step: "contact_captured" },
+        agentResult: { action: "save_contact", reply: "شكراً، سجلت بياناتك. كيف بقدر أساعدك؟" },
+        applied: { action: "save_contact", executed: true, conversation_status: "active", current_step: "contact_captured" },
         platform,
       });
-      assert.equal(out.conversation_status, "waiting_human");
+      assert.equal(out.conversation_status, "active");
       assert.equal(out.current_step, "contact_captured");
     }
   }
@@ -574,30 +561,29 @@ test("Scenario 4 — follow-up relying on history (prompt carries the transcript
 });
 
 test("Scenario 5 — customer provides name + phone -> save_contact", async () => {
-  const { applied, db } = await turn('{"action":"save_contact","reply":"تمام يا علي، سجلت رقمك ورح يتواصل معك الفريق.","action_params":{"name":"علي","phone":"0599123456"},"intent":"lead"}');
+  const { applied, db } = await turn('{"action":"save_contact","reply":"تمام يا علي، سجلت رقمك. كيف بقدر أساعدك؟","action_params":{"name":"علي","phone":"0599123456"},"intent":"lead"}');
   assert.equal(applied.action, "save_contact");
   assert.equal(db.current_step, "contact_captured");
+  assert.equal(db.conversation_status, "active"); // SAVE CONTACT != HANDOVER
 });
 
-test("Scenario 5b — contact details + an EXPLICIT callback request -> save_contact (params survive validation), lead persisted, stays active", async () => {
-  // The Agent's job here (per the contract): return save_contact, NOT a
-  // conversational "I can't contact you". Validation must keep the action
-  // + params; Apply Action must persist the lead.
-  const raw = '{"action":"save_contact","reply":"تمام، سجلت اسمك ورقمك ورح يتواصل معك أحد من الفريق قريباً.","action_params":{"name":"سميرة أحمد","phone":"0598111222","junk":"drop me"},"intent":"lead"}';
+test("Scenario 5b — contact details + an EXPLICIT request for the team to contact them -> handover (params survive validation), lead saved, waiting_human", async () => {
+  // Per the contract: the Agent returns handover WITH the name/phone it
+  // extracted. Validation keeps the params; Apply Action saves the lead
+  // first, then hands over.
+  const raw = '{"action":"handover","reply":"تمام، سجلت اسمك ورقمك ورح يتواصل معك أحد من الفريق قريباً.","action_params":{"name":"سميرة أحمد","phone":"0598111222","reason":"طلبت اتصال من الفريق","junk":"drop me"},"intent":"lead"}';
   const { result } = validateAgentResultV3(raw);
-  assert.equal(result.action, "save_contact");
-  assert.deepEqual(result.action_params, { name: "سميرة أحمد", phone: "0598111222" }); // params kept, unknown key dropped
+  assert.equal(result.action, "handover");
+  assert.deepEqual(result.action_params, { name: "سميرة أحمد", phone: "0598111222", reason: "طلبت اتصال من الفريق" });
 
   const t = tables();
   const applied = await applyAgentActionV3(createMockSupabase(t), { conversationId: "conv-A", agentAction: result.action, agentActionParams: result.action_params });
-  assert.equal(applied.action, "save_contact");
+  assert.equal(applied.action, "handover");
   assert.equal(t.leads.length, 1);
   assert.equal(t.leads[0].name, "سميرة أحمد");
   assert.equal(t.leads[0].phone, "0598111222");
-  // POST-CONTACT LIFECYCLE: save the contact, mark contact_captured, DO NOT
-  // hand over — conversation stays active and the AI keeps replying.
-  assert.equal(applied.conversation_status, "active");
-  assert.equal(t.conversations[0].conversation_status, "active");
+  assert.equal(applied.conversation_status, "waiting_human");
+  assert.equal(t.conversations[0].conversation_status, "waiting_human");
   assert.equal(t.conversations[0].current_step, "contact_captured");
 });
 
