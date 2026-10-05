@@ -22,6 +22,7 @@ import WhatsAppEvolutionSection from "./WhatsAppEvolutionSection";
 import FacebookAccountsSection from "./FacebookAccountsSection";
 import InstagramSetupSection from "./InstagramSetupSection";
 import { isReplyModeKey, getReplyModeSelectOptions, getReplyModeLabel, DEFAULT_REPLY_MODE } from "../../lib/replyMode.js";
+import { showsGenericSetupLinks } from "../../lib/integrationSetupLinks.js";
 
 // Multi-Account Stage 2B — Facebook runtime-truth fix pass. client_facebook
 // is NOT yet consumed by n8n/runtime messaging (Facebook still sends/
@@ -933,7 +934,7 @@ export default function ClientIntegrations() {
                             </p>
                           </div>
 
-                          {!`${selectedFeature.slug || ""}`.toLowerCase().includes("instagram") && (() => {
+                          {showsGenericSetupLinks(selectedFeature.slug) && (() => {
                             const generatedLinks = buildGeneratedLinks(selectedFeature, selectedIntegration, t);
                             return (
                               <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 shadow-sm">
