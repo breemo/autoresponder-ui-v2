@@ -21,8 +21,10 @@ import ChannelIcon from "../../lib/channelIcons.jsx";
 import WhatsAppEvolutionSection from "./WhatsAppEvolutionSection";
 import FacebookAccountsSection from "./FacebookAccountsSection";
 import InstagramSetupSection from "./InstagramSetupSection";
+import WebsiteChatSection from "./WebsiteChatSection";
 import { isReplyModeKey, getReplyModeSelectOptions, getReplyModeLabel, DEFAULT_REPLY_MODE } from "../../lib/replyMode.js";
 import { showsGenericSetupLinks } from "../../lib/integrationSetupLinks.js";
+import { collapseWebsiteChatRows, isWebsiteChatSlug, websiteChatCard, WEBSITE_CHAT_CARD_ID } from "../../lib/websiteChatEmbed.js";
 
 // Multi-Account Stage 2B — Facebook runtime-truth fix pass. client_facebook
 // is NOT yet consumed by n8n/runtime messaging (Facebook still sends/
@@ -377,8 +379,13 @@ export default function ClientIntegrations() {
           config: row.config || {},
         }));
 
-      setIntegrations(normalized);
-      setSelectedIntegrationId((prev) => prev || normalized[0]?.id || null);
+      // Website Chat: N site rows -> one channel card rendering
+      // WebsiteChatSection (sites managed via ?resource=website_chat).
+      const websiteChatFeature = featuresList.find((f) => isWebsiteChatSlug(f.slug));
+      const channels = collapseWebsiteChatRows(normalized, websiteChatFeature?.id);
+
+      setIntegrations(channels);
+      setSelectedIntegrationId((prev) => prev || channels[0]?.id || null);
     } catch (err) {
       console.error("Error loading client integrations:", err);
       setError(t("integrationsPage.loadErrorGeneric"));
@@ -563,7 +570,24 @@ export default function ClientIntegrations() {
     }
   }
 
+  // Website Chat card state follows WebsiteChatSection's site list.
+  function handleWebsiteChatSitesChange(sites) {
+    setIntegrations((prev) =>
+      prev.map((item) => (item.id === WEBSITE_CHAT_CARD_ID ? websiteChatCard(item.feature_id, sites) : item))
+    );
+  }
+
   async function handleAddIntegration(feature) {
+    // Website Chat never uses the generic `add` (the server refuses it):
+    // open its card; sites are created by WebsiteChatSection ("create").
+    if (isWebsiteChatSlug(feature?.slug)) {
+      setIntegrations((prev) =>
+        prev.some((item) => item.id === WEBSITE_CHAT_CARD_ID) ? prev : [...prev, websiteChatCard(feature.id, [])]
+      );
+      setSelectedIntegrationId(WEBSITE_CHAT_CARD_ID);
+      return;
+    }
+
     try {
       setSavingId(feature.id);
       setError("");
@@ -707,6 +731,35 @@ export default function ClientIntegrations() {
               <div className="flex h-full flex-col">
                 {(() => {
                   const meta = getFeatureMeta(selectedFeature, t);
+
+                  // Website Chat: its own section only — no generic toggle,
+                  // save, field editor, reply-mode summary or setup links.
+                  if (isWebsiteChatSlug(selectedFeature.slug)) {
+                    return (
+                      <>
+                        <div className="flex items-center gap-3 border-b border-slate-100 p-4">
+                          <ChannelIcon channel={selectedFeature?.slug} size="h-12 w-12" iconSize="h-6 w-6" />
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h2 className="text-lg font-bold text-slate-950">{selectedFeature.name || meta.label}</h2>
+                              <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${meta.soft}`}>
+                                {selectedIntegration.is_active ? t("common.active") : t("common.paused")}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-sm text-slate-500">{selectedFeature.description || meta.description}</p>
+                          </div>
+                        </div>
+                        <div className="p-4">
+                          <WebsiteChatSection
+                            actorUserId={user?.id}
+                            maxConnections={selectedFeature.max_connections}
+                            subscriptionActive={subscriptionActive}
+                            onSitesChange={handleWebsiteChatSitesChange}
+                          />
+                        </div>
+                      </>
+                    );
+                  }
 
                   return (
                     <>
