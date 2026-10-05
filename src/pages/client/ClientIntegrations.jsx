@@ -19,10 +19,49 @@ import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
 import ChannelIcon from "../../lib/channelIcons.jsx";
 import WhatsAppEvolutionSection from "./WhatsAppEvolutionSection";
+import FacebookAccountsSection from "./FacebookAccountsSection";
+import InstagramSetupSection from "./InstagramSetupSection";
 import { isReplyModeKey, getReplyModeSelectOptions, getReplyModeLabel, DEFAULT_REPLY_MODE } from "../../lib/replyMode.js";
+
+// Multi-Account Stage 2B — Facebook runtime-truth fix pass. client_facebook
+// is NOT yet consumed by n8n/runtime messaging (Facebook still sends/
+// receives exclusively through the legacy client_feature_integrations
+// panel rendered below); exposing FacebookAccountsSection as a normal,
+// always-on production surface would let a client believe a newly added
+// Page is operational when it structurally cannot be yet. Preferred fix
+// per instruction: hide it in production by default rather than show two
+// active-looking configuration surfaces side by side, while still
+// allowing it to be shown deliberately (internal preparation/testing,
+// staging) via a build-time environment flag — the same
+// import.meta.env.VITE_* pattern already used elsewhere in this exact
+// file (see VITE_WEBHOOK_BASE_URL a few lines below) and in
+// AdminClientSettings.jsx, not a new architecture. Unset (the default
+// everywhere this variable isn't explicitly configured, including
+// production unless someone opts in) means OFF — the safe default. Also
+// gates the small "current active configuration" label on the legacy
+// panel, since that label only makes sense in contrast to a visible new
+// section; with the new section hidden, the legacy panel is simply the
+// only Facebook configuration UI shown, exactly as it always has been.
+const FACEBOOK_MULTI_ACCOUNT_ENABLED =
+  String(import.meta.env.VITE_FACEBOOK_MULTI_ACCOUNT_ENABLED || "").trim().toLowerCase() === "true";
 
 function normalizeName(str) {
   return (str || "").toString().toLowerCase().replace(/\s+/g, "");
+}
+
+// AI Engine V1 — the legacy `ai_auto_reply` feature is no longer a
+// communication channel. AI configuration lives in the dedicated AI area
+// (client_ai_behavior + Business Context + Knowledge Base), and AI
+// eligibility is driven by the channel account's own reply_mode plus the
+// plan's AI allowance — never by an ai_auto_reply integration row. The
+// Integrations page represents actual channels only, so this feature (and
+// its client_feature_integrations row, if any) is filtered out of every
+// list and count here. The DB feature/row is intentionally left in place.
+const NON_CHANNEL_FEATURE_SLUGS = new Set(["ai_auto_reply"]);
+
+function isChannelFeature(feature) {
+  const slug = (feature?.slug || "").toString().toLowerCase();
+  return !NON_CHANNEL_FEATURE_SLUGS.has(slug);
 }
 
 function getFeatureMeta(feature, t) {
@@ -279,6 +318,10 @@ export default function ClientIntegrations() {
       setClient(clientData);
 
       let featuresList = [];
+      // Feature ids that are NOT communication channels (e.g. legacy
+      // ai_auto_reply) — used to keep them out of every Integrations list
+      // and count below, including any existing client_feature_integrations row.
+      const nonChannelFeatureIds = new Set();
       if (clientData.plan_id) {
         const { data: pf, error: pfError } = await supabase
           .from("plan_features")
@@ -299,29 +342,39 @@ export default function ClientIntegrations() {
             .in("id", featureIds);
 
           if (fError) throw fError;
+          (featuresData || []).forEach((feature) => {
+            if (!isChannelFeature(feature)) nonChannelFeatureIds.add(feature.id);
+          });
           // max_connections travels with the feature so WhatsAppEvolutionSection
           // can enforce/display the plan's per-channel connection limit.
-          featuresList = (featuresData || []).map((feature) => ({
-            ...feature,
-            max_connections: maxConnectionsByFeatureId.get(feature.id) ?? null,
-          }));
+          featuresList = (featuresData || [])
+            .filter(isChannelFeature)
+            .map((feature) => ({
+              ...feature,
+              max_connections: maxConnectionsByFeatureId.get(feature.id) ?? null,
+            }));
         }
       }
 
       setPlanFeatures(featuresList);
 
-      const { data: integrationsData, error: intError } = await supabase
-        .from("client_feature_integrations")
-        .select("*")
-        .eq("client_id", clientId)
-        .order("created_at", { ascending: true });
+      // Read integrations through the server, not directly from Supabase:
+      // for Instagram rows the endpoint strips the Page Access Token out
+      // of `config` and returns `config_flags.has_page_access_token`
+      // instead. Every other channel's row is byte-for-byte identical to
+      // the former direct select. See api/client-integrations.js ("list").
+      const listResp = await callIntegrationAction("list");
 
-      if (intError) throw intError;
-
-      const normalized = (integrationsData || []).map((row) => ({
-        ...row,
-        config: row.config || {},
-      }));
+      const normalized = (listResp.integrations || [])
+        .filter(
+          (row) =>
+            !nonChannelFeatureIds.has(row.feature_id) &&
+            !NON_CHANNEL_FEATURE_SLUGS.has((row.slug || "").toString().toLowerCase())
+        )
+        .map((row) => ({
+          ...row,
+          config: row.config || {},
+        }));
 
       setIntegrations(normalized);
       setSelectedIntegrationId((prev) => prev || normalized[0]?.id || null);
@@ -369,6 +422,13 @@ export default function ClientIntegrations() {
 
     if (slug === "whatsapp_evolution") {
       return selectedFields.filter((field) => isReplyModeKey(field?.key || field?.label));
+    }
+
+    // Instagram renders its own dedicated setup surface
+    // (InstagramSetupSection) — the internal channelKey stays hidden and
+    // every other field, incl. reply_mode, is owned by that section.
+    if (slug.includes("instagram")) {
+      return [];
     }
 
     return selectedFields;
@@ -446,6 +506,36 @@ export default function ClientIntegrations() {
       setSavingId(integration.id);
       setError("");
       setSuccess("");
+
+      const feature = getFeatureById(integration.feature_id);
+      const slug = `${feature?.slug || ""}`.toLowerCase();
+
+      if (slug.includes("instagram")) {
+        // Instagram save goes through its own server action: it never
+        // echoes the stored Page Access Token back, generates/persists the
+        // verify token once, and sets the immutable internal channelKey.
+        const cfg = integration.config || {};
+        const resp = await callIntegrationAction("save_instagram_config", {
+          feature_id: integration.feature_id,
+          instagram_account_id: cfg.instagram_account_id ?? "",
+          facebook_page_id: cfg.facebook_page_id ?? "",
+          reply_mode: cfg.reply_mode ?? "",
+          // Only sent when the client actually typed a new value — a blank
+          // field means "keep the stored token".
+          ...(cfg.page_access_token ? { page_access_token: cfg.page_access_token } : {}),
+        });
+
+        setIntegrations((prev) =>
+          prev.map((item) =>
+            item.id === integration.id
+              ? { ...item, config: resp.config || {}, config_flags: resp.config_flags || item.config_flags }
+              : item
+          )
+        );
+
+        setSuccess(t("integrationsPage.saveConfigSuccess"));
+        return;
+      }
 
       const cleanedConfig = cleanReplyModeConfig(integration.config);
 
@@ -662,6 +752,25 @@ export default function ClientIntegrations() {
                           <h3 className="text-sm font-semibold text-slate-950">{t("navigation.settings")}</h3>
                           <p className="mt-1 text-xs text-slate-500">{t("integrationsPage.settingsSubtitle")}</p>
 
+                          {/* Multi-Account Stage 2B — pre-migration audit
+                              fix: for Facebook specifically, both this
+                              legacy panel AND FacebookAccountsSection
+                              (embedded further below) render on the same
+                              screen during the transition period. This
+                              label makes the distinction explicit without
+                              touching the panel's own field-editing logic
+                              (deliberately left unmodified, per
+                              instruction — it remains the live source n8n
+                              actually reads). Not shown for any other
+                              channel, since no other channel currently has
+                              a competing new-model section rendered
+                              alongside it. */}
+                          {FACEBOOK_MULTI_ACCOUNT_ENABLED && selectedFeature.slug === "facebook" && (
+                            <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
+                              الإعداد الفعّال حاليًا (Current active configuration)
+                            </div>
+                          )}
+
                           {visibleSelectedFields.length > 0 ? (
                             <div className="mt-4 grid gap-3 md:grid-cols-2">
                               {visibleSelectedFields.map((field) => {
@@ -749,6 +858,61 @@ export default function ClientIntegrations() {
                               subscriptionActive={subscriptionActive}
                             />
                           )}
+
+                          {`${selectedFeature.slug || ""}`.toLowerCase().includes("instagram") && (
+                            <InstagramSetupSection
+                              config={selectedIntegration.config || {}}
+                              hasPageAccessToken={
+                                !!selectedIntegration.config_flags?.has_page_access_token
+                              }
+                              webhookBase={(import.meta.env.VITE_WEBHOOK_BASE_URL || "").trim()}
+                              onFieldChange={(key, value) =>
+                                handleFieldChange(selectedIntegration.id, key, value)
+                              }
+                            />
+                          )}
+
+                          {/* Multi-Account Stage 2B — additive, alongside
+                              the legacy single-integration panel above,
+                              not a replacement for it. The generic field
+                              editor above this line (channelKey/reply_mode
+                              etc., driven by visibleSelectedFields) still
+                              reads/writes selectedIntegration.config via
+                              client_feature_integrations exactly as it
+                              always has -- an existing Facebook client's
+                              legacy integration stays fully visible and
+                              editable there, completely unaffected by
+                              whether client_facebook has any rows yet.
+                              FacebookAccountsSection owns its own entirely
+                              separate data source (client_facebook, via
+                              /api/client-facebook -- RLS-protected, never
+                              queried directly from the browser) and its
+                              own plan limit (plans.facebook_accounts_limit,
+                              returned by that same endpoint) -- it does
+                              not read selectedFeature.max_connections
+                              (that's the legacy plan_features.
+                              max_connections column, explicitly not used
+                              for this new per-channel limit). A client
+                              with zero client_facebook rows simply sees
+                              this section's own empty state; nothing here
+                              can make the legacy integration above
+                              disappear.
+
+                              Gated behind FACEBOOK_MULTI_ACCOUNT_ENABLED
+                              (see that constant's own comment, top of
+                              file) — pre-migration/pre-deploy audit
+                              Priority 1 fix: hidden by default in
+                              production (and anywhere the env var isn't
+                              explicitly set) rather than shown as a
+                              second active-looking configuration surface
+                              while it has no runtime path to n8n yet. */}
+                          {FACEBOOK_MULTI_ACCOUNT_ENABLED && selectedFeature.slug === "facebook" && (
+                            <FacebookAccountsSection
+                              clientId={clientId}
+                              actorUserId={user?.id}
+                              subscriptionActive={subscriptionActive}
+                            />
+                          )}
                         </div>
 
                         <aside className="space-y-3">
@@ -769,7 +933,7 @@ export default function ClientIntegrations() {
                             </p>
                           </div>
 
-                          {(() => {
+                          {!`${selectedFeature.slug || ""}`.toLowerCase().includes("instagram") && (() => {
                             const generatedLinks = buildGeneratedLinks(selectedFeature, selectedIntegration, t);
                             return (
                               <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 shadow-sm">

@@ -1,5 +1,8 @@
 import { handleClientFacebook } from "./_lib/clientFacebook.js";
 import { handleWebsiteChatSettings, isWebsiteChatFeatureId } from "./_lib/websiteChatAccounts.js";
+import { handleClientFeatureSettings } from "./_lib/clientFeatureSettings.js";
+import { featureSlugMap, isInstagramSlug, safeIntegrationView } from "./_lib/integrationSafeView.js";
+import { buildInstagramConfigUpdate, redactInstagramConfig } from "./_lib/instagramSetup.js";
 import { createWebsiteChatRepo } from "./_lib/websiteChatRepo.js";
 import { getSupabaseServerClient } from "./_lib/supabaseServer.js";
 import { resolveActingMembership, actorHasPermission } from "./_lib/clientAuthz.js";
@@ -110,6 +113,23 @@ const PROVIDER_IDENTITY_CONFLICT = {
   },
 };
 
+// D4 Step C — the client Integrations page reads its integration rows
+// through here (service role) instead of a direct browser select. Scoped
+// to the actor's own client_id; every row is projected through
+// safeIntegrationView (Instagram token / Website Chat channelKey never
+// returned). Exported for unit tests.
+export async function listClientIntegrations(supabase, clientId) {
+  const { data, error } = await supabase
+    .from("client_feature_integrations")
+    .select("id, client_id, feature_id, is_active, config, created_at")
+    .eq("client_id", clientId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  const rows = data || [];
+  const slugById = await featureSlugMap(supabase, rows.map((r) => r.feature_id));
+  return rows.map((row) => safeIntegrationView(row, slugById.get(row.feature_id)));
+}
+
 // Generic per-feature connection-limit check — same shape as the WhatsApp
 // Evolution enforcement in api/create-whatsapp-instance.js, against
 // plan_features.max_connections. Every other channel is currently capped
@@ -151,20 +171,24 @@ async function checkConnectionLimit(supabase, planId, featureId, currentCount) {
 // api/_lib/websiteChatAccounts.js (multi-site CRUD, server-generated keys).
 // The generic add/set_active/save_config actions below refuse the
 // website_chat feature so its server-owned keys can't be overwritten.
+// D4 Step C: ?resource=feature_settings dispatches to
+// api/_lib/clientFeatureSettings.js (AdminClientSettings feature drawer,
+// admin + client-self-edit actors).
 // Pure, synchronous routing decision — unit-testable without Supabase.
 export function resolveIntegrationsResource(req) {
   if (req.query?.resource === "facebook") return "facebook";
   if (req.query?.resource === "website_chat") return "website_chat";
+  if (req.query?.resource === "feature_settings") return "feature_settings";
   return null;
 }
 
 // Returns true when it has already responded (request refused).
-async function refuseGenericWebsiteChatMutation(req, res) {
+async function refuseGenericWebsiteChatMutation(req, res, deps = {}) {
   const featureId = req.body?.feature_id;
   if (req.method !== "POST" || !featureId) return false;
   let supabase;
   try {
-    supabase = getSupabaseServerClient();
+    supabase = deps.supabase || getSupabaseServerClient();
   } catch {
     return false; // the existing path answers "Server is not configured"
   }
@@ -180,7 +204,9 @@ async function refuseGenericWebsiteChatMutation(req, res) {
   }
 }
 
-export default async function handler(req, res) {
+// `deps` is for unit tests only (injected Supabase client); Vercel calls
+// handler(req, res).
+export default async function handler(req, res, deps = {}) {
   const resource = resolveIntegrationsResource(req);
   if (resource === "facebook") {
     return handleClientFacebook(req, res);
@@ -188,7 +214,10 @@ export default async function handler(req, res) {
   if (resource === "website_chat") {
     return handleWebsiteChatSettings(req, res);
   }
-  if (await refuseGenericWebsiteChatMutation(req, res)) return;
+  if (resource === "feature_settings") {
+    return handleClientFeatureSettings(req, res, deps);
+  }
+  if (await refuseGenericWebsiteChatMutation(req, res, deps)) return;
 
   if (req.method !== "POST") {
     return res.status(405).json({ success: false, message: "Method not allowed" });
@@ -196,7 +225,7 @@ export default async function handler(req, res) {
 
   let supabase;
   try {
-    supabase = getSupabaseServerClient();
+    supabase = deps.supabase || getSupabaseServerClient();
   } catch (error) {
     return res.status(500).json({ success: false, message: "Server is not configured" });
   }
@@ -208,6 +237,17 @@ export default async function handler(req, res) {
   const clientId = actor.membership.client_id;
   const action = req.body?.action;
   const featureId = req.body?.feature_id;
+
+  // Read-only list for the Integrations page (same INTEGRATIONS permission
+  // gate as the page route itself). No feature_id needed.
+  if (action === "list") {
+    try {
+      const integrations = await listClientIntegrations(supabase, clientId);
+      return res.status(200).json({ success: true, integrations });
+    } catch (error) {
+      return res.status(500).json({ success: false, message: "فشل في تحميل التكاملات" });
+    }
+  }
 
   if (!featureId) {
     return res.status(400).json({ success: false, message: "feature_id is required" });
@@ -300,6 +340,73 @@ export default async function handler(req, res) {
     }
 
     return res.status(200).json({ success: true });
+  }
+
+  // Instagram manual-setup save (reconciled from the Phase 2 WIP stash).
+  // Writes instagram_account_id / facebook_page_id / reply_mode / optional
+  // page_access_token via buildInstagramConfigUpdate, sets the
+  // internal channelKey and verify_token once, and never echoes the stored
+  // Page Access Token back.
+  if (action === "save_instagram_config") {
+    const target = await loadOwnedIntegration(supabase, clientId, featureId);
+    if (!target) {
+      return res.status(404).json({ success: false, message: "التكامل غير موجود ضمن هذا الحساب" });
+    }
+
+    let slug = "";
+    try {
+      slug = (await featureSlugMap(supabase, [featureId])).get(featureId) || "";
+    } catch (e) {
+      return res.status(500).json({ success: false, message: "فشل التحقق من نوع التكامل" });
+    }
+    if (!isInstagramSlug(slug)) {
+      return res.status(400).json({ success: false, message: "هذا الإجراء مخصّص لقناة إنستغرام فقط" });
+    }
+
+    const built = buildInstagramConfigUpdate(target.config || {}, target.id, {
+      instagram_account_id: req.body?.instagram_account_id,
+      facebook_page_id: req.body?.facebook_page_id,
+      reply_mode: req.body?.reply_mode,
+      page_access_token: req.body?.page_access_token,
+    });
+    if (built.error === "invalid_reply_mode") {
+      return res.status(400).json({ success: false, message: "قيمة reply_mode غير صالحة" });
+    }
+    if (built.error || !built.config) {
+      return res.status(400).json({ success: false, message: "بيانات غير صالحة" });
+    }
+
+    let conflict;
+    try {
+      conflict = await findConflictingProviderIdentity(
+        supabase,
+        { instagram_account_id: built.config.instagram_account_id },
+        clientId
+      );
+    } catch (e) {
+      return res.status(500).json({ success: false, message: "فشل التحقق من هوية القناة" });
+    }
+    if (conflict.taken) {
+      return res.status(409).json({ success: false, ...PROVIDER_IDENTITY_CONFLICT[conflict.key] });
+    }
+
+    const { error } = await supabase
+      .from("client_feature_integrations")
+      .update({ config: built.config })
+      .eq("id", target.id)
+      .eq("client_id", clientId);
+    if (error) {
+      return res.status(500).json({ success: false, message: "فشل حفظ إعدادات إنستغرام" });
+    }
+
+    const { config: safeConfig, flags } = redactInstagramConfig(built.config);
+    return res.status(200).json({
+      success: true,
+      config: safeConfig,
+      config_flags: flags,
+      verify_token: built.config.verify_token,
+      channel_key: built.config.channelKey,
+    });
   }
 
   return res.status(400).json({ success: false, message: "Unknown action" });

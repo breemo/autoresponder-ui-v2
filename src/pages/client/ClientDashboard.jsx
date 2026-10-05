@@ -207,7 +207,7 @@ export default function ClientDashboard() {
       setRefreshing(true);
       setError("");
 
-      const [clientRes, summaryResult, leadsRes, integrationsRes, subStatusRes] =
+      const [clientRes, summaryResult, leadsRes, subStatusRes] =
         await Promise.all([
           supabase.from("clients").select("id, plan_id").eq("id", realClientId).maybeSingle(),
           // Server-side, service-role, tenant-scoped operational aggregates.
@@ -221,10 +221,6 @@ export default function ClientDashboard() {
             .select("id", { count: "exact", head: true })
             .eq("client_id", realClientId),
           supabase
-            .from("client_feature_integrations")
-            .select("id, is_active, config, features(slug, name)")
-            .eq("client_id", realClientId),
-          supabase
             .from("client_subscription_status")
             .select("*")
             .eq("client_id", realClientId)
@@ -233,7 +229,6 @@ export default function ClientDashboard() {
 
       if (clientRes.error) throw clientRes.error;
       if (leadsRes.error) throw leadsRes.error;
-      if (integrationsRes.error) console.warn("integrations error", integrationsRes.error);
       if (subStatusRes.error) console.warn("subscription status error", subStatusRes.error);
 
       // The operational aggregates endpoint failing must not blank the
@@ -249,7 +244,12 @@ export default function ClientDashboard() {
       }
 
       setLeadsCount(leadsRes.count || 0);
-      setIntegrations(integrationsRes.data || []);
+      // Channel list (name + active flag, never `config`) comes from the
+      // same server-side dashboard summary — no direct browser read of
+      // client_feature_integrations (D4).
+      setIntegrations(
+        summaryResult.ok && Array.isArray(summaryResult.body?.integrations) ? summaryResult.body.integrations : []
+      );
       setSubscriptionStatus(subStatusRes.data || null);
 
       // Plan and full subscription details — real data only; left null
@@ -539,7 +539,7 @@ export default function ClientDashboard() {
                 <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-center text-sm font-semibold text-slate-400">{t("dashboard.noChannels")}</div>
               ) : (
                 integrations.slice(0, 5).map((item) => {
-                  const slug = item.features?.slug || item.config?.platform || "integration";
+                  const slug = item.features?.slug || "integration";
                   return (
                     <div key={item.id} className="flex items-center justify-between rounded-2xl border border-slate-200 p-3">
                       <div className="flex items-center gap-3">

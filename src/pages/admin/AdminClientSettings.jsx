@@ -470,6 +470,21 @@ export default function AdminClientSettings({ clientIdOverride }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveClientId]);
 
+  // D4: the client's feature-settings rows come from the backend (service
+  // role, admin / client-self-edit authorization server-side) — never a
+  // direct browser read of client_feature_integrations. Secret-bearing
+  // channels (Instagram token, Website Chat channelKey) arrive redacted.
+  async function fetchFeatureSettingsRows(clientId) {
+    const response = await fetch(
+      `/api/client-integrations?resource=feature_settings&actor_user_id=${encodeURIComponent(user?.id || "")}&client_id=${encodeURIComponent(clientId || "")}`
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data?.success === false) {
+      throw new Error(data?.message || "Failed to load feature settings");
+    }
+    return Array.isArray(data.integrations) ? data.integrations : [];
+  }
+
   async function fetchClientAndFeatures(clientId) {
     setLoading(true);
     setMsg("");
@@ -592,20 +607,16 @@ console.log("activeSub", activeSub);
         setFeatures(featuresData || []);
       }
 
-      const { data: integrationsData, error: integrationsError } = await supabase
-        .from("client_feature_integrations")
-        .select("id, feature_id, is_active, config")
-        .eq("client_id", clientId);
-
-      if (integrationsError) {
-        console.error(integrationsError);
-        setFeatureSettings({});
-      } else {
+      try {
+        const integrationsData = await fetchFeatureSettingsRows(clientId);
         const settingsMap = {};
-        (integrationsData || []).forEach((row) => {
+        integrationsData.forEach((row) => {
           settingsMap[row.feature_id] = row;
         });
         setFeatureSettings(settingsMap);
+      } catch (integrationsError) {
+        console.error(integrationsError);
+        setFeatureSettings({});
       }
     } catch (err) {
       console.error(err);
@@ -662,14 +673,13 @@ console.log("activeSub", activeSub);
       return;
     }
 
-    const { data, error } = await supabase
-      .from("client_feature_integrations")
-      .select("id, config")
-      .eq("client_id", effectiveClientId)
-      .eq("feature_id", feature.id)
-      .maybeSingle();
-
-    if (error) console.error(error);
+    let data = null;
+    try {
+      const rows = await fetchFeatureSettingsRows(effectiveClientId);
+      data = rows.find((row) => row.feature_id === feature.id) || null;
+    } catch (error) {
+      console.error(error);
+    }
 
     setSettingsRowId(data?.id || null);
 
@@ -999,40 +1009,28 @@ function calculateEndDate(subscriptionType, duration) {
     setMsg("");
 
     try {
-      if (settingsRowId) {
-        const { error } = await supabase
-          .from("client_feature_integrations")
-          .update({ config: featureValues })
-          .eq("id", settingsRowId);
-
-        if (error) throw error;
-      } else {
-        const { data, error } = await supabase
-          .from("client_feature_integrations")
-          .insert([
-            {
-              client_id: effectiveClientId,
-              feature_id: activeFeature.id,
-              config: featureValues,
-            },
-          ])
-          .select("id")
-          .single();
-
-        if (error) throw error;
-        setSettingsRowId(data.id);
+      // Update-or-create on the server (same semantics as before; the
+      // server enforces admin / allow_self_edit and the client's plan).
+      const response = await fetch("/api/client-integrations?resource=feature_settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save",
+          actor_user_id: user?.id,
+          client_id: effectiveClientId,
+          feature_id: activeFeature.id,
+          config: featureValues,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.success === false) {
+        throw new Error(data?.message || "Failed to save feature settings");
       }
 
       setMsg(t("featureSettingsPage.settingsSavedSuccess"));
 
-      const { data: refreshed, error: refError } = await supabase
-        .from("client_feature_integrations")
-        .select("id, feature_id, is_active, config")
-        .eq("client_id", effectiveClientId)
-        .eq("feature_id", activeFeature.id)
-        .maybeSingle();
-
-      if (!refError && refreshed) {
+      const refreshed = data.integration;
+      if (refreshed) {
         setSettingsRowId(refreshed.id);
         setFeatureValues(refreshed.config || {});
         setFeatureSettings((prev) => ({ ...prev, [activeFeature.id]: refreshed }));

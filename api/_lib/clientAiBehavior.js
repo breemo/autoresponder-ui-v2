@@ -74,7 +74,7 @@ const BEHAVIOR_SELECT_COLUMNS =
 // layer's own isAdmin / (AI_SETTINGS permission + plan.allow_self_edit)
 // rule — see this file's header comment for why it has to be
 // re-implemented here instead of leaning on RLS.
-async function resolveActor(supabase, { actorUserId, requestedClientId }) {
+export async function resolveActor(supabase, { actorUserId, requestedClientId }) {
   if (!actorUserId) return { error: { status: 401, message: "Unauthorized" } };
 
   const { data: userRow, error: userError } = await supabase

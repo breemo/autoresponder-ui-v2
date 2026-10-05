@@ -51,7 +51,7 @@ import { PERMISSIONS } from "../../src/lib/permissions.js";
 // (owner/agent/it) has DASHBOARD by default.
 //
 // Shape: GET /api/conversation?resource=dashboard&actor_user_id=<id>
-//   -> { success: true, open_conversations, waiting_human,
+//   -> { success: true, open_conversations, waiting_human, integrations: [{ id, is_active, features: { slug, name } }],
 //        recent_conversations: [...], messages_usage: {...},
 //        automation: {...}, chart: {...} }
 
@@ -116,11 +116,35 @@ export async function handleDashboardSummary(req, res) {
 
   try {
     const summary = await computeDashboardSummary(supabase, clientId);
-    return res.status(200).json({ success: true, ...summary });
+    // D4 Step C: the dashboard's channel list, formerly a direct browser
+    // select on client_feature_integrations. Its failure must not blank
+    // the operational summary (same tolerance the browser query had).
+    let integrations = [];
+    try {
+      integrations = await listDashboardIntegrations(supabase, clientId);
+    } catch (error) {
+      console.warn("dashboard: failed to load integrations:", { code: error?.code, message: error?.message });
+    }
+    return res.status(200).json({ success: true, ...summary, integrations });
   } catch (error) {
     console.error("dashboard: failed to build summary:", error);
     return res.status(500).json({ success: false, message: "فشل في تحميل لوحة المعلومات" });
   }
+}
+
+// Dashboard channel list: name + active flag only — `config` is never
+// selected (it can hold channel secrets). `clientId` MUST be server-derived.
+export async function listDashboardIntegrations(supabase, clientId) {
+  const { data, error } = await supabase
+    .from("client_feature_integrations")
+    .select("id, is_active, features(slug, name)")
+    .eq("client_id", clientId);
+  if (error) throw error;
+  return (data || []).map((row) => ({
+    id: row.id,
+    is_active: row.is_active,
+    features: row.features ? { slug: row.features.slug ?? null, name: row.features.name ?? null } : null,
+  }));
 }
 
 // The data core — no req/res, no auth, no env. `clientId` MUST already be a
