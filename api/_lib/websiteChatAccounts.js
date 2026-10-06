@@ -118,6 +118,13 @@ export async function handleWebsiteChatSettings(req, res, injectedDeps) {
     const action = body.action;
 
     if (action === "create") {
+      // Plan gate (server-side): Website Chat must be included in the
+      // client's plan. The RPC then enforces plan_features.max_connections
+      // (sites per client) atomically. Without an eligible plan row there is
+      // no site creation at all — never an unlimited fallback.
+      if (!(await deps.repo.isFeatureInClientPlan(clientId, featureId))) {
+        return res.status(403).json({ success: false, code: "not_in_plan", message: "محادثة الموقع غير متاحة ضمن خطتك" });
+      }
       const displayName = readDisplayName(body.display_name);
       if (!displayName) return bad(res, "يرجى إدخال اسم الموقع");
       const domains = readDomains(body.allowed_domains);
