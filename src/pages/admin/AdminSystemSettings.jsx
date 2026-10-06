@@ -11,10 +11,13 @@ const cardClass = "rounded-3xl border border-slate-200 bg-white shadow-sm";
 // and evolution_api_gateway_workflow_url are consumed at runtime directly by
 // Vercel serverless functions (Vercel -> n8n fetch); the two *_workflow_id
 // keys are consumed at runtime by n8n itself (parent workflows' Execute
-// Workflow node); every other *_url key is administration/reference only.
+// Workflow node); main_inbound_webhook_url is served (validated) to the
+// Integrations UI to build channel setup links; every other *_url key is
+// administration/reference only.
 const EMPTY = {
   human_reply_webhook_url: "",
   evolution_api_gateway_workflow_url: "",
+  main_inbound_webhook_url: "",
   ai_agent_core_workflow_url: "",
   ai_agent_core_workflow_id: "",
   inbound_media_core_workflow_url: "",
@@ -181,6 +184,26 @@ export default function AdminSystemSettings() {
               رابط n8n Evolution API Gateway workflow المستخدم عند إنشاء/ربط/مزامنة/حذف أرقام
               واتساب. لكل بيئة (Production / Development) قيمة خاصة بها في قاعدة بياناتها —
               لا يوجد رابط مشترك بين البيئتين.
+            </p>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-bold">
+              Main Inbound Flow — Webhook URL
+            </label>
+            <input
+              className={inputClass}
+              value={settings.main_inbound_webhook_url}
+              onChange={(e) => setField("main_inbound_webhook_url", e.target.value)}
+              placeholder="https://n8n.../webhook/<webhook-id>/inbound"
+              dir="ltr"
+              disabled={busy}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              رابط الـ Webhook الأساسي لـ AutoResponder_Final_V3 في هذه البيئة، وتُبنى منه روابط
+              إعداد تيليجرام وفيسبوك وإنستغرام: &lt;الرابط&gt;/telegram/&lt;channelKey&gt;. لكل بيئة
+              (Production / Development) قيمة خاصة بها. يجب أن يبدأ بـ https وأن يحتوي على /webhook/
+              وأن ينتهي بـ /inbound.
             </p>
           </div>
 

@@ -1,6 +1,7 @@
 import { getSupabaseServerClient } from "./supabaseServer.js";
 import { resolveActor } from "./clientAiBehavior.js";
 import { featureSlugMap, isInstagramSlug, isWebsiteChatSlug, safeIntegrationView } from "./integrationSafeView.js";
+import { getMainInboundWebhookBase } from "./inboundWebhookBase.js";
 
 // D4 Step C — feature-settings drawer of AdminClientSettings.jsx (used by
 // an admin for any client AND by a client for itself via
@@ -16,7 +17,7 @@ import { featureSlugMap, isInstagramSlug, isWebsiteChatSlug, safeIntegrationView
 //
 // Shape (dispatched from api/client-integrations.js?resource=feature_settings):
 //   GET  ?resource=feature_settings&actor_user_id=&client_id=
-//     -> { success, integrations: [safe view...], can_edit }
+//     -> { success, integrations: [safe view...], can_edit, inbound_webhook_base }
 //   POST ?resource=feature_settings
 //     { action: "save", actor_user_id, client_id? (admin), feature_id, config }
 //     -> { success, integration: safe view }
@@ -121,7 +122,8 @@ export async function handleClientFeatureSettings(req, res, deps = {}) {
   try {
     if (isGet) {
       const integrations = await listFeatureSettings(supabase, actor.clientId);
-      return res.status(200).json({ success: true, integrations, can_edit: actor.canWrite === true });
+      const inbound_webhook_base = await getMainInboundWebhookBase(supabase);
+      return res.status(200).json({ success: true, integrations, can_edit: actor.canWrite === true, inbound_webhook_base });
     }
 
     if (source.action !== "save") {

@@ -1,6 +1,7 @@
 import { getSupabaseServerClient } from "./_lib/supabaseServer.js";
 import { resolveActingAdmin } from "./_lib/clientAuthz.js";
 import { computeAdminOverview } from "./_lib/adminOverview.js";
+import { MAIN_INBOUND_WEBHOOK_KEY, normalizeInboundWebhookBase } from "./_lib/inboundWebhookBase.js";
 
 // Platform system settings — the central registry for n8n workflow
 // references (Admin -> Settings -> System).
@@ -25,6 +26,13 @@ import { computeAdminOverview } from "./_lib/adminOverview.js";
 //   ai_agent_core_workflow_url         – URL. Administration/reference only —
 //                                        not consumed by any workflow.
 //   inbound_media_core_workflow_url    – URL. Reference only.
+//   main_inbound_webhook_url           – URL. Base of this environment's
+//                                        AutoResponder_Final_V3 inbound
+//                                        webhook; channel setup links are
+//                                        built from it (served to the UI by
+//                                        client-integrations / feature
+//                                        settings). Validated on save — see
+//                                        api/_lib/inboundWebhookBase.js.
 //
 // AUTHORIZATION: previously this endpoint was completely unauthenticated —
 // any caller could read the human-reply webhook URL and repoint it. It now
@@ -40,7 +48,7 @@ import { computeAdminOverview } from "./_lib/adminOverview.js";
 // api/_lib/adminOverview.js. (Folded in here rather than a new file — the
 // deploy is already at the 12-Serverless-Function Hobby cap, and this
 // endpoint is already the platform-admin one.)
-const WEBHOOK_KEYS = new Set(["human_reply_webhook_url", "evolution_api_gateway_workflow_url"]);
+const WEBHOOK_KEYS = new Set(["human_reply_webhook_url", "evolution_api_gateway_workflow_url", MAIN_INBOUND_WEBHOOK_KEY]);
 const ID_KEYS = new Set(["ai_agent_core_workflow_id", "inbound_media_core_workflow_id"]);
 const URL_KEYS = new Set(["ai_agent_core_workflow_url", "inbound_media_core_workflow_url"]);
 
@@ -65,10 +73,12 @@ async function persistSetting(supabase, key, value) {
   return { ok: !error };
 }
 
-export default async function handler(req, res) {
+// `deps` is for unit tests only (injected Supabase client); Vercel calls
+// handler(req, res).
+export default async function handler(req, res, deps = {}) {
   let supabase;
   try {
-    supabase = getSupabaseServerClient();
+    supabase = deps.supabase || getSupabaseServerClient();
   } catch (error) {
     return res.status(500).json({ success: false, message: "Server is not configured" });
   }
@@ -141,8 +151,17 @@ export default async function handler(req, res) {
     for (const key of ALL_KEYS) {
       const raw = source[key];
       if (typeof raw !== "string") continue;
-      const value = raw.trim();
+      let value = raw.trim();
       if (!value) continue;
+      if (key === MAIN_INBOUND_WEBHOOK_KEY) {
+        value = normalizeInboundWebhookBase(value);
+        if (!value) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid Main Inbound Flow webhook URL (https, no query, must contain /webhook/ and end with /inbound)",
+          });
+        }
+      }
       updates.push({ key, value });
     }
 

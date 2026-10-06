@@ -111,12 +111,15 @@ function getConfiguredCount(feature, values) {
   return { done, total: fields.length };
 }
 
-function buildSetupLinks({ activeFeature, featureValues }, t) {
+// `inboundBase` = this environment's Main Inbound Flow webhook base, served
+// by the backend (?resource=feature_settings -> inbound_webhook_base). No
+// fallback to VITE_WEBHOOK_BASE_URL: no valid base -> no links.
+function buildSetupLinks({ activeFeature, featureValues, inboundBase }, t) {
   const slug = activeFeature?.slug;
   const channelKey = String(featureValues?.channelKey || "").trim();
-  const webhookBase = String(import.meta.env.VITE_WEBHOOK_BASE_URL || "")
+  const webhookBase = String(inboundBase || "")
     .trim()
-    .replace(/\/$/, "");
+    .replace(/\/+$/, "");
 
   const links = [];
 
@@ -433,6 +436,7 @@ export default function AdminClientSettings({ clientIdOverride }) {
   const [msg, setMsg] = useState("");
 
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [inboundWebhookBase, setInboundWebhookBase] = useState(null);
   const [activeFeature, setActiveFeature] = useState(null);
   const [settingsRowId, setSettingsRowId] = useState(null);
   const [featureValues, setFeatureValues] = useState({});
@@ -482,6 +486,7 @@ export default function AdminClientSettings({ clientIdOverride }) {
     if (!response.ok || data?.success === false) {
       throw new Error(data?.message || "Failed to load feature settings");
     }
+    setInboundWebhookBase(typeof data.inbound_webhook_base === "string" ? data.inbound_webhook_base : null);
     return Array.isArray(data.integrations) ? data.integrations : [];
   }
 
@@ -1047,8 +1052,8 @@ function calculateEndDate(subscriptionType, duration) {
   const clientCanEdit = plan?.allow_self_edit === true;
   const isTelegramFeature = activeFeature?.slug === "telegram";
   const setupLinks = useMemo(
-    () => buildSetupLinks({ activeFeature, featureValues }, t),
-    [activeFeature, featureValues]
+    () => buildSetupLinks({ activeFeature, featureValues, inboundBase: inboundWebhookBase }, t),
+    [activeFeature, featureValues, inboundWebhookBase]
   );
 
   const configuredFeatures = features.filter((feature) => {

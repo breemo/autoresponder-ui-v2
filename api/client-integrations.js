@@ -3,6 +3,7 @@ import { handleWebsiteChatSettings, isWebsiteChatFeatureId } from "./_lib/websit
 import { handleClientFeatureSettings } from "./_lib/clientFeatureSettings.js";
 import { featureSlugMap, isInstagramSlug, safeIntegrationView } from "./_lib/integrationSafeView.js";
 import { buildInstagramConfigUpdate, redactInstagramConfig } from "./_lib/instagramSetup.js";
+import { getMainInboundWebhookBase } from "./_lib/inboundWebhookBase.js";
 import { createWebsiteChatRepo } from "./_lib/websiteChatRepo.js";
 import { getSupabaseServerClient } from "./_lib/supabaseServer.js";
 import { resolveActingMembership, actorHasPermission } from "./_lib/clientAuthz.js";
@@ -239,11 +240,14 @@ export default async function handler(req, res, deps = {}) {
   const featureId = req.body?.feature_id;
 
   // Read-only list for the Integrations page (same INTEGRATIONS permission
-  // gate as the page route itself). No feature_id needed.
+  // gate as the page route itself). No feature_id needed. Also returns this
+  // environment's Main Inbound Flow webhook base (system_settings, server
+  // side; null when missing/invalid -> the UI shows "not configured").
   if (action === "list") {
     try {
       const integrations = await listClientIntegrations(supabase, clientId);
-      return res.status(200).json({ success: true, integrations });
+      const inbound_webhook_base = await getMainInboundWebhookBase(supabase);
+      return res.status(200).json({ success: true, integrations, inbound_webhook_base });
     } catch (error) {
       return res.status(500).json({ success: false, message: "فشل في تحميل التكاملات" });
     }

@@ -13,6 +13,7 @@
     "@supabase/supabase-js": "^2.81.1",
     "i18next": "^26.3.6",
     "mammoth": "^1.12.1",
+    "qrcode-generator": "2.0.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-i18next": "^17.0.11",

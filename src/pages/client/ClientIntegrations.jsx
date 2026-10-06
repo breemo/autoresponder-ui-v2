@@ -23,7 +23,8 @@ import FacebookAccountsSection from "./FacebookAccountsSection";
 import InstagramSetupSection from "./InstagramSetupSection";
 import WebsiteChatSection from "./WebsiteChatSection";
 import { isReplyModeKey, getReplyModeSelectOptions, getReplyModeLabel, DEFAULT_REPLY_MODE } from "../../lib/replyMode.js";
-import { showsGenericSetupLinks } from "../../lib/integrationSetupLinks.js";
+import { buildChannelSetupLinks, showsGenericSetupLinks } from "../../lib/integrationSetupLinks.js";
+import TelegramActivationQr from "./TelegramActivationQr";
 import { collapseWebsiteChatRows, isWebsiteChatSlug, websiteChatCard, WEBSITE_CHAT_CARD_ID } from "../../lib/websiteChatEmbed.js";
 
 // Multi-Account Stage 2B — Facebook runtime-truth fix pass. client_facebook
@@ -36,9 +37,8 @@ import { collapseWebsiteChatRows, isWebsiteChatSlug, websiteChatCard, WEBSITE_CH
 // active-looking configuration surfaces side by side, while still
 // allowing it to be shown deliberately (internal preparation/testing,
 // staging) via a build-time environment flag — the same
-// import.meta.env.VITE_* pattern already used elsewhere in this exact
-// file (see VITE_WEBHOOK_BASE_URL a few lines below) and in
-// AdminClientSettings.jsx, not a new architecture. Unset (the default
+// import.meta.env.VITE_* build-flag pattern used elsewhere in the app,
+// not a new architecture. Unset (the default
 // everywhere this variable isn't explicitly configured, including
 // production unless someone opts in) means OFF — the safe default. Also
 // gates the small "current active configuration" label on the legacy
@@ -131,64 +131,41 @@ function normalizeFields(feature) {
   return [];
 }
 
-function getConfigValue(config = {}, possibleKeys = []) {
-  const entries = Object.entries(config || {});
-  for (const key of possibleKeys) {
-    if (config[key] !== undefined && config[key] !== null && `${config[key]}`.trim() !== "") {
-      return `${config[key]}`.trim();
-    }
+// Setup links come from this environment's Main Inbound Flow webhook base,
+// served by the backend ("list" -> inbound_webhook_base). No fallback to
+// VITE_WEBHOOK_BASE_URL: without a valid base there are no links (the panel
+// shows "not configured").
+function buildGeneratedLinks(feature, integration, t, inboundBase) {
+  const built = buildChannelSetupLinks({
+    slug: feature?.slug || feature?.name || "",
+    config: integration?.config || {},
+    inboundBase,
+  });
+  if (!built) return [];
 
-    const normalizedKey = normalizeName(key);
-    const found = entries.find(([existingKey]) => normalizeName(existingKey) === normalizedKey);
-    if (found && found[1] !== undefined && found[1] !== null && `${found[1]}`.trim() !== "") {
-      return `${found[1]}`.trim();
-    }
-  }
-  return "";
-}
-
-function buildGeneratedLinks(feature, integration, t) {
-  const slug = `${feature?.slug || feature?.name || ""}`.toLowerCase();
-  const config = integration?.config || {};
-  const channelKey = getConfigValue(config, ["channelKey", "channel_key", "Channel Key", "channel key"]);
-  const botToken = getConfigValue(config, ["Bot Token", "bot_token", "botToken", "Telegram Bot Token"]);
-  const webhookBase = (import.meta.env.VITE_WEBHOOK_BASE_URL || "").trim().replace(/\/$/, "");
-
-  if (!webhookBase || !channelKey) return [];
-
-  const platform = slug.includes("telegram")
-    ? "telegram"
-    : slug.includes("facebook") || slug.includes("messenger")
-      ? "facebook"
-      : slug.includes("instagram")
-        ? "instagram"
-        : slug.includes("whatsapp")
-          ? "whatsapp"
-          : slug || "channel";
-
-  const webhookUrl = `${webhookBase}/${platform}/${channelKey}`;
   const links = [
     {
       label: "Webhook URL",
       hint: t("integrationsPage.webhookHint"),
-      value: webhookUrl,
+      value: built.webhookUrl,
       openable: true,
     },
   ];
 
-  if (platform === "telegram" && botToken) {
+  if (built.activationUrl) {
     links.push({
       label: t("integrationsPage.telegramActivationLink"),
       hint: t("integrationsPage.telegramActivationHint"),
-      value: `https://api.telegram.org/bot${botToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}`,
+      value: built.activationUrl,
       openable: true,
+      activationQr: true,
     });
   }
 
   return links;
 }
 
-function SetupLinkCard({ label, hint, value, openable = true }) {
+function SetupLinkCard({ label, hint, value, openable = true, activationQr = false }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
@@ -234,6 +211,7 @@ function SetupLinkCard({ label, hint, value, openable = true }) {
       <div dir="ltr" className="mt-3 max-h-24 overflow-auto rounded-xl bg-slate-50 px-3 py-2 text-left text-xs leading-5 text-indigo-700">
         {value}
       </div>
+      {activationQr && <TelegramActivationQr activationUrl={value} />}
     </div>
   );
 }
@@ -267,6 +245,9 @@ export default function ClientIntegrations() {
   const [integrations, setIntegrations] = useState([]);
   const [selectedIntegrationId, setSelectedIntegrationId] = useState(null);
   const [showAdvancedSetup, setShowAdvancedSetup] = useState(true);
+  // This environment's Main Inbound Flow webhook base (server-side
+  // system_settings via "list"); null = not configured.
+  const [inboundWebhookBase, setInboundWebhookBase] = useState(null);
   const [query, setQuery] = useState("");
   // Informational/UX only (mirrors SubscriptionBanner) — disables the
   // obvious "activate a new service" buttons as a hint. This is NOT an
@@ -385,6 +366,7 @@ export default function ClientIntegrations() {
       const channels = collapseWebsiteChatRows(normalized, websiteChatFeature?.id);
 
       setIntegrations(channels);
+      setInboundWebhookBase(typeof listResp.inbound_webhook_base === "string" ? listResp.inbound_webhook_base : null);
       setSelectedIntegrationId((prev) => prev || channels[0]?.id || null);
     } catch (err) {
       console.error("Error loading client integrations:", err);
@@ -919,7 +901,7 @@ export default function ClientIntegrations() {
                               hasPageAccessToken={
                                 !!selectedIntegration.config_flags?.has_page_access_token
                               }
-                              webhookBase={(import.meta.env.VITE_WEBHOOK_BASE_URL || "").trim()}
+                              webhookBase={inboundWebhookBase || ""}
                               onFieldChange={(key, value) =>
                                 handleFieldChange(selectedIntegration.id, key, value)
                               }
@@ -988,7 +970,7 @@ export default function ClientIntegrations() {
                           </div>
 
                           {showsGenericSetupLinks(selectedFeature.slug) && (() => {
-                            const generatedLinks = buildGeneratedLinks(selectedFeature, selectedIntegration, t);
+                            const generatedLinks = buildGeneratedLinks(selectedFeature, selectedIntegration, t, inboundWebhookBase);
                             return (
                               <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 shadow-sm">
                                 <button
@@ -1007,6 +989,10 @@ export default function ClientIntegrations() {
                                   <div className="mt-3 space-y-3">
                                     {generatedLinks.length > 0 ? (
                                       generatedLinks.map((link) => <SetupLinkCard key={link.label} {...link} />)
+                                    ) : !inboundWebhookBase ? (
+                                      <div className="rounded-2xl border border-dashed border-amber-200 bg-amber-50/60 p-4 text-xs leading-6 text-amber-800">
+                                        {t("integrationsPage.inboundWebhookNotConfigured")}
+                                      </div>
                                     ) : (
                                       <div className="rounded-2xl border border-dashed border-indigo-200 bg-white/70 p-4 text-xs leading-6 text-slate-500">
                                         {t("integrationsPage.setupLinksEmptyPrefix")} <span className="font-semibold text-slate-700">Channel Key</span>

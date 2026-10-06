@@ -27,9 +27,9 @@ test("generic setup links still shown for legacy webhook channels", () => {
 
 test("ClientIntegrations gates the setup-links panel with showsGenericSetupLinks", () => {
   const src = fs.readFileSync(path.join(ROOT, "src/pages/client/ClientIntegrations.jsx"), "utf8");
-  assert.match(src, /import \{ showsGenericSetupLinks \} from "\.\.\/\.\.\/lib\/integrationSetupLinks\.js";/);
+  assert.match(src, /import \{ buildChannelSetupLinks, showsGenericSetupLinks \} from "\.\.\/\.\.\/lib\/integrationSetupLinks\.js";/);
   const gate = src.indexOf("showsGenericSetupLinks(selectedFeature.slug) && (() => {");
-  const links = src.indexOf("buildGeneratedLinks(selectedFeature, selectedIntegration, t)");
+  const links = src.indexOf("buildGeneratedLinks(selectedFeature, selectedIntegration, t, inboundWebhookBase)");
   assert.ok(gate > -1 && links > gate, "setup-links panel must be gated");
   assert.ok(links - gate < 200, "gate must wrap the panel that builds the links");
 });
