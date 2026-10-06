@@ -34,8 +34,6 @@ import RouteErrorBoundary from "../components/RouteErrorBoundary.jsx";
 const adminItems = [
   { to: "/admin", labelKey: "navigation.overview", descKey: "navigation.descriptions.overviewAdmin", icon: HomeIcon, end: true },
   { to: "/admin/clients", labelKey: "navigation.clients", descKey: "navigation.descriptions.clients", icon: UsersIcon },
-  { to: "/admin/messages", labelKey: "navigation.messages", descKey: "navigation.descriptions.messages", icon: ChatBubbleLeftRightIcon },
-  { to: "/admin/auto-replies", labelKey: "navigation.autoReplies", descKey: "navigation.descriptions.autoReplies", icon: BoltIcon },
   { to: "/admin/plans", labelKey: "navigation.plans", descKey: "navigation.descriptions.plans", icon: CreditCardIcon },
   { to: "/admin/features", labelKey: "navigation.features", descKey: "navigation.descriptions.features", icon: PuzzlePieceIcon },
   { to: "/admin/settings", labelKey: "navigation.settings", descKey: "navigation.descriptions.settings", icon: Cog6ToothIcon },
@@ -59,8 +57,6 @@ const clientItems = [
 const PAGE_TITLE_KEYS = {
   "/admin": "pageTitles.admin.overview",
   "/admin/clients": "pageTitles.admin.clients",
-  "/admin/messages": "pageTitles.admin.messages",
-  "/admin/auto-replies": "pageTitles.admin.autoReplies",
   "/admin/plans": "pageTitles.admin.plans",
   "/admin/features": "pageTitles.admin.features",
   "/admin/settings": "pageTitles.admin.settings",
@@ -92,7 +88,7 @@ function getPageMeta(t, pathname, panel) {
 // natural page scroll) so they can manage their own internal scroll areas
 // (e.g. the Inbox's conversation list / message pane). Opt-in by route only
 // — every other page keeps the existing scroll behavior untouched.
-const FULL_HEIGHT_ROUTES = ["/client/messages", "/admin/messages"];
+const FULL_HEIGHT_ROUTES = ["/client/messages"];
 
 export default function SharedDashboardLayout({ children, panel = "client" }) {
   const { user, setUser } = useAuth();

@@ -18,8 +18,6 @@ import Login from "./pages/Login.jsx";
 import AdminDashboard from "./pages/admin/AdminDashboard.jsx";
 import AdminClients from "./pages/admin/AdminClients.jsx";
 import AdminPlans from "./pages/admin/AdminPlans.jsx";
-import AdminMessages from "./pages/admin/AdminMessages.jsx";
-import AdminAutoReplies from "./pages/admin/AdminAutoReplies.jsx";
 import AdminSettings from "./pages/admin/AdminSettings.jsx";
 import AdminClientSettings from "./pages/admin/AdminClientSettings.jsx";
 import AdminFeatures from "./pages/admin/AdminFeatures.jsx";
@@ -94,14 +92,10 @@ export default function App() {
             path="/admin/features"
             element={<AdminRoute><AdminFeatures /></AdminRoute>}
           />
-          <Route
-            path="/admin/messages"
-            element={<AdminRoute><AdminMessages /></AdminRoute>}
-          />
-          <Route
-            path="/admin/auto-replies"
-            element={<AdminRoute><AdminAutoReplies /></AdminRoute>}
-          />
+          {/* Admin Messages / Auto Replies were removed (client operations
+              belong to the Client Portal); old bookmarks land on Overview. */}
+          <Route path="/admin/messages" element={<Navigate to="/admin" replace />} />
+          <Route path="/admin/auto-replies" element={<Navigate to="/admin" replace />} />
           <Route
             path="/admin/plans"
             element={<AdminRoute><AdminPlans /></AdminRoute>}
