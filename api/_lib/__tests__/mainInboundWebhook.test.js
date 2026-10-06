@@ -197,13 +197,17 @@ test("client-integrations list: inbound_webhook_base is null when missing/invali
   assert.equal(res.body.inbound_webhook_base, undefined);
 });
 
-test("feature_settings GET returns inbound_webhook_base for admin and client actors", async () => {
+test("feature_settings GET returns inbound_webhook_base for admins; client actors are refused", async () => {
   let res = mockRes();
   await handleClientFeatureSettings({ method: "GET", query: { actor_user_id: "u-admin", client_id: "c1" } }, res, { supabase: makeDb(seed({ base: PROD })) });
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.inbound_webhook_base, PROD);
   res = mockRes();
-  await handleClientFeatureSettings({ method: "GET", query: { actor_user_id: "u-owner" } }, res, { supabase: makeDb(seed()) });
+  await handleClientFeatureSettings({ method: "GET", query: { actor_user_id: "u-admin", client_id: "c1" } }, res, { supabase: makeDb(seed()) });
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.inbound_webhook_base, null);
+  res = mockRes();
+  await handleClientFeatureSettings({ method: "GET", query: { actor_user_id: "u-owner" } }, res, { supabase: makeDb(seed({ base: PROD })) });
+  assert.equal(res.statusCode, 403);
+  assert.equal(res.body.inbound_webhook_base, undefined);
 });

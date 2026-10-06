@@ -3,17 +3,17 @@ import { resolveActor } from "./clientAiBehavior.js";
 import { featureSlugMap, isInstagramSlug, isWebsiteChatSlug, safeIntegrationView } from "./integrationSafeView.js";
 import { getMainInboundWebhookBase } from "./inboundWebhookBase.js";
 
-// D4 Step C — feature-settings drawer of AdminClientSettings.jsx (used by
-// an admin for any client AND by a client for itself via
-// ClientFeatureSettings.jsx). Replaces the drawer's former direct browser
-// reads/writes of client_feature_integrations.
+// D4 Step C — channel feature-settings drawer of AdminClientSettings.jsx in
+// ADMIN mode (/admin/client/:id). Replaces the drawer's former direct
+// browser reads/writes of client_feature_integrations.
 //
-// Authorization: identical two-actor rule as resource=ai-behavior (same
-// page) — resolveActor() from api/_lib/clientAiBehavior.js:
-//   - admin: any existing client, client_id supplied explicitly; may write.
-//   - client: own membership client_id only (request client_id ignored),
-//     AI_SETTINGS permission to read; write only when the plan has
-//     allow_self_edit === true (the drawer's existing readOnly rule).
+// Authorization: PLATFORM ADMINS ONLY. Actor resolution reuses
+// resolveActor() from api/_lib/clientAiBehavior.js (admin: any existing
+// client, client_id supplied explicitly), and every non-admin actor is
+// refused with 403. Clients manage channel configuration exclusively on the
+// Integrations page (/api/client-integrations, INTEGRATIONS permission) —
+// channel configs are NOT exposed through AI_SETTINGS. (The client-mode
+// Feature Settings page keeps AI Behavior via resource=ai-behavior.)
 //
 // Shape (dispatched from api/client-integrations.js?resource=feature_settings):
 //   GET  ?resource=feature_settings&actor_user_id=&client_id=
@@ -118,6 +118,7 @@ export async function handleClientFeatureSettings(req, res, deps = {}) {
     requestedClientId: source.client_id,
   });
   if (authError) return res.status(authError.status).json({ success: false, message: authError.message });
+  if (actor.kind !== "admin") return res.status(403).json({ success: false, message: "Forbidden" });
 
   try {
     if (isGet) {

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -14,9 +14,11 @@ import {
   PaperAirplaneIcon,
   PencilSquareIcon,
   SparklesIcon,
+  Squares2X2Icon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import KnowledgeBaseSection from "../client/KnowledgeBaseSection.jsx";
+import { PERMISSIONS, hasUserPermission } from "../../lib/permissions.js";
 
 function getFeatureMeta(feature, t) {
   const slug = String(feature?.slug || "").toLowerCase();
@@ -411,6 +413,13 @@ export default function AdminClientSettings({ clientIdOverride }) {
   const params = useParams();
   const effectiveClientId = clientIdOverride || params.id;
   const { user } = useAuth();
+  // CLIENT mode = /client/feature-settings (ClientFeatureSettings passes
+  // clientIdOverride). Channel configuration is managed ONLY on the
+  // Integrations page (INTEGRATIONS permission): in client mode this page
+  // shows no channel cards / completion stats and never loads channel
+  // configs. ADMIN mode (/admin/client/:id) keeps the channel cards + drawer
+  // as the admin support tool. AI Behavior stays available in both modes.
+  const isClientMode = Boolean(clientIdOverride) && user?.role !== "admin";
   const { t } = useTranslation();
 
   const [client, setClient] = useState(null);
@@ -612,6 +621,13 @@ console.log("activeSub", activeSub);
         setFeatures(featuresData || []);
       }
 
+      if (isClientMode) {
+        // Channel configs are not loaded here for clients (see isClientMode).
+        setFeatureSettings({});
+        setLoading(false);
+        return;
+      }
+
       try {
         const integrationsData = await fetchFeatureSettingsRows(clientId);
         const settingsMap = {};
@@ -633,6 +649,8 @@ console.log("activeSub", activeSub);
 
   async function openFeatureDrawer(feature) {
     if (!effectiveClientId) return;
+    // Client mode: only the AI Behavior drawer is reachable from this page.
+    if (isClientMode && feature?.slug !== "ai_auto_reply") return;
 
     setMsg("");
     setActiveFeature(feature);
@@ -1008,6 +1026,7 @@ function calculateEndDate(subscriptionType, duration) {
   async function handleSaveFeature(e) {
     e.preventDefault();
     if (readOnly) return;
+    if (isClientMode) return; // channel configuration is saved via Integrations only
     if (!activeFeature || !effectiveClientId) return;
 
     setSaving(true);
@@ -1051,6 +1070,8 @@ function calculateEndDate(subscriptionType, duration) {
   const isAdmin = user?.role === "admin";
   const clientCanEdit = plan?.allow_self_edit === true;
   const isTelegramFeature = activeFeature?.slug === "telegram";
+  const aiBehaviorFeature = features.find((feature) => feature.slug === "ai_auto_reply") || null;
+  const canManageIntegrations = isClientMode && hasUserPermission(user, PERMISSIONS.INTEGRATIONS);
   const setupLinks = useMemo(
     () => buildSetupLinks({ activeFeature, featureValues, inboundBase: inboundWebhookBase }, t),
     [activeFeature, featureValues, inboundWebhookBase]
@@ -1114,6 +1135,7 @@ function calculateEndDate(subscriptionType, duration) {
         </div>
       )}
 
+      {!isClientMode && (
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-sm font-medium text-slate-500">{t("featureSettingsPage.statAvailable")}</p>
@@ -1131,6 +1153,7 @@ function calculateEndDate(subscriptionType, duration) {
           <p className="mt-1 text-xs text-slate-400">{t("featureSettingsPage.statPartialHint")}</p>
         </div>
       </div>
+      )}
 
       {!isAdmin && !clientCanEdit && (
         <div className="flex items-start gap-3 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-800">
@@ -1139,7 +1162,54 @@ function calculateEndDate(subscriptionType, duration) {
         </div>
       )}
 
-      {features.length === 0 ? (
+      {isClientMode ? (
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          {aiBehaviorFeature && (
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-50 text-violet-600 ring-1 ring-violet-100">
+                    <SparklesIcon className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-950">{t("featureSettingsPage.aiBehaviorCardTitle")}</h3>
+                    <p className="mt-1 text-sm text-slate-500">{t("featureSettingsPage.aiBehaviorCardDesc")}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => openFeatureDrawer(aiBehaviorFeature)}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+                >
+                  <PencilSquareIcon className="h-4 w-4" />
+                  {t("common.edit")}
+                </button>
+              </div>
+            </div>
+          )}
+          {canManageIntegrations && (
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100">
+                    <Squares2X2Icon className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-950">{t("featureSettingsPage.channelIntegrationsCardTitle")}</h3>
+                    <p className="mt-1 text-sm text-slate-500">{t("featureSettingsPage.channelIntegrationsCardDesc")}</p>
+                  </div>
+                </div>
+                <Link
+                  to="/client/integrations"
+                  className="inline-flex shrink-0 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                >
+                  {t("featureSettingsPage.channelIntegrationsCardAction")}
+                </Link>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : features.length === 0 ? (
         <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
           <Cog6ToothIcon className="mx-auto mb-3 h-10 w-10 text-slate-300" />
           <p className="font-semibold text-slate-700">{t("featureSettingsPage.noFeatures")}</p>

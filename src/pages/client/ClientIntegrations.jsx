@@ -208,7 +208,7 @@ function SetupLinkCard({ label, hint, value, openable = true, activationQr = fal
           )}
         </div>
       </div>
-      <div dir="ltr" className="mt-3 max-h-24 overflow-auto rounded-xl bg-slate-50 px-3 py-2 text-left text-xs leading-5 text-indigo-700">
+      <div dir="ltr" className="mt-3 max-h-24 overflow-auto break-all rounded-xl bg-slate-50 px-3 py-2 text-left font-mono text-xs leading-5 text-indigo-700">
         {value}
       </div>
       {activationQr && <TelegramActivationQr activationUrl={value} />}
@@ -969,6 +969,13 @@ export default function ClientIntegrations() {
                             </p>
                           </div>
 
+                        </aside>
+                      </div>
+
+                      {/* Automatic Setup Links — full width (was inside the 280px
+                          aside): long URLs, hints and the activation QR
+                          need the room. Same gate, same links, same QR. */}
+                      <div className="px-4 pb-4 empty:hidden">
                           {showsGenericSetupLinks(selectedFeature.slug) && (() => {
                             const generatedLinks = buildGeneratedLinks(selectedFeature, selectedIntegration, t, inboundWebhookBase);
                             return (
@@ -1005,7 +1012,6 @@ export default function ClientIntegrations() {
                               </div>
                             );
                           })()}
-                        </aside>
                       </div>
                     </>
                   );

@@ -235,12 +235,20 @@ test("feature_settings GET: admin without client_id -> 400; unknown client -> 40
   assert.equal(res.statusCode, 404);
 });
 
-test("feature_settings GET: client reads only its own client (requested client_id ignored)", async () => {
-  const res = mockRes();
-  await handleClientFeatureSettings({ method: "GET", query: { actor_user_id: "u-owner2", client_id: "c1" } }, res, { supabase: makeDb() });
-  assert.equal(res.statusCode, 200);
-  assert.deepEqual(res.body.integrations.map((r) => r.client_id), ["c2"]);
-  assert.equal(res.body.can_edit, false);
+test("feature_settings: client actors are refused (channel configs are not exposed through AI_SETTINGS)", async () => {
+  for (const actor of ["u-owner", "u-owner2"]) {
+    let res = mockRes();
+    await handleClientFeatureSettings({ method: "GET", query: { actor_user_id: actor, client_id: "c1" } }, res, { supabase: makeDb() });
+    assert.equal(res.statusCode, 403, actor);
+    assert.equal(res.body.integrations, undefined);
+    res = mockRes();
+    await handleClientFeatureSettings(
+      { method: "POST", query: {}, body: { action: "save", actor_user_id: actor, feature_id: F.telegram, config: { "Bot Token": "x" } } },
+      res,
+      { supabase: makeDb() }
+    );
+    assert.equal(res.statusCode, 403, actor);
+  }
 });
 
 test("feature_settings: client without AI_SETTINGS -> 403; anonymous -> 401", async () => {
@@ -265,11 +273,11 @@ test("feature_settings save: admin updates the existing row", async () => {
   assert.deepEqual(db.tables.client_feature_integrations.find((r) => r.id === "i-tg").config, { "Bot Token": "NEW", reply_mode: "ai" });
 });
 
-test("feature_settings save: creates the row when missing (plan feature)", async () => {
+test("feature_settings save (admin): creates the row when missing (plan feature)", async () => {
   const db = makeDb();
   const res = mockRes();
   await handleClientFeatureSettings(
-    { method: "POST", query: {}, body: { action: "save", actor_user_id: "u-owner", feature_id: F.facebook, config: { pageId: "1" } } },
+    { method: "POST", query: {}, body: { action: "save", actor_user_id: "u-admin", client_id: "c1", feature_id: F.facebook, config: { pageId: "1" } } },
     res,
     { supabase: db }
   );
@@ -279,7 +287,7 @@ test("feature_settings save: creates the row when missing (plan feature)", async
   assert.deepEqual(created[0].config, { pageId: "1" });
 });
 
-test("feature_settings save: client on a plan without allow_self_edit -> 403", async () => {
+test("feature_settings save: client actor (even on a plan without allow_self_edit) -> 403, nothing written", async () => {
   const db = makeDb();
   const res = mockRes();
   await handleClientFeatureSettings(
@@ -291,10 +299,10 @@ test("feature_settings save: client on a plan without allow_self_edit -> 403", a
   assert.equal(db.tables.client_feature_integrations.find((r) => r.id === "i-c2").config["Bot Token"], "OTHER-TENANT");
 });
 
-test("feature_settings save: feature outside the client's plan -> 403", async () => {
+test("feature_settings save (admin): feature outside the client's plan -> 403", async () => {
   const res = mockRes();
   await handleClientFeatureSettings(
-    { method: "POST", query: {}, body: { action: "save", actor_user_id: "u-owner", feature_id: F.other, config: {} } },
+    { method: "POST", query: {}, body: { action: "save", actor_user_id: "u-admin", client_id: "c1", feature_id: F.other, config: {} } },
     res,
     { supabase: makeDb() }
   );
