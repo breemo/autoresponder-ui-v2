@@ -2,6 +2,7 @@ import { getSupabaseServerClient } from "./_lib/supabaseServer.js";
 import { resolveActingAdmin } from "./_lib/clientAuthz.js";
 import { computeAdminOverview } from "./_lib/adminOverview.js";
 import { MAIN_INBOUND_WEBHOOK_KEY, normalizeInboundWebhookBase } from "./_lib/inboundWebhookBase.js";
+import { WORKFLOW_PAIRS, extractN8nWorkflowId, environmentLabel } from "../src/lib/n8nSettings.js";
 
 // Platform system settings — the central registry for n8n workflow
 // references (Admin -> Settings -> System).
@@ -136,6 +137,9 @@ export default async function handler(req, res, deps = {}) {
       // Back-compat: existing shape kept so nothing that reads the flat
       // field breaks.
       human_reply_webhook_url: settings.human_reply_webhook_url,
+      // Display only: which Vercel environment served this request
+      // (Production = PROD, Preview = DEV). Not a new source of truth.
+      environment: environmentLabel(process.env.VERCEL_ENV),
     });
   }
 
@@ -147,8 +151,38 @@ export default async function handler(req, res, deps = {}) {
     const source =
       req.body?.settings && typeof req.body.settings === "object" ? req.body.settings : req.body || {};
 
+    // Core workflows: the Workflow URL is the input; the Workflow ID is
+    // derived from it and both are stored together, so they can never
+    // disagree. An ID cannot be set on its own, and a URL the ID cannot be
+    // extracted from is rejected before anything is persisted.
+    const derived = {};
+    for (const { urlKey, idKey } of WORKFLOW_PAIRS) {
+      const rawUrl = typeof source[urlKey] === "string" ? source[urlKey].trim() : "";
+      const rawId = typeof source[idKey] === "string" ? source[idKey].trim() : "";
+      if (!rawUrl) {
+        if (rawId) {
+          return res.status(400).json({ success: false, message: `${idKey} is derived from ${urlKey} — set the Workflow URL instead` });
+        }
+        continue;
+      }
+      const ex = extractN8nWorkflowId(rawUrl);
+      if (!ex.ok) {
+        return res.status(400).json({ success: false, message: `Invalid ${urlKey}: expected https://<n8n-host>/workflow/<workflow-id>` });
+      }
+      if (rawId && rawId !== ex.id) {
+        return res.status(400).json({ success: false, message: `${idKey} does not match the ID in ${urlKey}` });
+      }
+      derived[urlKey] = ex.url;
+      derived[idKey] = ex.id;
+    }
+
     const updates = [];
     for (const key of ALL_KEYS) {
+      if (derived[key] !== undefined) {
+        updates.push({ key, value: derived[key] });
+        continue;
+      }
+      if (WORKFLOW_PAIRS.some((p) => p.idKey === key)) continue; // only ever derived
       const raw = source[key];
       if (typeof raw !== "string") continue;
       let value = raw.trim();

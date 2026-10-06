@@ -14,25 +14,11 @@
 // credentials, path contains /webhook/ and ends with /inbound; trailing
 // slashes are stripped. The host is NOT restricted (hosting stays portable).
 
-export const MAIN_INBOUND_WEBHOOK_KEY = "main_inbound_webhook_url";
+import { normalizeInboundWebhookBase } from "../../src/lib/n8nSettings.js";
 
-export function normalizeInboundWebhookBase(value) {
-  if (typeof value !== "string") return null;
-  const raw = value.trim();
-  if (!raw || /\s/.test(raw)) return null;
-  let url;
-  try {
-    url = new URL(raw);
-  } catch {
-    return null;
-  }
-  if (url.protocol !== "https:") return null;
-  if (url.username || url.password) return null;
-  if (url.search || url.hash || raw.includes("?") || raw.includes("#")) return null;
-  const path = url.pathname.replace(/\/+$/, "");
-  if (!path.includes("/webhook/") || !path.endsWith("/inbound")) return null;
-  return `${url.origin}${path}`;
-}
+export { normalizeInboundWebhookBase };
+
+export const MAIN_INBOUND_WEBHOOK_KEY = "main_inbound_webhook_url";
 
 // Reads + validates this environment's value. Returns the normalized base
 // or null (missing / invalid / read error) — callers render "not configured".

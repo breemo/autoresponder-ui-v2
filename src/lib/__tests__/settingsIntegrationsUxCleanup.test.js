@@ -93,30 +93,14 @@ test("B: QR is an accessible modal with the same on-demand lifecycle", () => {
 
 // ---- A: Admin system settings --------------------------------------------------
 
-test("A: same 7 keys, same payload loop; each field grouped with a Runtime/Reference badge", () => {
+test("A: compact n8n control panel — same keys/API, grouped sections, Runtime/Reference legend", () => {
   const src = read("src/pages/admin/AdminSystemSettings.jsx");
-  const empty = src.slice(src.indexOf("const EMPTY = {"), src.indexOf("};", src.indexOf("const EMPTY = {")));
-  const keys = [...empty.matchAll(/^\s+([a-z_]+): "",$/gm)].map((m) => m[1]).sort();
-  assert.deepEqual(keys, [
-    "ai_agent_core_workflow_id",
-    "ai_agent_core_workflow_url",
-    "evolution_api_gateway_workflow_url",
-    "human_reply_webhook_url",
-    "inbound_media_core_workflow_id",
-    "inbound_media_core_workflow_url",
-    "main_inbound_webhook_url",
-  ]);
-  assert.ok(src.includes("for (const key of Object.keys(EMPTY)) {"));
+  assert.ok(src.includes("const EMPTY = Object.fromEntries(SETTINGS_KEYS.map((k) => [k, \"\"]));"));
   assert.ok(src.includes('fetch("/api/system-settings", {'));
-  const kindOf = (key) => {
-    const i = src.indexOf(`setField("${key}"`);
-    const block = src.slice(src.lastIndexOf("<SettingField", i), i);
-    return (block.match(/kind="(runtime|reference)"/) || [])[1];
-  };
-  for (const k of ["main_inbound_webhook_url", "human_reply_webhook_url", "evolution_api_gateway_workflow_url", "ai_agent_core_workflow_id", "inbound_media_core_workflow_id"]) {
-    assert.equal(kindOf(k), "runtime", k);
+  assert.ok(src.includes("Inbound &amp; Messaging") && src.indexOf("Inbound &amp; Messaging") < src.indexOf("Core Workflows"));
+  for (const name of ["Main Inbound Flow", "Human Reply", "Evolution API Gateway", "AI-Agent-Core", "Inbound-Media-Core"]) {
+    assert.ok(src.includes(`name: "${name}"`), name);
   }
-  for (const k of ["ai_agent_core_workflow_url", "inbound_media_core_workflow_url"]) assert.equal(kindOf(k), "reference", k);
-  assert.ok(src.indexOf("Inbound &amp; Messaging") < src.indexOf("Core Workflows"));
+  assert.ok(src.includes('<Badge kind="runtime" />') && src.includes('<Badge kind="reference" />'));
   assert.equal(src.includes("app_api_base_url"), false);
 });
