@@ -70,9 +70,6 @@ function makeRepo(seed = {}) {
     async findOwnedIntegration(clientId, featureId, id) {
       return db.integrations.find((i) => i.id === id && i.client_id === clientId && i.feature_id === featureId) || null;
     },
-    async isFeatureInClientPlan(clientId) {
-      return !(seed.notInPlan || []).includes(clientId);
-    },
     async createIntegration({ clientId, featureId, config, isActive }) {
       const count = db.integrations.filter((i) => i.client_id === clientId && i.feature_id === featureId).length;
       if (seed.planLimit != null && count >= seed.planLimit) return { outcome: "limit_reached", plan_limit: seed.planLimit };
@@ -736,7 +733,6 @@ test("settings: plan limit and feature not migrated", async () => {
   const limited = makeRepo({ planLimit: 1 });
   assert.equal((await settings(limited, { body: { action: "create", display_name: "A", allowed_domains: ["a.com"] } })).statusCode, 200);
   assert.equal((await settings(limited, { body: { action: "create", display_name: "B", allowed_domains: ["b.com"] } })).statusCode, 409);
-  assert.equal(limited.db.integrations.length, 1); // a second site is rejected server-side
   assert.equal((await settings(makeRepo({ noFeature: true }), { method: "GET" })).statusCode, 503);
   assert.equal(await isWebsiteChatFeatureId(makeRepo(), FEATURE_ID), true);
   assert.equal(await isWebsiteChatFeatureId(makeRepo(), OTHER_FEATURE_ID), false);

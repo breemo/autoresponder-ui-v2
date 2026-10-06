@@ -64,23 +64,6 @@ export function createWebsiteChatRepo(supabase) {
       );
     },
 
-    // Plan membership: Website Chat is available only when the client's plan
-    // has a plan_features row for the website_chat feature. No plan / no row
-    // = not available (never "unlimited").
-    async isFeatureInClientPlan(clientId, featureId) {
-      const client = unwrap(await supabase.from("clients").select("plan_id").eq("id", clientId).maybeSingle());
-      if (!client?.plan_id) return false;
-      const row = unwrap(
-        await supabase
-          .from("plan_features")
-          .select("feature_id")
-          .eq("plan_id", client.plan_id)
-          .eq("feature_id", featureId)
-          .maybeSingle()
-      );
-      return !!row;
-    },
-
     // Atomic plan-limit check + insert (RPC create_website_chat_integration).
     async createIntegration({ clientId, featureId, config, isActive }) {
       return unwrap(
