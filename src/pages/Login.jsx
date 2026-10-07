@@ -1,148 +1,342 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  CheckCircleIcon,
+  ExclamationCircleIcon,
+  EyeIcon,
+  EyeSlashIcon,
+} from "@heroicons/react/24/outline";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../context/AuthContext";
+import { useLanguage } from "../context/LanguageContext.jsx";
 import { writeSessionExpiry } from "../lib/session.js";
+import { BrandLogo, BrandMark, ChannelTile } from "../components/public/Brand.jsx";
+import { MessageBubble } from "../components/public/ProductPreviews.jsx";
+import { CHANNELS, PUBLIC_HOME_PATH, TRIAL_DAYS, TRIAL_PATH } from "../lib/publicSite.js";
+
+// Existing translations carry a leading ❌/✅; the redesigned alert shows its
+// own icon instead.
+const stripStatusEmoji = (text) => String(text || "").replace(/^\s*(❌|✅)\s*/u, "");
+
+function BrandPanel({ t }) {
+  return (
+    <div className="relative hidden overflow-hidden rounded-[2rem] bg-gradient-to-br from-indigo-600 via-indigo-600 to-violet-600 p-10 text-white shadow-2xl shadow-indigo-600/25 lg:flex lg:flex-col xl:p-12">
+      <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-white/10 blur-2xl" />
+      <div className="pointer-events-none absolute -bottom-28 -right-20 h-80 w-80 rounded-full bg-violet-300/25 blur-3xl" />
+
+      <Link to={PUBLIC_HOME_PATH} className="relative w-fit rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70">
+        <BrandLogo tone="light" />
+      </Link>
+
+      <div className="relative mt-auto pt-16">
+        <h2 className="max-w-md text-3xl font-bold leading-tight tracking-tight xl:text-[2.4rem]">{t("login.brandHeadline")}</h2>
+        <p className="mt-4 max-w-md text-[15px] leading-relaxed text-indigo-100">{t("login.brandText")}</p>
+
+        <ul className="mt-7 space-y-3">
+          {["brandPoint1", "brandPoint2", "brandPoint3"].map((key) => (
+            <li key={key} className="flex items-center gap-3 text-sm font-medium text-white/90">
+              <CheckCircleIcon className="h-5 w-5 shrink-0 text-indigo-200" />
+              {t(`login.${key}`)}
+            </li>
+          ))}
+        </ul>
+
+        <div className="mt-10 max-w-sm space-y-3" aria-hidden="true">
+          <MessageBubble channel="whatsapp" text={t("login.sampleCustomer")} time="10:24" />
+          <div className="ms-10 rounded-2xl rounded-se-md bg-white/15 px-4 py-2.5 ring-1 ring-white/20 backdrop-blur">
+            <p className="text-[13px] leading-snug text-white">{t("login.sampleReply")}</p>
+            <p className="mt-1 text-end text-[10px] text-indigo-100">10:25</p>
+          </div>
+        </div>
+
+        <div className="mt-10 flex items-center gap-2.5">
+          {CHANNELS.map((c) => (
+            <ChannelTile key={c.key} channel={c.key} className="h-9 w-9 rounded-xl ring-2 ring-white/20" iconClassName="h-[18px] w-[18px]" />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Login() {
   const navigate = useNavigate();
   const { setUser } = useAuth();
   const { t } = useTranslation();
+  const lang = useLanguage();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(null); // { tone: "error" | "success", text }
+  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
-const handleLogin = async (e) => {
-  e.preventDefault();
+  const isRtl = lang?.isRtl ?? false;
 
-  const { data: user, error } = await supabase
-    .from("users")
-    .select("*")
-    .eq("email", email)
-    .eq("password", password)
-    .single();
+  // Authentication flow — unchanged from the previous Login page (same
+  // queries, role/membership resolution, stored user, session expiry and
+  // destinations). Only the message presentation is new. Returns true when
+  // the user was signed in.
+  const handleLogin = async () => {
+    const { data: user, error } = await supabase
+      .from("users")
+      .select("*")
+      .eq("email", email)
+      .eq("password", password)
+      .single();
 
-  if (error || !user) {
-    setMessage(t("login.errorInvalidCredentials"));
-    return;
-  }
-
-  // 🔍 1) نجلب عضوية العميل من جدول client_users (مش عن طريق مطابقة الإيميل)
-  let finalUser = { ...user };
-
-  if (user.role === "client") {
-    const { data: membership, error: membershipError } = await supabase
-      .from("client_users")
-      .select("client_id, role, is_active, permissions_overrides, clients(id, business_name, email)")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (membershipError || !membership) {
-      setMessage(t("login.errorNoMembership"));
-      return;
+    if (error || !user) {
+      setMessage({ tone: "error", text: t("login.errorInvalidCredentials") });
+      return false;
     }
 
-    if (membership.is_active === false) {
-      setMessage(t("login.errorAccountDisabled"));
-      return;
-    }
+    // 🔍 1) نجلب عضوية العميل من جدول client_users (مش عن طريق مطابقة الإيميل)
+    let finalUser = { ...user };
 
-    // 🧠 2) ندمج ال user مع بيانات العضوية بحيث يصير عنده client_id ودوره
-    finalUser = {
-      ...user,
-      client_id: membership.client_id,
-      business_name: membership.clients?.business_name || null,
-      client_role: membership.role,
-      is_active: membership.is_active,
-      permissions_overrides: membership.permissions_overrides,
-    };
-
-    // Best-effort UI-language fetch — completely separate from AI/customer
-    // language, this only resolves which language the PORTAL itself
-    // renders in for this account (see LanguageContext.jsx for the
-    // resolution order). Both columns are new/optional and may not exist
-    // yet if the language migration hasn't been applied — caught and
-    // silently ignored so login never breaks because of this, exactly like
-    // the last_login_at best-effort update below.
-    try {
-      const { data: langRow } = await supabase
+    if (user.role === "client") {
+      const { data: membership, error: membershipError } = await supabase
         .from("client_users")
-        .select("language, clients(default_language)")
+        .select("client_id, role, is_active, permissions_overrides, clients(id, business_name, email)")
         .eq("user_id", user.id)
         .maybeSingle();
 
-      finalUser.ui_language_user = langRow?.language || null;
-      finalUser.ui_language_client = langRow?.clients?.default_language || null;
-    } catch (langErr) {
-      // Column(s) not present yet, or any other failure — language simply
-      // falls back to the system default; never blocks login.
+      if (membershipError || !membership) {
+        setMessage({ tone: "error", text: t("login.errorNoMembership") });
+        return false;
+      }
+
+      if (membership.is_active === false) {
+        setMessage({ tone: "error", text: t("login.errorAccountDisabled") });
+        return false;
+      }
+
+      // 🧠 2) ندمج ال user مع بيانات العضوية بحيث يصير عنده client_id ودوره
+      finalUser = {
+        ...user,
+        client_id: membership.client_id,
+        business_name: membership.clients?.business_name || null,
+        client_role: membership.role,
+        is_active: membership.is_active,
+        permissions_overrides: membership.permissions_overrides,
+      };
+
+      // Best-effort UI-language fetch — completely separate from AI/customer
+      // language, this only resolves which language the PORTAL itself
+      // renders in for this account (see LanguageContext.jsx for the
+      // resolution order). Both columns are new/optional and may not exist
+      // yet if the language migration hasn't been applied — caught and
+      // silently ignored so login never breaks because of this, exactly like
+      // the last_login_at best-effort update below.
+      try {
+        const { data: langRow } = await supabase
+          .from("client_users")
+          .select("language, clients(default_language)")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        finalUser.ui_language_user = langRow?.language || null;
+        finalUser.ui_language_client = langRow?.clients?.default_language || null;
+      } catch (langErr) {
+        // Column(s) not present yet, or any other failure — language simply
+        // falls back to the system default; never blocks login.
+      }
     }
-  }
 
-  // 💾 3) نخزن البيانات الصحيحة للـ user
-  localStorage.setItem("user", JSON.stringify(finalUser));
-  writeSessionExpiry();
-  setUser(finalUser);
+    // 💾 3) نخزن البيانات الصحيحة للـ user
+    localStorage.setItem("user", JSON.stringify(finalUser));
+    writeSessionExpiry();
+    setUser(finalUser);
 
-  // Best-effort last-login stamp (shown on the client Team page). Not
-  // awaited/blocking — a failure here must never prevent login.
-  supabase.from("users").update({ last_login_at: new Date().toISOString() }).eq("id", user.id).then(
-    () => {},
-    () => {}
-  );
+    // Best-effort last-login stamp (shown on the client Team page). Not
+    // awaited/blocking — a failure here must never prevent login.
+    supabase.from("users").update({ last_login_at: new Date().toISOString() }).eq("id", user.id).then(
+      () => {},
+      () => {}
+    );
 
-  setMessage(user.role === "admin" ? t("login.successAdmin") : t("login.successClient"));
+    setMessage({ tone: "success", text: user.role === "admin" ? t("login.successAdmin") : t("login.successClient") });
 
-  setTimeout(() => {
-    navigate(user.role === "admin" ? "/admin" : "/client");
-  }, 500);
-};
+    setTimeout(() => {
+      navigate(user.role === "admin" ? "/admin" : "/client");
+    }, 500);
 
+    return true;
+  };
+
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    if (loading) return;
+    setMessage(null);
+    setLoading(true);
+    try {
+      const signedIn = await handleLogin();
+      // On success keep the button in its loading state until navigation.
+      if (!signedIn) setLoading(false);
+    } catch (err) {
+      console.error("Login failed:", err);
+      setMessage({ tone: "error", text: t("login.errorGeneric") });
+      setLoading(false);
+    }
+  };
+
+  const switchLanguage = () => lang?.setUserLanguage?.(lang.language === "ar" ? "en" : "ar");
+
+  const inputClass =
+    "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-[15px] text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/15 disabled:bg-slate-50";
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <form
-        onSubmit={handleLogin}
-        dir="rtl"
-        className="bg-white shadow-md rounded-lg px-8 py-6 w-96 border border-gray-100"
-      >
-        <h2 className="text-2xl font-bold mb-4 text-center text-blue-600">
-          {t("login.title")}
-        </h2>
+    <div dir={isRtl ? "rtl" : "ltr"} className="relative min-h-screen overflow-x-hidden bg-white text-slate-900">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden lg:hidden">
+        <div className="absolute -left-40 -top-40 h-[420px] w-[420px] rounded-full bg-indigo-200/40 blur-3xl" />
+        <div className="absolute -right-32 top-24 h-[360px] w-[360px] rounded-full bg-violet-200/40 blur-3xl" />
+      </div>
 
-        {message && (
-          <p className="text-center mb-3 text-green-600 font-medium">
-            {message}
-          </p>
-        )}
+      <div className="relative mx-auto grid min-h-screen max-w-7xl gap-6 p-4 sm:p-6 lg:grid-cols-[1.05fr_1fr] lg:gap-10 lg:p-6">
+        <BrandPanel t={t} />
 
-        <input
-          type="email"
-          placeholder={t("login.emailPlaceholder")}
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="w-full mb-3 px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
-          required
-        />
+        <div className="flex flex-col">
+          <div className="flex items-center justify-between gap-3 px-1 py-2 lg:px-4">
+            <Link
+              to={PUBLIC_HOME_PATH}
+              className="rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 lg:hidden"
+              aria-label="Auto Responder"
+            >
+              <BrandLogo />
+            </Link>
+            <Link
+              to={PUBLIC_HOME_PATH}
+              className="group hidden items-center gap-2 rounded-full px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-indigo-700 lg:inline-flex"
+            >
+              <ArrowLeftIcon className="h-4 w-4 transition group-hover:-translate-x-0.5 rtl:rotate-180 rtl:group-hover:translate-x-0.5" />
+              {t("login.backToHome")}
+            </Link>
+            <button
+              type="button"
+              onClick={switchLanguage}
+              className="rounded-full border border-slate-200 bg-white/80 px-3.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-indigo-200 hover:text-indigo-700"
+            >
+              {lang?.language === "ar" ? "English" : "العربية"}
+            </button>
+          </div>
 
-        <input
-          type="password"
-          placeholder={t("login.passwordPlaceholder")}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="w-full mb-4 px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
-          required
-        />
+          <main className="flex flex-1 items-start justify-center pb-8 pt-4 sm:pt-10 lg:items-center lg:py-10">
+            <div className="w-full max-w-md">
+              <div className="rounded-3xl border border-slate-200/80 bg-white p-7 shadow-[0_30px_70px_-30px_rgba(79,70,229,0.35)] sm:p-9">
+                <BrandMark className="h-11 w-11 rounded-2xl" iconClassName="h-6 w-6" />
+                <h1 className="mt-6 text-2xl font-bold tracking-tight text-slate-900 sm:text-[1.75rem]">{t("login.welcomeTitle")}</h1>
+                <p className="mt-2 text-[15px] leading-relaxed text-slate-500">{t("login.welcomeSubtitle")}</p>
 
-        <button
-          type="submit"
-          className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition-all"
-        >
-          {t("login.submit")}
-        </button>
-      </form>
+                {message && (
+                  <div
+                    role={message.tone === "error" ? "alert" : "status"}
+                    className={`mt-6 flex items-start gap-2.5 rounded-xl border px-3.5 py-3 text-sm font-medium ${
+                      message.tone === "error"
+                        ? "border-rose-200 bg-rose-50 text-rose-700"
+                        : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    }`}
+                  >
+                    {message.tone === "error" ? (
+                      <ExclamationCircleIcon className="mt-px h-5 w-5 shrink-0" />
+                    ) : (
+                      <CheckCircleIcon className="mt-px h-5 w-5 shrink-0" />
+                    )}
+                    <span>{stripStatusEmoji(message.text)}</span>
+                  </div>
+                )}
+
+                <form onSubmit={onSubmit} className="mt-6 space-y-4">
+                  <div>
+                    <label htmlFor="login-email" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                      {t("login.emailLabel")}
+                    </label>
+                    <input
+                      id="login-email"
+                      type="email"
+                      name="email"
+                      autoComplete="email"
+                      inputMode="email"
+                      dir="ltr"
+                      placeholder="name@company.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className={`${inputClass} ${isRtl ? "text-right" : ""}`}
+                      disabled={loading}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="login-password" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                      {t("login.passwordLabel")}
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="login-password"
+                        type={showPassword ? "text" : "password"}
+                        name="password"
+                        autoComplete="current-password"
+                        dir="ltr"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className={`${inputClass} pe-12 ${isRtl ? "text-right" : ""}`}
+                        disabled={loading}
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((v) => !v)}
+                        className="absolute inset-y-0 end-0 flex w-12 items-center justify-center rounded-e-xl text-slate-400 transition hover:text-indigo-600 focus:outline-none focus-visible:text-indigo-600"
+                        aria-label={showPassword ? t("login.hidePassword") : t("login.showPassword")}
+                        aria-pressed={showPassword}
+                      >
+                        {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="group mt-2 inline-flex w-full items-center justify-center gap-2 rounded-full bg-indigo-600 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-indigo-600/25 transition hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {loading ? (
+                      <>
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden="true" />
+                        {t("login.submitting")}
+                      </>
+                    ) : (
+                      <>
+                        {t("login.submit")}
+                        <ArrowRightIcon className="h-4 w-4 transition group-hover:translate-x-0.5 rtl:rotate-180 rtl:group-hover:-translate-x-0.5" />
+                      </>
+                    )}
+                  </button>
+                </form>
+
+                <div className="mt-8 border-t border-slate-100 pt-6 text-center">
+                  <p className="text-sm text-slate-500">{t("login.newHere")}</p>
+                  <Link
+                    to={TRIAL_PATH}
+                    className="mt-3 inline-flex w-full items-center justify-center rounded-full border border-indigo-200 bg-indigo-50/40 px-6 py-3 text-sm font-semibold text-indigo-700 transition hover:border-indigo-300 hover:bg-indigo-50"
+                  >
+                    {t("login.startTrial", { days: TRIAL_DAYS })}
+                  </Link>
+                </div>
+              </div>
+
+              <div className="mt-6 text-center lg:hidden">
+                <Link to={PUBLIC_HOME_PATH} className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-indigo-700">
+                  <ArrowLeftIcon className="h-4 w-4 rtl:rotate-180" />
+                  {t("login.backToHome")}
+                </Link>
+              </div>
+            </div>
+          </main>
+        </div>
+      </div>
     </div>
   );
 }

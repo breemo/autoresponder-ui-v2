@@ -4,19 +4,24 @@ import { WhatsAppGlyph, TelegramGlyph, FacebookGlyph, InstagramGlyph } from "../
 
 // Brand mark — the same indigo rounded square + chat-bubble icon used by the
 // app sidebar and public/favicon.svg.
-export function BrandMark({ className = "h-9 w-9", iconClassName = "h-5 w-5" }) {
+export function BrandMark({ className = "h-9 w-9", iconClassName = "h-5 w-5", tone = "dark" }) {
+  const toneClass = tone === "light" ? "bg-white/15 ring-1 ring-white/25" : "bg-indigo-600 shadow-sm shadow-indigo-600/30";
   return (
-    <span className={`inline-flex shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm shadow-indigo-600/30 ${className}`}>
+    <span className={`inline-flex shrink-0 items-center justify-center rounded-xl text-white ${toneClass} ${className}`}>
       <ChatBubbleLeftRightIcon className={iconClassName} />
     </span>
   );
 }
 
-export function BrandLogo({ className = "" }) {
+// tone="light" for use on the indigo/violet gradient panels.
+export function BrandLogo({ className = "", tone = "dark" }) {
+  const light = tone === "light";
   return (
     <span className={`inline-flex items-center gap-2.5 ${className}`}>
-      <BrandMark />
-      <span className="text-[17px] font-bold tracking-tight text-slate-900">Auto Responder</span>
+      <BrandMark tone={tone} />
+      <span className={`text-[17px] font-bold tracking-tight ${light ? "text-white" : "text-slate-900"}`} dir="ltr">
+        Auto Responder
+      </span>
     </span>
   );
 }

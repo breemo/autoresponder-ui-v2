@@ -49,9 +49,31 @@ test("logout and the installed PWA land on Login", () => {
   assert.ok(VITE.includes("start_url: '/login'"));
 });
 
-test("Login page itself is untouched by the public website", () => {
+test("redesigned Login keeps the existing authentication flow", () => {
   const login = read("src/pages/Login.jsx");
+  // Same credential check, membership resolution, storage, session and destinations.
+  assert.match(login, /\.from\("users"\)\s+\.select\("\*"\)\s+\.eq\("email", email\)\s+\.eq\("password", password\)\s+\.single\(\);/);
+  assert.ok(login.includes('.select("client_id, role, is_active, permissions_overrides, clients(id, business_name, email)")'));
+  assert.ok(login.includes('localStorage.setItem("user", JSON.stringify(finalUser));'));
+  assert.ok(login.includes("writeSessionExpiry();"));
+  assert.ok(login.includes("setUser(finalUser);"));
   assert.ok(login.includes('navigate(user.role === "admin" ? "/admin" : "/client");'));
+  // No registration / password-reset / Supabase Auth was introduced.
+  assert.equal(/supabase\.auth|signUp|resetPassword|\.insert\(/.test(login), false);
+});
+
+test("Login links back to the public site and to the trial entry", () => {
+  const login = read("src/pages/Login.jsx");
+  assert.ok(login.includes("to={PUBLIC_HOME_PATH}"));
+  assert.ok(login.includes("to={TRIAL_PATH}"));
+  assert.ok(login.includes('autoComplete="email"'));
+  assert.ok(login.includes('autoComplete="current-password"'));
+  for (const lng of ["en", "ar"]) {
+    const keys = JSON.parse(read(`src/locales/${lng}/translation.json`)).login;
+    for (const k of ["welcomeTitle", "welcomeSubtitle", "emailLabel", "passwordLabel", "newHere", "startTrial", "backToHome", "errorGeneric"]) {
+      assert.ok(keys[k], `${lng}.login.${k}`);
+    }
+  }
 });
 
 test("appHomePath routes signed-in users to their portal", () => {
