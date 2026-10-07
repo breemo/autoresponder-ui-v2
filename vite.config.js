@@ -31,7 +31,9 @@ export default defineConfig({
         name: 'Jawab AI',
         short_name: 'Jawab AI',
         description: 'Jawab AI — WhatsApp, Facebook and Telegram auto-reply and inbox management.',
-        start_url: '/',
+        // The installed app opens on Login (the domain root is now the
+        // public website).
+        start_url: '/login',
         scope: '/',
         display: 'standalone',
         // Both values are this app's own existing design tokens (see

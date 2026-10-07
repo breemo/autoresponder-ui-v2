@@ -132,7 +132,7 @@ export default function SharedDashboardLayout({ children, panel = "client" }) {
     localStorage.removeItem("user");
     clearSessionExpiry();
     setUser(null);
-    navigate("/");
+    navigate("/login");
   }
 
   async function toggleLanguage() {

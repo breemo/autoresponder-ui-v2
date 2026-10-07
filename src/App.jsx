@@ -14,6 +14,11 @@ import ClientLayout from "./layouts/ClientLayout.jsx";
 // Login
 import Login from "./pages/Login.jsx";
 
+// Public website
+import LandingPage from "./pages/public/LandingPage.jsx";
+import StartTrial from "./pages/public/StartTrial.jsx";
+import { LOGIN_PATH, PUBLIC_HOME_PATH, TRIAL_PATH } from "./lib/publicSite.js";
+
 // Admin pages
 import AdminDashboard from "./pages/admin/AdminDashboard.jsx";
 import AdminClients from "./pages/admin/AdminClients.jsx";
@@ -42,7 +47,7 @@ const ACCOUNT_PATH = "/client/account";
 
 function AdminRoute({ children }) {
   const { user } = useAuth();
-  if (!user || user.role !== "admin") return <Navigate to="/" replace />;
+  if (!user || user.role !== "admin") return <Navigate to={LOGIN_PATH} replace />;
   return <AdminLayout>{children}</AdminLayout>;
 }
 
@@ -61,7 +66,7 @@ function ClientRoute({ children, permission }) {
   const { user } = useAuth();
   const location = useLocation();
 
-  if (!user || user.role !== "client") return <Navigate to="/" replace />;
+  if (!user || user.role !== "client") return <Navigate to={LOGIN_PATH} replace />;
 
   if (user.must_change_password && location.pathname !== ACCOUNT_PATH) {
     return <Navigate to={ACCOUNT_PATH} replace />;
@@ -78,7 +83,10 @@ export default function App() {
       <LanguageProvider>
       <Router>
         <Routes>
-          <Route path="/" element={<Login />} />
+          {/* Public website (no auth) -> existing Login -> protected app. */}
+          <Route path={PUBLIC_HOME_PATH} element={<LandingPage />} />
+          <Route path={LOGIN_PATH} element={<Login />} />
+          <Route path={TRIAL_PATH} element={<StartTrial />} />
 
           <Route
             path="/admin"
