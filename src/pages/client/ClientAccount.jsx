@@ -3,11 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useLanguage } from "../../context/LanguageContext.jsx";
+import { PageHeader, ui } from "../../components/app/primitives.jsx";
 
-const inputClass =
-  "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50";
+const inputClass = ui.input;
 
-const cardClass = "rounded-3xl border border-slate-200 bg-white shadow-sm";
+const cardClass = ui.card;
 
 export default function ClientAccount() {
   const { user, setUser } = useAuth();
@@ -128,12 +128,8 @@ export default function ClientAccount() {
   }
 
   return (
-    <div className="space-y-5">
-      <div>
-        <p className="text-xs font-bold uppercase tracking-[0.35em] text-indigo-600">{t("account.badge")}</p>
-        <h2 className="mt-1 text-2xl font-black text-slate-950">{t("account.title")}</h2>
-        <p className="mt-1 text-sm text-slate-500">{t("account.subtitle")}</p>
-      </div>
+    <div className="space-y-4">
+      <PageHeader title={t("account.title")} description={t("account.subtitle")} />
 
       {forced && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-700">
@@ -151,8 +147,8 @@ export default function ClientAccount() {
         </div>
       )}
 
-      <div className={`${cardClass} p-6`}>
-        <h3 className="mb-4 text-sm font-black text-slate-950">{t("account.personalDataTitle")}</h3>
+      <div className={`${cardClass} p-4`}>
+        <h3 className="mb-4 text-sm font-bold text-slate-950">{t("account.personalDataTitle")}</h3>
         <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
           <div>
             <p className="text-slate-500">{t("common.name")}</p>
@@ -181,8 +177,8 @@ export default function ClientAccount() {
         </div>
       </div>
 
-      <div className={`${cardClass} p-6`}>
-        <h3 className="mb-1 text-sm font-black text-slate-950">{t("account.languageTitle")}</h3>
+      <div className={`${cardClass} p-4`}>
+        <h3 className="mb-1 text-sm font-bold text-slate-950">{t("account.languageTitle")}</h3>
         <p className="mb-4 text-xs text-slate-500">{t("account.languageHint")}</p>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -223,9 +219,9 @@ export default function ClientAccount() {
         {langMsg && <p className="mt-3 text-xs font-bold text-indigo-700">{langMsg}</p>}
       </div>
 
-      <div className={`${cardClass} p-6`}>
+      <div className={`${cardClass} p-4`}>
         <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-black text-slate-950">{t("account.changePassword")}</h3>
+          <h3 className="text-sm font-bold text-slate-950">{t("account.changePassword")}</h3>
           {!showPasswordForm && (
             <button
               type="button"
@@ -280,7 +276,7 @@ export default function ClientAccount() {
               <button
                 type="submit"
                 disabled={saving}
-                className="h-12 flex-1 rounded-2xl bg-indigo-600 font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50"
+                className="h-12 flex-1 rounded-2xl bg-indigo-600 font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
               >
                 {saving ? t("common.saving") : t("account.changePassword")}
               </button>

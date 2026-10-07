@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { ClipboardDocumentIcon } from "@heroicons/react/24/outline";
 import { useTranslation } from "react-i18next";
 import { getReplyModeSelectOptions, DEFAULT_REPLY_MODE } from "../../lib/replyMode.js";
+import { ui } from "../../components/app/primitives.jsx";
 
 // Instagram manual-setup surface (web/API only — no OAuth, no Multi-Account).
 //
@@ -15,8 +16,7 @@ import { getReplyModeSelectOptions, DEFAULT_REPLY_MODE } from "../../lib/replyMo
 // verify_token and channelKey are present; the Page Access Token is never
 // present — its saved/empty state is conveyed by `hasPageAccessToken`.
 
-const inputClass =
-  "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-fuchsia-300 focus:ring-4 focus:ring-fuchsia-50";
+const inputClass = ui.input;
 
 function CopyButton({ value }) {
   const { t } = useTranslation();

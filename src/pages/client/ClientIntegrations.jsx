@@ -26,6 +26,7 @@ import { isReplyModeKey, getReplyModeSelectOptions, getReplyModeLabel, DEFAULT_R
 import { buildChannelSetupLinks, showsGenericSetupLinks } from "../../lib/integrationSetupLinks.js";
 import TelegramActivationQr from "./TelegramActivationQr";
 import { collapseWebsiteChatRows, isWebsiteChatSlug, websiteChatCard, WEBSITE_CHAT_CARD_ID } from "../../lib/websiteChatEmbed.js";
+import { PageHeader, ui } from "../../components/app/primitives.jsx";
 
 // Multi-Account Stage 2B — Facebook runtime-truth fix pass. client_facebook
 // is NOT yet consumed by n8n/runtime messaging (Facebook still sends/
@@ -222,7 +223,7 @@ function StatCard({ label, value, hint, icon: Icon }) {
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-medium text-slate-500">{label}</p>
-          <p className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{value}</p>
+          <p className="mt-0.5 text-xl font-bold tracking-tight text-slate-900">{value}</p>
           {hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}
         </div>
         <div className="grid h-10 w-10 place-items-center rounded-xl bg-slate-50 text-slate-600">
@@ -593,30 +594,16 @@ export default function ClientIntegrations() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
-            <Squares2X2Icon className="h-4 w-4" />
-            Integrations Center
-          </div>
-          <h1 className="mt-3 text-2xl font-black tracking-tight text-slate-950">
-            {t("integrationsPage.title")}
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            {t("integrationsPage.subtitle", { name: displayName })}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={fetchData}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-          >
+      <PageHeader
+        title={t("integrationsPage.title")}
+        description={t("integrationsPage.subtitle", { name: displayName })}
+        actions={
+          <button onClick={fetchData} className={ui.btnSecondary}>
             <ArrowPathIcon className="h-4 w-4" />
             {t("common.refresh")}
           </button>
-        </div>
-      </div>
+        }
+      />
 
       {(error || success) && (
         <div
@@ -637,12 +624,12 @@ export default function ClientIntegrations() {
       </div>
 
       {loading ? (
-        <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 text-center text-sm text-slate-500 shadow-sm">
           {t("integrationsPage.loadingIntegrations")}
         </div>
       ) : (
         <div className="grid min-h-[620px] gap-4 xl:grid-cols-[minmax(320px,380px)_1fr]">
-          <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -664,7 +651,7 @@ export default function ClientIntegrations() {
 
             <div className="max-h-[520px] space-y-2 overflow-y-auto p-3">
               {filteredIntegrations.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-200 p-5 text-center text-sm text-slate-500">
+                <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">
                   {t("integrationsPage.noChannelsActive")}
                 </div>
               ) : (
@@ -684,7 +671,7 @@ export default function ClientIntegrations() {
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <ChannelIcon channel={feature?.slug} size="h-11 w-11" />
+                        <ChannelIcon channel={feature?.slug} size="h-9 w-9" />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-2">
                             <h3 className="truncate text-sm font-semibold text-slate-950">{feature?.name || meta.label}</h3>
@@ -708,7 +695,7 @@ export default function ClientIntegrations() {
             </div>
           </section>
 
-          <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             {selectedIntegration && selectedFeature ? (
               <div className="flex h-full flex-col">
                 {(() => {
@@ -720,10 +707,10 @@ export default function ClientIntegrations() {
                     return (
                       <>
                         <div className="flex items-center gap-3 border-b border-slate-100 p-4">
-                          <ChannelIcon channel={selectedFeature?.slug} size="h-12 w-12" iconSize="h-6 w-6" />
+                          <ChannelIcon channel={selectedFeature?.slug} size="h-9 w-9" iconSize="h-6 w-6" />
                           <div>
                             <div className="flex flex-wrap items-center gap-2">
-                              <h2 className="text-lg font-bold text-slate-950">{selectedFeature.name || meta.label}</h2>
+                              <h2 className="text-[15px] font-semibold text-slate-900">{selectedFeature.name || meta.label}</h2>
                               <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${meta.soft}`}>
                                 {selectedIntegration.is_active ? t("common.active") : t("common.paused")}
                               </span>
@@ -747,10 +734,10 @@ export default function ClientIntegrations() {
                     <>
                       <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:items-center lg:justify-between">
                         <div className="flex items-center gap-3">
-                          <ChannelIcon channel={selectedFeature?.slug} size="h-12 w-12" iconSize="h-6 w-6" />
+                          <ChannelIcon channel={selectedFeature?.slug} size="h-9 w-9" iconSize="h-6 w-6" />
                           <div>
                             <div className="flex flex-wrap items-center gap-2">
-                              <h2 className="text-lg font-bold text-slate-950">{selectedFeature.name || meta.label}</h2>
+                              <h2 className="text-[15px] font-semibold text-slate-900">{selectedFeature.name || meta.label}</h2>
                               <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${meta.soft}`}>
                                 {selectedIntegration.is_active ? t("common.connected") : t("common.paused")}
                               </span>
@@ -881,7 +868,7 @@ export default function ClientIntegrations() {
                               })}
                             </div>
                           ) : (
-                            <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center text-sm text-slate-500">
+                            <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-center text-sm text-slate-500">
                               {t("integrationsPage.noCustomFields")}
                             </div>
                           )}
@@ -1018,12 +1005,12 @@ export default function ClientIntegrations() {
                 })()}
               </div>
             ) : (
-              <div className="grid h-full min-h-[520px] place-items-center p-8 text-center">
+              <div className="grid h-full min-h-[520px] place-items-center p-4 text-center">
                 <div>
                   <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-slate-100 text-slate-500">
                     <LinkIcon className="h-7 w-7" />
                   </div>
-                  <h3 className="mt-4 text-lg font-semibold text-slate-950">{t("integrationsPage.noChannelSelectedTitle")}</h3>
+                  <h3 className="mt-4 text-base font-semibold text-slate-900">{t("integrationsPage.noChannelSelectedTitle")}</h3>
                   <p className="mt-1 max-w-sm text-sm text-slate-500">{t("integrationsPage.noChannelSelectedSubtitle")}</p>
                 </div>
               </div>
@@ -1033,7 +1020,7 @@ export default function ClientIntegrations() {
       )}
 
       {!loading && availableFeatures.length > 0 && (
-        <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-semibold text-slate-950">{t("integrationsPage.availableChannelsTitle")}</h2>
@@ -1047,7 +1034,7 @@ export default function ClientIntegrations() {
               return (
                 <div key={feature.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                   <div className="flex items-center gap-3">
-                    <ChannelIcon channel={feature?.slug} size="h-11 w-11" />
+                    <ChannelIcon channel={feature?.slug} size="h-9 w-9" />
                     <div className="min-w-0">
                       <h3 className="truncate text-sm font-semibold text-slate-950">{feature.name || meta.label}</h3>
                       <p className="mt-0.5 truncate text-xs text-slate-500">{feature.slug}</p>

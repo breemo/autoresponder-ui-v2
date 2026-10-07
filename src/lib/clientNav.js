@@ -82,15 +82,12 @@ export function pageTitleKey(pathname) {
   return TITLE_KEYS[pathname] || "shell.nav.home";
 }
 
-const PAGE_WIDTHS = {
-  "/client/messages": "full",
-  "/client/feature-settings": "readablePlus",
-  "/client/settings": "readable",
-  "/client/account": "readable",
-};
+// FULL = operational workspace; every other page shares the STANDARD canvas
+// (readable limits live inside sections, not on the page).
+const FULL_WIDTH_ROUTES = ["/client/messages"];
 
 export function pageWidthFor(pathname) {
-  return PAGE_WIDTHS[pathname] || "wide";
+  return FULL_WIDTH_ROUTES.includes(pathname) ? "full" : "standard";
 }
 
 // Desktop sidebar preference (frontend-only, per device). Applies at >= 1536px

@@ -126,3 +126,25 @@ body {
     height: 100dvh;
   }
 }
+
+/* Client AI Agent page density (temporary, scoped).
+   /client/feature-settings renders the shared AdminClientSettings component,
+   whose markup cannot change without changing the Admin Portal. Until it is
+   decoupled (Client Portal Phase 5) its legacy oversized utilities are mapped
+   onto the Client density scale ONLY inside this wrapper. Not a zoom/scale
+   hack: real sizes, scoped to one route; Admin is unaffected. */
+.ar-density .rounded-3xl { border-radius: 1rem; }
+.ar-density .font-black { font-weight: 700; }
+.ar-density .text-3xl { font-size: 1.5rem; line-height: 2rem; }
+.ar-density .text-2xl { font-size: 1.25rem; line-height: 1.75rem; }
+.ar-density .text-xl { font-size: 1.0625rem; line-height: 1.5rem; }
+.ar-density .p-8 { padding: 1.5rem; }
+.ar-density .p-6,
+.ar-density .p-5 { padding: 1rem; }
+.ar-density .h-12 { height: 2.5rem; }
+.ar-density .w-12 { width: 2.5rem; }
+.ar-density .h-11 { height: 2.25rem; }
+.ar-density .w-11 { width: 2.25rem; }
+.ar-density input.py-3,
+.ar-density select.py-3,
+.ar-density textarea.py-3 { padding-top: 7px; padding-bottom: 7px; }

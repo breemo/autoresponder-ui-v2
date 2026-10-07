@@ -11,9 +11,9 @@ import { useTranslation } from "react-i18next";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { getReplyModeLabel } from "../../lib/replyMode.js";
+import { ui } from "../../components/app/primitives.jsx";
 
-const inputClass =
-  "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-emerald-300 focus:ring-4 focus:ring-emerald-50";
+const inputClass = ui.input;
 
 function normalizeStatus(status) {
   const value = `${status || ""}`.toLowerCase();
@@ -514,7 +514,7 @@ async function deleteNumber(item) {
             <QrCodeIcon className="h-4 w-4" />
             WhatsApp Evolution
           </div>
-          <h3 className="mt-3 text-lg font-bold text-slate-950">{t("whatsappEvo.title")}</h3>
+          <h3 className="mt-3 text-base font-semibold text-slate-900">{t("whatsappEvo.title")}</h3>
           <p className="mt-1 text-sm text-slate-500">
             {t("whatsappEvo.subtitle")}
           </p>
@@ -578,12 +578,12 @@ async function deleteNumber(item) {
       </div>
 
       {loading ? (
-        <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+        <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-sm text-slate-500">
           {t("whatsappEvo.loadingNumbers")}
         </div>
       ) : instances.length === 0 ? (
-        <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center">
-          <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-white text-slate-500 shadow-sm">
+        <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center">
+          <div className="mx-auto grid h-9 w-9 place-items-center rounded-2xl bg-white text-slate-500 shadow-sm">
             <QrCodeIcon className="h-6 w-6" />
           </div>
           <h4 className="mt-3 text-base font-bold text-slate-950">{t("whatsappEvo.noNumbersTitle")}</h4>
@@ -735,13 +735,13 @@ async function deleteNumber(item) {
         <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/40" onClick={closeDrawer}>
           <form
             onSubmit={createNumber}
-            className="h-full w-full max-w-lg overflow-y-auto bg-white p-6 shadow-2xl"
+            className="h-full w-full max-w-lg overflow-y-auto bg-white p-4 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.25em] text-emerald-600">WhatsApp</p>
-                <h3 className="mt-1 text-2xl font-bold text-slate-950">{t("whatsappEvo.addNumber")}</h3>
+                <h3 className="mt-1 text-xl font-bold text-slate-900">{t("whatsappEvo.addNumber")}</h3>
                 <p className="mt-1 text-sm text-slate-500">{t("whatsappEvo.addDrawerSubtitle")}</p>
               </div>
               <button

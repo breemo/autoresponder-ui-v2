@@ -2,9 +2,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import { PencilSquareIcon, PlusIcon, TrashIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { useTranslation } from "react-i18next";
 import { getReplyModeLabel, getReplyModeSelectOptions, DEFAULT_REPLY_MODE } from "../../lib/replyMode.js";
+import { ui } from "../../components/app/primitives.jsx";
 
-const inputClass =
-  "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50";
+const inputClass = ui.input;
 
 const EMPTY_FORM = {
   display_name: "",
@@ -232,7 +232,7 @@ export default function FacebookAccountsSection({ clientId, actorUserId, subscri
           <div className="inline-flex flex-wrap items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">
             Facebook · Multi-Account
           </div>
-          <h3 className="mt-3 text-lg font-bold text-slate-950">صفحات فيسبوك (تجريبي)</h3>
+          <h3 className="mt-3 text-base font-semibold text-slate-900">صفحات فيسبوك (تجريبي)</h3>
           <p className="mt-1 text-sm text-slate-500">إدارة صفحات فيسبوك المرتبطة بحسابك — كل صفحة بإعداداتها الخاصة.</p>
         </div>
 
@@ -290,11 +290,11 @@ export default function FacebookAccountsSection({ clientId, actorUserId, subscri
       )}
 
       {loading ? (
-        <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+        <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-sm text-slate-500">
           جارِ تحميل صفحات فيسبوك...
         </div>
       ) : accounts.length === 0 ? (
-        <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center">
+        <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center">
           <h4 className="text-base font-bold text-slate-950">لا توجد صفحات فيسبوك مضافة بعد</h4>
           <p className="mt-1 text-sm text-slate-500">
             إذا كان لديك تكامل فيسبوك قديم، سيبقى يعمل كما هو أعلاه — هذا القسم فقط لإضافة صفحات جديدة بنظام الحسابات المتعددة.
@@ -391,13 +391,13 @@ export default function FacebookAccountsSection({ clientId, actorUserId, subscri
         <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/40" onClick={closeDrawer}>
           <form
             onSubmit={handleSubmit}
-            className="h-full w-full max-w-lg overflow-y-auto bg-white p-6 shadow-2xl"
+            className="h-full w-full max-w-lg overflow-y-auto bg-white p-4 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.25em] text-indigo-600">Facebook</p>
-                <h3 className="mt-1 text-2xl font-bold text-slate-950">
+                <h3 className="mt-1 text-xl font-bold text-slate-900">
                   {editingAccount ? "تعديل صفحة فيسبوك" : "إضافة صفحة فيسبوك"}
                 </h3>
               </div>

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { XMarkIcon, StarIcon, PencilIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { ui } from "../../components/app/primitives.jsx";
 
 // AI Engine V1 — Business Voice + Authoritative Locations.
 //
@@ -19,8 +20,8 @@ import { XMarkIcon, StarIcon, PencilIcon, TrashIcon } from "@heroicons/react/24/
 // backward-compatible single known/primary address for every client,
 // completely unaffected by whether any client_locations rows exist.
 
-const inputClass = "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50 disabled:bg-slate-50 disabled:text-slate-500";
-const cardClass = "rounded-3xl border border-slate-200 bg-white p-6 shadow-sm";
+const inputClass = ui.input;
+const cardClass = `${ui.card} p-4`;
 
 function emptyDraft() {
   return { location_id: null, name: "", address: "", city: "", phone: "", is_primary: false };
@@ -156,10 +157,10 @@ export default function LocationsSection({ clientId, actorUserId }) {
 
   return (
     <div className={cardClass}>
-      <div className="mb-5 flex items-center gap-3">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-xl">📍</div>
+      <div className="mb-4 flex items-center gap-3">
+        <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-rose-50 text-base">📍</div>
         <div>
-          <h3 className="font-black text-slate-950">{t("locations.title")}</h3>
+          <h3 className="text-[15px] font-semibold text-slate-900">{t("locations.title")}</h3>
           <p className="text-xs text-slate-500">{t("locations.subtitle")}</p>
         </div>
       </div>
@@ -167,7 +168,7 @@ export default function LocationsSection({ clientId, actorUserId }) {
       {error && <div className="mb-4 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>}
 
       {loading ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">{t("common.loading")}</div>
+        <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">{t("common.loading")}</div>
       ) : (
         <>
           {locations.length === 0 ? (
@@ -217,7 +218,7 @@ export default function LocationsSection({ clientId, actorUserId }) {
           )}
 
           {canEdit && (
-            <button type="button" onClick={() => setDraft(emptyDraft())} className="mb-5 rounded-2xl border border-slate-200 px-4 py-2 text-sm font-bold text-indigo-700 hover:bg-indigo-50">
+            <button type="button" onClick={() => setDraft(emptyDraft())} className="mb-4 rounded-2xl border border-slate-200 px-4 py-2 text-sm font-bold text-indigo-700 hover:bg-indigo-50">
               {t("locations.addButton")}
             </button>
           )}
@@ -236,7 +237,7 @@ export default function LocationsSection({ clientId, actorUserId }) {
 
       {draft && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
-          <div className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-4 shadow-2xl">
             <div className="mb-4 flex items-center justify-between">
               <h4 className="font-bold text-slate-900">{draft.location_id ? t("locations.editTitle") : t("locations.addTitle")}</h4>
               <button type="button" onClick={() => setDraft(null)}>

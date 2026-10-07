@@ -4,6 +4,7 @@ import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
 import ChannelIcon from "../../lib/channelIcons.jsx";
 import Pagination from "../../components/Pagination.jsx";
+import { PageHeader, ui } from "../../components/app/primitives.jsx";
 import {
   ArrowPathIcon,
   ClipboardDocumentIcon,
@@ -165,28 +166,17 @@ export default function ClientLeads() {
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">
-            <UserPlusIcon className="h-4 w-4" />
-            {t("navigation.leads")}
-          </div>
-          <h1 className="text-2xl font-black text-slate-950">{t("navigation.leads")}</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            {t("leads.subtitle")}
-          </p>
-        </div>
-
-        <button
-          onClick={fetchLeads}
-          disabled={loading}
-          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
-        >
-          <ArrowPathIcon className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          {t("common.refresh")}
-        </button>
-      </div>
+    <div className="space-y-4">
+      <PageHeader
+        title={t("navigation.leads")}
+        description={t("leads.subtitle")}
+        actions={
+          <button onClick={fetchLeads} disabled={loading} className={ui.btnSecondary}>
+            <ArrowPathIcon className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            {t("common.refresh")}
+          </button>
+        }
+      />
 
       {error && (
         <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
@@ -195,68 +185,68 @@ export default function ClientLeads() {
       )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-slate-500">{t("leads.statTotal")}</p>
-              <p className="mt-3 text-3xl font-bold text-slate-950">{stats.total}</p>
+              <p className="mt-1 text-xl font-bold text-slate-950">{stats.total}</p>
             </div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100">
-              <UserGroupIcon className="h-6 w-6" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100">
+              <UserGroupIcon className="h-[18px] w-[18px]" />
             </div>
           </div>
         </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-slate-500">{t("leads.statUnique")}</p>
-              <p className="mt-3 text-3xl font-bold text-emerald-600">{stats.unique}</p>
+              <p className="mt-1 text-xl font-bold text-emerald-600">{stats.unique}</p>
             </div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100">
-              <PhoneIcon className="h-6 w-6" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100">
+              <PhoneIcon className="h-[18px] w-[18px]" />
             </div>
           </div>
         </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-slate-500">{t("leads.statToday")}</p>
-              <p className="mt-3 text-3xl font-bold text-blue-600">{stats.today}</p>
+              <p className="mt-1 text-xl font-bold text-blue-600">{stats.today}</p>
             </div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 ring-1 ring-blue-100">
-              <CalendarDaysIcon className="h-6 w-6" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-600 ring-1 ring-blue-100">
+              <CalendarDaysIcon className="h-[18px] w-[18px]" />
             </div>
           </div>
         </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-slate-500">{t("leads.statWeek")}</p>
-              <p className="mt-3 text-3xl font-bold text-violet-600">{stats.week}</p>
+              <p className="mt-1 text-xl font-bold text-violet-600">{stats.week}</p>
             </div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-50 text-violet-600 ring-1 ring-violet-100">
-              <ChatBubbleLeftRightIcon className="h-6 w-6" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-50 text-violet-600 ring-1 ring-violet-100">
+              <ChatBubbleLeftRightIcon className="h-[18px] w-[18px]" />
             </div>
           </div>
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-lg font-bold text-slate-950">{t("leads.listTitle")}</h2>
+            <h2 className="text-[15px] font-semibold text-slate-900">{t("leads.listTitle")}</h2>
             <p className="text-sm text-slate-500">
               {t("leads.listCount", { shown: filteredLeads.length, total: leads.length })}
             </p>
           </div>
 
           <div className="relative w-full lg:w-96">
-            <MagnifyingGlassIcon className="pointer-events-none absolute start-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+            <MagnifyingGlassIcon className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 ps-11 pe-4 text-sm outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-50"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-[7px] pe-3 ps-9 text-sm leading-5 outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-50"
               placeholder={t("leads.searchPlaceholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -265,9 +255,9 @@ export default function ClientLeads() {
         </div>
 
         {loading ? (
-          <div className="p-10 text-center text-sm text-slate-500">{t("common.loading")}</div>
+          <div className="p-4 text-center text-sm text-slate-500">{t("common.loading")}</div>
         ) : filteredLeads.length === 0 ? (
-          <div className="p-10 text-center">
+          <div className="p-4 text-center">
             <UserPlusIcon className="mx-auto mb-3 h-10 w-10 text-slate-300" />
             <p className="font-semibold text-slate-700">{t("leads.emptyTitle")}</p>
             <p className="mt-1 text-sm text-slate-400">{t("leads.emptySubtitle")}</p>
@@ -278,12 +268,12 @@ export default function ClientLeads() {
               <table className="w-full min-w-[900px] text-sm">
                 <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
-                    <th className="px-5 py-4 text-start font-bold">{t("leads.colClient")}</th>
-                    <th className="px-5 py-4 text-start font-bold">{t("leads.colChannel")}</th>
-                    <th className="px-5 py-4 text-start font-bold">{t("leads.colPhone")}</th>
-                    <th className="px-5 py-4 text-start font-bold">{t("leads.colConversation")}</th>
-                    <th className="px-5 py-4 text-start font-bold">{t("leads.colCapturedAt")}</th>
-                    <th className="px-5 py-4 text-start font-bold">{t("leads.colActions")}</th>
+                    <th className="px-4 py-2 text-start font-bold">{t("leads.colClient")}</th>
+                    <th className="px-4 py-2 text-start font-bold">{t("leads.colChannel")}</th>
+                    <th className="px-4 py-2 text-start font-bold">{t("leads.colPhone")}</th>
+                    <th className="px-4 py-2 text-start font-bold">{t("leads.colConversation")}</th>
+                    <th className="px-4 py-2 text-start font-bold">{t("leads.colCapturedAt")}</th>
+                    <th className="px-4 py-2 text-start font-bold">{t("leads.colActions")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -299,9 +289,9 @@ export default function ClientLeads() {
 
                     return (
                       <tr key={lead.id} className="transition hover:bg-slate-50/70">
-                        <td className="px-5 py-4">
+                        <td className="px-4 py-2">
                           <div className="flex items-center gap-3">
-                            <ChannelIcon channel={channel} size="h-11 w-11" />
+                            <ChannelIcon channel={channel} size="h-8 w-8" />
                             <div>
                               <p className="font-bold text-slate-950">{lead.name || t("common.noName")}</p>
                               <p className="text-xs text-slate-400">Sender: {lead.sender_id || "—"}</p>
@@ -309,18 +299,18 @@ export default function ClientLeads() {
                           </div>
                         </td>
 
-                        <td className="px-5 py-4 text-xs font-semibold text-slate-500">
+                        <td className="px-4 py-2 text-xs font-semibold text-slate-500">
                           {channel || "—"}
                         </td>
 
-                        <td className="px-5 py-4">
+                        <td className="px-4 py-2">
                           <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-bold text-emerald-700 ring-1 ring-emerald-100">
                             <PhoneIcon className="h-4 w-4" />
                             {lead.phone || "—"}
                           </div>
                         </td>
 
-                        <td className="px-5 py-4">
+                        <td className="px-4 py-2">
                           {lead.conversation_id ? (
                             <span className="inline-flex max-w-[220px] truncate rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-100">
                               {lead.conversation_id}
@@ -330,9 +320,9 @@ export default function ClientLeads() {
                           )}
                         </td>
 
-                        <td className="px-5 py-4 text-slate-600">{formatDate(lead.created_at, i18n.language)}</td>
+                        <td className="px-4 py-2 text-slate-600">{formatDate(lead.created_at, i18n.language)}</td>
 
-                        <td className="px-5 py-4">
+                        <td className="px-4 py-2">
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
@@ -351,7 +341,7 @@ export default function ClientLeads() {
                                 title={t("leads.openWhatsappTitle")}
                                 className="inline-flex items-center justify-center rounded-xl transition hover:opacity-80"
                               >
-                                <ChannelIcon channel="whatsapp" size="h-9 w-9" />
+                                <ChannelIcon channel="whatsapp" size="h-8 w-8" />
                               </a>
                             )}
                           </div>
@@ -363,7 +353,7 @@ export default function ClientLeads() {
               </table>
             </div>
 
-            <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-100 px-5 py-4 sm:flex-row">
+            <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-100 px-4 py-2 sm:flex-row">
               <p className="text-xs font-semibold text-slate-500">
                 {t("leads.pageSummary", { page: safePage, total: totalPages, count: filteredLeads.length })}
               </p>

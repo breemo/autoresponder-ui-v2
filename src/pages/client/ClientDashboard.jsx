@@ -22,6 +22,7 @@ import {
   Card,
   CardHeader,
   EmptyState,
+  PageHeader,
   ProgressBar,
   Skeleton,
   StatTile,
@@ -309,19 +310,17 @@ export default function ClientDashboard() {
   const activeChannels = integrations.filter((i) => i.is_active).length;
 
   return (
-    <div className="space-y-4 lg:space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="truncate text-xl font-semibold tracking-tight text-slate-900 rtl:tracking-normal sm:text-2xl">
-            {t("home.welcome", { name: displayName })}
-          </h2>
-          <p className="mt-0.5 text-sm text-slate-500">{t("home.subtitle")}</p>
-        </div>
-        <Button onClick={loadDashboard} disabled={refreshing || !realClientId}>
-          <ArrowPathIcon className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-          {t("common.refresh")}
-        </Button>
-      </div>
+    <div className="space-y-4">
+      <PageHeader
+        title={t("home.welcome", { name: displayName })}
+        description={t("home.subtitle")}
+        actions={
+          <Button onClick={loadDashboard} disabled={refreshing || !realClientId}>
+            <ArrowPathIcon className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+            {t("common.refresh")}
+          </Button>
+        }
+      />
 
       {error && (
         <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm font-medium text-rose-700">
@@ -395,7 +394,7 @@ export default function ClientDashboard() {
           {loading ? (
             <div className="space-y-2">
               {[0, 1, 2].map((i) => (
-                <Skeleton key={i} className="h-14 w-full" />
+                <Skeleton key={i} className="h-11 w-full" />
               ))}
             </div>
           ) : recentConversations.length === 0 ? (
@@ -403,8 +402,8 @@ export default function ClientDashboard() {
           ) : (
             <ul className="-mx-2 divide-y divide-slate-100">
               {recentConversations.map((conversation) => (
-                <li key={conversation.id} className="flex items-center gap-3 rounded-xl px-2 py-2.5">
-                  <AppChannelTile channel={conversation.channel} className="h-9 w-9 rounded-xl" iconClassName="h-[18px] w-[18px]" />
+                <li key={conversation.id} className="flex items-center gap-3 rounded-xl px-2 py-2">
+                  <AppChannelTile channel={conversation.channel} className="h-8 w-8 rounded-lg" iconClassName="h-4 w-4" />
                   <div className="min-w-0 flex-1">
                     <div className="flex min-w-0 items-center gap-2">
                       <p className="truncate text-sm font-semibold text-slate-900"><bdi>{conversation.sender || t("common.noName")}</bdi></p>
@@ -472,7 +471,7 @@ export default function ClientDashboard() {
               {t("dashboard.chartOutbound")}
             </span>
           </div>
-          <div className="h-60" dir="ltr">
+          <div className="h-52" dir="ltr">
             {loading ? (
               <Skeleton className="h-full w-full" />
             ) : (

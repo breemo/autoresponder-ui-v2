@@ -24,5 +24,10 @@ export default function ClientFeatureSettings() {
     return <p className="text-red-500">{t("featureSettingsPage.noClientLinked")}</p>;
   }
 
-  return <AdminClientSettings clientIdOverride={clientId} />;
+  // ar-density: scoped Client density for the shared admin component (see index.css).
+  return (
+    <div className="ar-density">
+      <AdminClientSettings clientIdOverride={clientId} />
+    </div>
+  );
 }

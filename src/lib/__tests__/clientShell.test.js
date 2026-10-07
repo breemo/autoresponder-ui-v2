@@ -57,9 +57,10 @@ test("grouped routes resolve to their nav item; titles and widths per route", ()
   assert.equal(activeNavKey("/client"), "home");
   assert.equal(pageTitleKey("/client/feature-settings"), "shell.nav.aiAgent");
   assert.equal(pageWidthFor("/client/messages"), "full");
-  assert.equal(pageWidthFor("/client/leads"), "wide");
-  assert.equal(pageWidthFor("/client/settings"), "readable");
-  assert.equal(pageWidthFor("/client/feature-settings"), "readablePlus");
+  // One standard canvas for every page except the full-width Inbox.
+  for (const p of ["/client", "/client/leads", "/client/settings", "/client/account", "/client/feature-settings", "/client/integrations", "/client/team"]) {
+    assert.equal(pageWidthFor(p), "standard", p);
+  }
 });
 
 test("Client uses ClientShell; Admin keeps SharedDashboardLayout", () => {
@@ -89,6 +90,19 @@ test("Home uses real data only (no sample numbers, no fake health/live/AI-conver
   for (const fake of ["1,284", "327", "91%", "Healthy", "Live activity", "fully handled"]) {
     assert.equal(home.includes(fake), false, fake);
   }
+});
+
+test("density scale: shared tokens, PageHeader on every standard client page, no legacy hero/eyebrow headers", () => {
+  const prim = read("src/components/app/primitives.jsx");
+  assert.ok(prim.includes("export function PageHeader") && prim.includes("export const ui = {"));
+  for (const p of ["ClientDashboard", "ClientLeads", "ClientSettings", "ClientIntegrations", "ClientTeam", "ClientTeamPerformance", "ClientMyPerformance", "ClientAutoReplies", "ClientQuickReplies", "ClientAccount"]) {
+    const src = read(`src/pages/client/${p}.jsx`);
+    assert.ok(src.includes("<PageHeader"), p);
+    assert.equal(/tracking-[0.35em]/.test(src), false, p + " eyebrow");
+    assert.equal(/rounded-3xl|font-black|text-3xl/.test(src), false, p + " legacy scale");
+  }
+  assert.ok(read("src/pages/client/ClientFeatureSettings.jsx").includes('className="ar-density"'));
+  assert.ok(read("src/index.css").includes(".ar-density .rounded-3xl"));
 });
 
 test("new shell/home strings exist in EN and AR with identical keys", () => {

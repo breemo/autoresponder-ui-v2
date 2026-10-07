@@ -1,15 +1,14 @@
 import React from "react";
 import { cx } from "./primitives.jsx";
 
-// Page width variants — each page gets the width appropriate to its job
-// (see engineering/reports/claude/2026-10-07-client-portal-ui-audit-and-migration-plan.md §12).
+// One Client workspace canvas. Every standard page shares the same width,
+// gutters and start edge; readable limits are applied INSIDE sections where
+// needed (e.g. a form grid), never by narrowing the whole page.
 export const PAGE_WIDTH_CLASSES = {
   full: "w-full", // operational workspaces (Inbox)
-  wide: "mx-auto w-full max-w-[1600px]", // dashboards, tables, card grids
-  readablePlus: "mx-auto w-full max-w-[1240px]", // forms + lists (AI Agent)
-  readable: "mx-auto w-full max-w-[1080px]", // settings / account forms
+  standard: "mx-auto w-full max-w-[1680px]", // every other Client page
 };
 
-export default function PageContainer({ width = "wide", className, children }) {
-  return <div className={cx(PAGE_WIDTH_CLASSES[width] || PAGE_WIDTH_CLASSES.wide, className)}>{children}</div>;
+export default function PageContainer({ width = "standard", className, children }) {
+  return <div className={cx(PAGE_WIDTH_CLASSES[width] || PAGE_WIDTH_CLASSES.standard, className)}>{children}</div>;
 }

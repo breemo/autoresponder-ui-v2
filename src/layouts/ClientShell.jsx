@@ -102,7 +102,7 @@ function UserMenu({ user, displayName, items, onLogout, t }) {
         aria-label={t("shell.userMenu")}
         className="flex items-center gap-2 rounded-xl py-1 ps-1 pe-1.5 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 md:pe-2"
       >
-        <Avatar name={displayName} className="h-8 w-8 text-xs" />
+        <Avatar name={displayName} className="h-7 w-7 text-[11px]" />
         <span className="hidden max-w-[160px] truncate text-sm font-medium text-slate-700 md:block">{displayName}</span>
         <ChevronDownIcon className={cx("hidden h-4 w-4 text-slate-400 transition md:block", open && "rotate-180")} />
       </button>
@@ -238,17 +238,17 @@ export default function ClientShell({ children }) {
         aria-label={t("shell.mainNav")}
         className={cx(
           "fixed start-0 top-0 z-50 flex h-app-viewport w-64 flex-col border-e border-slate-200/80 bg-white transition-[transform,width] duration-200 ease-out xl:translate-x-0",
-          expanded ? "xl:w-60" : "xl:w-[72px]",
+          expanded ? "xl:w-60" : "xl:w-16",
           mobileNavOpen ? "translate-x-0" : isRtl ? "translate-x-full" : "-translate-x-full",
           (mobileNavOpen || (overlayOpen && !isWide)) && "shadow-2xl shadow-slate-900/10"
         )}
       >
-        <div className={cx("flex min-h-14 shrink-0 items-center gap-2.5 border-b border-slate-100 pt-[env(safe-area-inset-top,0px)]", showLabels ? "px-4" : "justify-center px-2")}>
+        <div className={cx("flex min-h-[52px] shrink-0 items-center gap-2.5 border-b border-slate-100 pt-[env(safe-area-inset-top,0px)]", showLabels ? "px-3.5" : "justify-center px-2")}>
           <Link to="/client" className="flex min-w-0 items-center gap-2.5 rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500" aria-label="Auto Responder">
-            <BrandMark className="h-9 w-9" />
+            <BrandMark className="h-8 w-8 rounded-lg" iconClassName="h-[18px] w-[18px]" />
             {showLabels && (
               <span className="min-w-0">
-                <span className="block truncate text-sm font-bold tracking-tight text-slate-900" dir="ltr">
+                <span className="block truncate text-[13px] font-bold tracking-tight text-slate-900" dir="ltr">
                   Auto Responder
                 </span>
                 <span className="block truncate text-[11px] text-slate-500">{displayName}</span>
@@ -266,7 +266,7 @@ export default function ClientShell({ children }) {
         </div>
 
         {/* No overflow clipping while collapsed so tooltips can extend past the rail. */}
-        <nav className={cx("flex-1 space-y-1 px-3 py-3", showLabels ? "overflow-y-auto" : "overflow-visible")}>
+        <nav className={cx("flex-1 space-y-0.5 px-2.5 py-2.5", showLabels ? "overflow-y-auto" : "overflow-visible")}>
           {navItems.map((item) => {
             const Icon = NAV_ICONS[item.key] || HomeIcon;
             const active = item.key === activeKey;
@@ -277,13 +277,13 @@ export default function ClientShell({ children }) {
                 to={item.to}
                 aria-current={active ? "page" : undefined}
                 className={cx(
-                  "group relative flex h-10 items-center gap-3 rounded-xl text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500",
-                  showLabels ? "px-3" : "justify-center",
+                  "group relative flex h-9 items-center gap-2.5 rounded-lg text-[13px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500",
+                  showLabels ? "px-2.5" : "justify-center",
                   active ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                 )}
               >
                 {active && <span className="absolute inset-y-2 start-0 w-[3px] rounded-full bg-indigo-600" aria-hidden="true" />}
-                <Icon className="h-5 w-5 shrink-0" />
+                <Icon className="h-[18px] w-[18px] shrink-0" />
                 <span className={showLabels ? "truncate" : "sr-only"}>{label}</span>
                 {!showLabels && <Tooltip label={label} />}
               </Link>
@@ -291,35 +291,44 @@ export default function ClientShell({ children }) {
           })}
         </nav>
 
-        <div className="hidden shrink-0 border-t border-slate-100 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] pt-3 xl:block">
+        <div className="hidden shrink-0 border-t border-slate-100 px-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom,0px))] pt-2.5 xl:block">
           <button
             type="button"
             onClick={toggleRail}
             aria-expanded={expanded}
             className={cx(
-              "group relative flex h-10 w-full items-center gap-3 rounded-xl text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500",
-              showLabels ? "px-3" : "justify-center"
+              "group relative flex h-9 w-full items-center gap-2.5 rounded-lg text-[13px] font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500",
+              showLabels ? "px-2.5" : "justify-center"
             )}
           >
-            <CollapseIcon className="h-5 w-5 shrink-0" />
+            <CollapseIcon className="h-[18px] w-[18px] shrink-0" />
             <span className={showLabels ? "truncate" : "sr-only"}>{expanded ? t("shell.collapseSidebar") : t("shell.expandSidebar")}</span>
             {!showLabels && <Tooltip label={t("shell.expandSidebar")} />}
           </button>
         </div>
       </aside>
 
-      <div className={cx("transition-[padding] duration-200", pushContent ? "xl:ps-60" : "xl:ps-[72px]", fullHeight && "flex h-full flex-col")}>
+      <div className={cx("transition-[padding] duration-200", pushContent ? "xl:ps-60" : "xl:ps-16", fullHeight && "flex h-full flex-col")}>
         <header className="sticky top-0 z-30 shrink-0 border-b border-slate-200/80 bg-white/90 pt-[env(safe-area-inset-top,0px)] backdrop-blur-xl">
-          <div className="flex h-14 items-center gap-2 px-3 sm:px-4 lg:px-6">
+          <div className="flex h-[52px] items-center gap-2 px-3 sm:px-4 lg:px-6">
             <button
               type="button"
               onClick={() => setMobileNavOpen(true)}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-600 transition hover:bg-slate-100 xl:hidden"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 xl:hidden"
               aria-label={t("common.openMenu")}
             >
               <Bars3Icon className="h-5 w-5" />
             </button>
-            <h1 className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900 sm:text-lg rtl:tracking-normal">{title}</h1>
+            {/* Breadcrumb context; the page's own PageHeader carries the title. */}
+            <p className="min-w-0 flex-1 truncate text-[13px] text-slate-500">
+              <span className="hidden sm:inline">
+                <bdi>{displayName}</bdi>
+                <span className="mx-1.5 text-slate-300">/</span>
+              </span>
+              <span className="font-medium text-slate-900" data-page-title>
+                {title}
+              </span>
+            </p>
             {/* Future: page actions / notifications live here. */}
             <button
               type="button"
@@ -328,7 +337,7 @@ export default function ClientShell({ children }) {
               title={t("common.switchLanguage")}
               aria-label={t("common.switchLanguage")}
               lang={language === "en" ? "ar" : "en"}
-              className="inline-flex h-8 shrink-0 items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-indigo-200 hover:text-indigo-700 disabled:opacity-60"
+              className="inline-flex h-7 shrink-0 items-center rounded-full border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-600 transition hover:border-indigo-200 hover:text-indigo-700 disabled:opacity-60"
             >
               {language === "en" ? "عربي" : "EN"}
             </button>
@@ -336,11 +345,11 @@ export default function ClientShell({ children }) {
           </div>
         </header>
 
-        <main className={fullHeight ? "flex min-h-0 flex-1 flex-col px-2 pb-2 pt-2 sm:px-3 sm:pb-3" : "px-3 py-4 sm:px-4 lg:px-6 lg:py-5"}>
+        <main className={fullHeight ? "flex min-h-0 flex-1 flex-col px-2 pb-2 pt-2 sm:px-3 sm:pb-3" : "px-4 pb-8 pt-4 lg:px-6 lg:pt-5"}>
           <PageContainer width={width} className={fullHeight ? "flex min-h-0 flex-1 flex-col" : "animate-[fadeIn_.2s_ease-out]"}>
             <SubscriptionBanner />
             {activeGroup && (
-              <nav aria-label={t("shell.sectionNav")} className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200">
+              <nav aria-label={t("shell.sectionNav")} className="mb-4 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-slate-200">
                 {activeGroup.tabs.map((tab) => {
                   const on = tab.to === location.pathname;
                   return (
@@ -349,7 +358,7 @@ export default function ClientShell({ children }) {
                       to={tab.to}
                       aria-current={on ? "page" : undefined}
                       className={cx(
-                        "-mb-px whitespace-nowrap border-b-2 px-3 pb-2.5 pt-1 text-sm font-medium transition",
+                        "-mb-px whitespace-nowrap border-b-2 px-3 pb-2 pt-0.5 text-[13px] font-medium transition",
                         on ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-500 hover:text-slate-900"
                       )}
                     >

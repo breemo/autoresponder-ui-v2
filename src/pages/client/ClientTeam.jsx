@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { PageHeader, ui } from "../../components/app/primitives.jsx";
 import {
   PERMISSIONS,
   ROLES,
@@ -9,10 +10,9 @@ import {
   hasUserPermission,
 } from "../../lib/permissions.js";
 
-const inputClass =
-  "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50";
+const inputClass = ui.input;
 
-const cardClass = "rounded-3xl border border-slate-200 bg-white shadow-sm";
+const cardClass = ui.card;
 
 const PERMISSION_ORDER = Object.values(PERMISSIONS);
 
@@ -293,28 +293,23 @@ export default function ClientTeam() {
 
   if (!canManage) {
     return (
-      <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 text-center text-sm text-slate-500">
         {t("team.noPermission")}
       </div>
     );
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.35em] text-indigo-600">TEAM</p>
-          <h2 className="mt-1 text-2xl font-black text-slate-950">{t("navigation.team")}</h2>
-          <p className="mt-1 text-sm text-slate-500">{t("team.subtitle")}</p>
-        </div>
-
-        <button
-          onClick={openAddDrawer}
-          className="h-11 rounded-2xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700"
-        >
-          {t("team.addUser")}
-        </button>
-      </div>
+    <div className="space-y-4">
+      <PageHeader
+        title={t("navigation.team")}
+        description={t("team.subtitle")}
+        actions={
+          <button onClick={openAddDrawer} className={ui.btnPrimary}>
+            {t("team.addUser")}
+          </button>
+        }
+      />
 
       {error && (
         <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
@@ -330,9 +325,9 @@ export default function ClientTeam() {
 
       <div className={`${cardClass} overflow-hidden`}>
         {loading ? (
-          <div className="p-10 text-center text-sm text-slate-500">{t("team.loading")}</div>
+          <div className="p-4 text-center text-sm text-slate-500">{t("team.loading")}</div>
         ) : members.length === 0 ? (
-          <div className="p-10 text-center text-sm text-slate-400">{t("team.empty")}</div>
+          <div className="p-4 text-center text-sm text-slate-400">{t("team.empty")}</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -434,12 +429,12 @@ export default function ClientTeam() {
           <form
             onSubmit={handleAddUser}
             onClick={(e) => e.stopPropagation()}
-            className="h-full w-full max-w-lg overflow-y-auto bg-white p-6 shadow-2xl"
+            className="h-full w-full max-w-lg overflow-y-auto bg-white p-4 shadow-2xl"
           >
             <div className="mb-6 flex items-start justify-between">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.25em] text-indigo-600">TEAM</p>
-                <h3 className="mt-1 text-2xl font-black text-slate-950">{t("team.drawerAddTitle")}</h3>
+                <h3 className="mt-1 text-xl font-bold text-slate-900">{t("team.drawerAddTitle")}</h3>
               </div>
 
               <button
@@ -500,7 +495,7 @@ export default function ClientTeam() {
               <button
                 type="submit"
                 disabled={saving}
-                className="h-12 w-full rounded-2xl bg-indigo-600 font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50"
+                className="h-12 w-full rounded-2xl bg-indigo-600 font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
               >
                 {saving ? t("team.adding") : t("team.addUserButton")}
               </button>
@@ -511,9 +506,9 @@ export default function ClientTeam() {
 
       {permsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" onClick={() => setPermsModal(null)}>
-          <div className={`${cardClass} w-full max-w-lg p-6`} onClick={(e) => e.stopPropagation()}>
+          <div className={`${cardClass} w-full max-w-lg p-4`} onClick={(e) => e.stopPropagation()}>
             <p className="text-xs font-bold uppercase tracking-[0.25em] text-indigo-600">{t("team.fieldPermissions")}</p>
-            <h3 className="mt-1 text-lg font-black text-slate-950">{permsModal.member.name || permsModal.member.email}</h3>
+            <h3 className="mt-1 text-base font-semibold text-slate-900">{permsModal.member.name || permsModal.member.email}</h3>
             <p className="text-xs text-slate-500">
               {t("team.permsModalRolePrefix", { role: t(`roles.${permsModal.member.role}`) })}
             </p>
@@ -538,14 +533,14 @@ export default function ClientTeam() {
                 type="button"
                 onClick={savePermsModal}
                 disabled={actionBusyId === permsModal.member.client_user_id}
-                className="h-11 flex-1 rounded-2xl bg-indigo-600 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50"
+                className="h-11 flex-1 rounded-2xl bg-indigo-600 text-sm font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
               >
                 {t("common.save")}
               </button>
               <button
                 type="button"
                 onClick={() => setPermsModal(null)}
-                className="h-11 rounded-2xl border border-slate-200 px-5 text-sm font-bold text-slate-700 hover:bg-slate-50"
+                className="h-9 rounded-xl border border-slate-200 px-5 text-sm font-bold text-slate-700 hover:bg-slate-50"
               >
                 {t("common.cancel")}
               </button>
@@ -556,9 +551,9 @@ export default function ClientTeam() {
 
       {reveal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" onClick={() => setReveal(null)}>
-          <div className={`${cardClass} w-full max-w-sm p-6`} onClick={(e) => e.stopPropagation()}>
+          <div className={`${cardClass} w-full max-w-sm p-4`} onClick={(e) => e.stopPropagation()}>
             <p className="text-xs font-bold uppercase tracking-[0.25em] text-indigo-600">{t("team.tempPasswordTitle")}</p>
-            <h3 className="mt-1 text-lg font-black text-slate-950">{reveal.name}</h3>
+            <h3 className="mt-1 text-base font-semibold text-slate-900">{reveal.name}</h3>
             <p className="text-xs text-slate-500" dir="ltr">{reveal.email}</p>
 
             <div className="mt-4 flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">

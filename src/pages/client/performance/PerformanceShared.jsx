@@ -18,11 +18,11 @@ import { formatCount, formatDuration, shortDate } from "../../../lib/performance
 
 export function Card({ title, subtitle, action, children, className = "" }) {
   return (
-    <div className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ${className}`}>
+    <div className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${className}`}>
       {(title || action) && (
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            {title && <h2 className="text-lg font-black text-slate-950">{title}</h2>}
+            {title && <h2 className="text-[15px] font-semibold text-slate-900">{title}</h2>}
             {subtitle && <p className="mt-0.5 text-xs font-medium text-slate-400">{subtitle}</p>}
           </div>
           {action}
@@ -35,7 +35,7 @@ export function Card({ title, subtitle, action, children, className = "" }) {
 
 export function EmptyBox({ children }) {
   return (
-    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-8 text-center text-sm font-semibold text-slate-400">
+    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-center text-sm font-semibold text-slate-400">
       {children}
     </div>
   );
@@ -48,7 +48,7 @@ export function KpiCard({ label, value, kind = "count", hint, sample }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <p className="text-xs font-semibold text-slate-500">{label}</p>
-      <p className={`mt-1.5 text-2xl font-black tracking-tight ${isEmptyDuration ? "text-slate-300" : "text-slate-950"}`}>
+      <p className={`mt-1.5 text-2xl font-bold tracking-tight ${isEmptyDuration ? "text-slate-300" : "text-slate-950"}`}>
         {display}
       </p>
       {hint && <p className="mt-1 text-[11px] leading-tight text-slate-400">{hint}</p>}

@@ -102,7 +102,7 @@ export default function TelegramActivationQr({ activationUrl }) {
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            className="w-[calc(100%-2rem)] max-w-sm rounded-3xl bg-white p-5 shadow-2xl"
+            className="w-[calc(100%-2rem)] max-w-sm rounded-2xl bg-white p-4 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">

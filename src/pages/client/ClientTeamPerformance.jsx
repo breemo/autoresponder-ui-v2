@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { ArrowPathIcon } from "@heroicons/react/24/outline";
 import { formatCount, formatDuration, shortDateTime } from "../../lib/performanceFormat.js";
+import { PageHeader, ui } from "../../components/app/primitives.jsx";
 import {
   Card,
   EmptyBox,
@@ -65,13 +66,13 @@ function EmployeeDetail({ detail, employee }) {
       </div>
 
       <div className="mt-5">
-        <p className="mb-2 text-sm font-black text-slate-950">{t("teamPerformance.trendTitle")}</p>
+        <p className="mb-2 text-sm font-bold text-slate-950">{t("teamPerformance.trendTitle")}</p>
         <TrendChart trend={detail?.trend} />
       </div>
 
-      <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
+      <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div>
-          <p className="mb-2 text-sm font-black text-slate-950">{t("teamPerformance.recentCycles")}</p>
+          <p className="mb-2 text-sm font-bold text-slate-950">{t("teamPerformance.recentCycles")}</p>
           {(detail?.recent_cycles || []).length === 0 ? (
             <EmptyBox>{t("teamPerformance.notEnoughData")}</EmptyBox>
           ) : (
@@ -93,7 +94,7 @@ function EmployeeDetail({ detail, employee }) {
           )}
         </div>
         <div>
-          <p className="mb-2 text-sm font-black text-slate-950">{t("teamPerformance.activityTimeline")}</p>
+          <p className="mb-2 text-sm font-bold text-slate-950">{t("teamPerformance.activityTimeline")}</p>
           {(detail?.timeline || []).length === 0 ? (
             <EmptyBox>{t("teamPerformance.notEnoughData")}</EmptyBox>
           ) : (
@@ -130,19 +131,25 @@ export default function ClientTeamPerformance() {
   const selectedEmployee = selectedId ? employees.find((e) => e.user_id === selectedId) : null;
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <RangePicker value={range} onChange={setRange} />
-        <button
+    <div className="space-y-4">
+      <PageHeader
+        title={t("navigation.teamPerformance")}
+        description={(t("pageTitles.client.teamPerformance", { returnObjects: true }) || [])[1]}
+        actions={
+          <>
+            <RangePicker value={range} onChange={setRange} />
+            <button
           type="button"
           onClick={reload}
           disabled={loading}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
+          className={ui.btnSecondary}
         >
           <ArrowPathIcon className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           {t("common.refresh")}
         </button>
-      </div>
+          </>
+        }
+      />
 
       {error && (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">

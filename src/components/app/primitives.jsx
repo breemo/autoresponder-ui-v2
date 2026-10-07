@@ -11,14 +11,49 @@ export function cx(...parts) {
 }
 
 // ---------------------------------------------------------------------------
+// Application density scale (100% browser zoom is the baseline).
+//   Page title 20px/600 · section title 14px/600 · body 13–14px · meta 11–12px
+//   Controls 36px (inputs, buttons) · cards 16px padding, 16px radius
+// Class-string tokens let legacy pages adopt the scale without rewrites.
+// ---------------------------------------------------------------------------
+export const ui = {
+  input:
+    "w-full rounded-xl border border-slate-200 bg-white px-3 py-[7px] text-sm leading-5 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50 disabled:bg-slate-50 disabled:text-slate-500",
+  label: "mb-1 block text-[13px] font-medium text-slate-700",
+  card: "rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
+  sectionTitle: "text-sm font-semibold text-slate-900 rtl:tracking-normal",
+  sectionSubtitle: "text-xs text-slate-500",
+  btnPrimary:
+    "inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 text-sm font-semibold text-white shadow-sm shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60",
+  btnSecondary:
+    "inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60",
+};
+
+// ---------------------------------------------------------------------------
+// PageHeader — one header pattern for every standard Client page.
+// ---------------------------------------------------------------------------
+export function PageHeader({ title, description, actions, className }) {
+  return (
+    <div className={cx("flex flex-wrap items-end justify-between gap-x-4 gap-y-3", className)}>
+      <div className="min-w-0">
+        <h1 className="truncate text-xl font-semibold tracking-tight text-slate-900 rtl:tracking-normal">{title}</h1>
+        {description && <p className="mt-0.5 text-sm text-slate-500">{description}</p>}
+      </div>
+      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Card
 // ---------------------------------------------------------------------------
 export function Card({ as: Tag = "section", className, padded = true, children, ...rest }) {
   return (
     <Tag
       className={cx(
-        "rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-16px_rgba(49,46,129,0.18)]",
-        padded && "p-4 sm:p-5",
+        // min-w-0: as a grid item the card may shrink so truncated content never widens the page.
+        "min-w-0 rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-16px_rgba(49,46,129,0.18)]",
+        padded && "p-4",
         className
       )}
       {...rest}
@@ -30,9 +65,9 @@ export function Card({ as: Tag = "section", className, padded = true, children, 
 
 export function CardHeader({ title, subtitle, action, className }) {
   return (
-    <div className={cx("mb-4 flex items-start justify-between gap-3", className)}>
+    <div className={cx("mb-3 flex items-start justify-between gap-3", className)}>
       <div className="min-w-0">
-        <h2 className="truncate text-[15px] font-semibold text-slate-900 rtl:tracking-normal">{title}</h2>
+        <h2 className="truncate text-sm font-semibold text-slate-900 rtl:tracking-normal">{title}</h2>
         {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
       </div>
       {action && <div className="shrink-0">{action}</div>}
@@ -58,21 +93,21 @@ export function StatTile({ label, value, hint, icon: Icon, tone = "indigo", load
       <div className="flex items-start justify-between gap-3">
         <p className="text-xs font-medium text-slate-500">{label}</p>
         {Icon && (
-          <span className={cx("inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", TILE_TONES[tone] || TILE_TONES.indigo)}>
-            <Icon className="h-[18px] w-[18px]" />
+          <span className={cx("inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg", TILE_TONES[tone] || TILE_TONES.indigo)}>
+            <Icon className="h-4 w-4" />
           </span>
         )}
       </div>
       {loading ? (
-        <Skeleton className="mt-2 h-7 w-16" />
+        <Skeleton className="mt-1.5 h-6 w-14" />
       ) : (
-        <p className="mt-1 text-2xl font-bold tracking-tight text-slate-900 tabular-nums">{value ?? "—"}</p>
+        <p className="mt-0.5 text-xl font-bold tracking-tight text-slate-900 tabular-nums">{value ?? "—"}</p>
       )}
       {hint && <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-slate-400">{hint}</p>}
     </>
   );
   const base = cx(
-    "block rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
+    "block min-w-0 rounded-2xl border border-slate-200/80 bg-white px-3.5 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
     href && "transition hover:border-indigo-200 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500",
     className
   );
@@ -132,7 +167,7 @@ const BUTTON_VARIANTS = {
 };
 
 export function Button({ variant = "secondary", size = "md", className, children, ...rest }) {
-  const sizes = { sm: "h-8 px-3 text-xs", md: "h-9 px-3.5 text-sm" };
+  const sizes = { sm: "h-8 px-2.5 text-xs", md: "h-9 px-3.5 text-sm" };
   return (
     <button
       type="button"
@@ -156,7 +191,7 @@ export function IconButton({ label, className, children, ...rest }) {
       aria-label={label}
       title={label}
       className={cx(
-        "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-60",
+        "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-60",
         className
       )}
       {...rest}
@@ -202,7 +237,7 @@ export function ProgressBar({ percent, tone }) {
 // ---------------------------------------------------------------------------
 export function EmptyState({ icon: Icon, title, children, className }) {
   return (
-    <div className={cx("flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center", className)}>
+    <div className={cx("flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center", className)}>
       {Icon && <Icon className="mb-2 h-6 w-6 text-slate-300" />}
       <p className="text-sm font-medium text-slate-500">{title}</p>
       {children && <div className="mt-2 text-xs text-slate-400">{children}</div>}

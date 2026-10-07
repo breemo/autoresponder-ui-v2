@@ -5,9 +5,10 @@ import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useLanguage } from "../../context/LanguageContext.jsx";
 import LocationsSection from "./LocationsSection.jsx";
+import { PageHeader, ui } from "../../components/app/primitives.jsx";
 
-const inputClass = "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50 disabled:bg-slate-50 disabled:text-slate-500";
-const cardClass = "rounded-3xl border border-slate-200 bg-white shadow-sm";
+const inputClass = ui.input;
+const cardClass = ui.card;
 
 // AI Engine V1 — Phase 2. Working hours (clients.working_hours jsonb):
 //   { "timezone": "Asia/Hebron", "days": { "sunday": [{"open","close"}], "friday": [] } }
@@ -170,7 +171,7 @@ function groupWorkingHoursSummary(wh, t) {
 function TimezoneField({ value, onChange, t }) {
   return (
     <div>
-      <label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.timezone")}</label>
+      <label className="mb-1 block text-[13px] font-medium text-slate-700">{t("settings.timezone")}</label>
       <input
         list="ar-timezone-options"
         className={inputClass}
@@ -346,11 +347,11 @@ function BusinessHoursSummaryCard({ workingHours, onEdit, t }) {
   const summary = useMemo(() => (hasAnySchedule ? groupWorkingHoursSummary(workingHours, t) : []), [workingHours, hasAnySchedule, t]);
 
   return (
-    <div className={`${cardClass} p-6`}>
+    <div className={`${cardClass} p-4`}>
       <div className="mb-4 flex items-center gap-3">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-xl">🕒</div>
+        <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-amber-50 text-base">🕒</div>
         <div>
-          <h3 className="font-black text-slate-950">{t("settings.workingHoursTitle")}</h3>
+          <h3 className="text-[15px] font-semibold text-slate-900">{t("settings.workingHoursTitle")}</h3>
           <p className="text-xs text-slate-500">{t("settings.workingHoursSubtitle")}</p>
         </div>
       </div>
@@ -401,10 +402,10 @@ function BusinessHoursDrawer({ draft, onDraftChange, onApply, onCancel, t }) {
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-slate-950/50 backdrop-blur-sm" onClick={onCancel} />
       <div className="h-full w-full max-w-xl overflow-y-auto border-s border-slate-200 bg-white shadow-2xl">
-        <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 p-5 backdrop-blur">
+        <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 p-4 backdrop-blur">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-xl font-black text-slate-950">{t("settings.workingHoursDrawerTitle")}</h2>
+              <h2 className="text-base font-semibold text-slate-900">{t("settings.workingHoursDrawerTitle")}</h2>
               <p className="mt-1 text-sm text-slate-500">{t("settings.workingHoursDrawerSubtitle")}</p>
             </div>
             <button type="button" onClick={onCancel} className="rounded-2xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50">
@@ -413,7 +414,7 @@ function BusinessHoursDrawer({ draft, onDraftChange, onApply, onCancel, t }) {
           </div>
         </div>
 
-        <div className="space-y-5 p-5">
+        <div className="space-y-4 p-4">
           <WorkingHoursEditor value={draft} onChange={onDraftChange} errors={errors} t={t} />
 
           {hasErrors && (
@@ -429,11 +430,11 @@ function BusinessHoursDrawer({ draft, onDraftChange, onApply, onCancel, t }) {
               type="button"
               onClick={onApply}
               disabled={hasErrors}
-              className="flex-1 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50"
+              className="flex-1 rounded-2xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50"
             >
               {t("settings.workingHoursApply")}
             </button>
-            <button type="button" onClick={onCancel} className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">
+            <button type="button" onClick={onCancel} className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
               {t("common.cancel")}
             </button>
           </div>
@@ -541,32 +542,26 @@ export default function ClientSettings() {
   const isSuccessMsg = msg === t("settings.successSaved");
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.35em] text-indigo-600">{t("settings.badge")}</p>
-          <h2 className="mt-1 text-2xl font-black text-slate-950">{t("settings.title")}</h2>
-          <p className="mt-1 text-sm text-slate-500">{t("settings.subtitle")}</p>
-        </div>
-        <button onClick={handleSave} disabled={loading} className="h-11 rounded-2xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-200 disabled:opacity-60">{loading ? t("settings.saving") : t("settings.save")}</button>
-      </div>
+    <div className="space-y-4">
+      <PageHeader
+        title={t("settings.title")}
+        description={t("settings.subtitle")}
+        actions={<button onClick={handleSave} disabled={loading} className={ui.btnPrimary}>{loading ? t("settings.saving") : t("settings.save")}</button>}
+      />
 
       {msg && <div className={`rounded-2xl border px-4 py-3 text-sm font-bold ${isSuccessMsg ? "border-emerald-100 bg-emerald-50 text-emerald-700" : "border-red-100 bg-red-50 text-red-700"}`}>{msg}</div>}
 
       {/* A. Business Information — one calm card, no tiny cards split out. */}
-      <div className={`${cardClass} p-6`}>
-        <div className="mb-5 flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-xl">🏢</div><div><h3 className="font-black text-slate-950">{t("settings.businessInfoTitle")}</h3><p className="text-xs text-slate-500">{t("settings.businessInfoSubtitle")}</p></div></div>
-        <div className="space-y-4">
-          <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.businessName")}</label><input className={inputClass} value={form.business_name} onChange={(e) => update("business_name", e.target.value)} /></div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.email")}</label><input className={inputClass} value={form.email} disabled /><p className="mt-1 text-xs text-slate-400">{t("settings.emailHint")}</p></div>
-            <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.phone")}</label><input className={inputClass} value={form.phone} onChange={(e) => update("phone", e.target.value)} /></div>
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.website")}</label><input className={inputClass} value={form.website} onChange={(e) => update("website", e.target.value)} placeholder={t("settings.websitePlaceholder")} /></div>
-            <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.address")}</label><input className={inputClass} value={form.address} onChange={(e) => update("address", e.target.value)} /></div>
-          </div>
-          <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.businessDescription")}</label><textarea rows={4} className={inputClass} value={form.business_description} onChange={(e) => update("business_description", e.target.value)} /></div>
+      <div className={`${cardClass} p-4`}>
+        <div className="mb-4 flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-indigo-50 text-base">🏢</div><div><h3 className="text-[15px] font-semibold text-slate-900">{t("settings.businessInfoTitle")}</h3><p className="text-xs text-slate-500">{t("settings.businessInfoSubtitle")}</p></div></div>
+        {/* Wide canvas, readable fields: 1 → 2 → 3 columns; description spans the row. */}
+        <div className="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2 xl:grid-cols-3">
+          <div><label className="mb-1 block text-[13px] font-medium text-slate-700">{t("settings.businessName")}</label><input className={inputClass} value={form.business_name} onChange={(e) => update("business_name", e.target.value)} /></div>
+          <div><label className="mb-1 block text-[13px] font-medium text-slate-700">{t("settings.email")}</label><input className={inputClass} value={form.email} disabled /><p className="mt-1 text-xs text-slate-400">{t("settings.emailHint")}</p></div>
+          <div><label className="mb-1 block text-[13px] font-medium text-slate-700">{t("settings.phone")}</label><input className={inputClass} value={form.phone} onChange={(e) => update("phone", e.target.value)} /></div>
+          <div><label className="mb-1 block text-[13px] font-medium text-slate-700">{t("settings.website")}</label><input className={inputClass} value={form.website} onChange={(e) => update("website", e.target.value)} placeholder={t("settings.websitePlaceholder")} /></div>
+          <div className="xl:col-span-2"><label className="mb-1 block text-[13px] font-medium text-slate-700">{t("settings.address")}</label><input className={inputClass} value={form.address} onChange={(e) => update("address", e.target.value)} /></div>
+          <div className="md:col-span-2 xl:col-span-3"><label className="mb-1 block text-[13px] font-medium text-slate-700">{t("settings.businessDescription")}</label><textarea rows={3} className={inputClass} value={form.business_description} onChange={(e) => update("business_description", e.target.value)} /></div>
         </div>
       </div>
 
@@ -579,12 +574,12 @@ export default function ClientSettings() {
 
       {/* B. Business Hours (summary only) + D. Language & Regional — paired
           side by side so neither is a lonely, mostly-empty full-width card. */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <BusinessHoursSummaryCard workingHours={workingHours} onEdit={openHoursDrawer} t={t} />
 
-        <div className={`${cardClass} p-6`}>
+        <div className={`${cardClass} p-4`}>
           <div className="mb-4">
-            <h3 className="font-black text-slate-950">{t("settings.regionalSettingsTitle")}</h3>
+            <h3 className="text-[15px] font-semibold text-slate-900">{t("settings.regionalSettingsTitle")}</h3>
             <p className="text-xs text-slate-500">{t("settings.regionalSettingsSubtitle")}</p>
           </div>
 
@@ -628,12 +623,12 @@ export default function ClientSettings() {
 
       {/* C. Conversation Messages — compact, side by side on larger screens
           instead of one tall stacked column. */}
-      <div className={`${cardClass} p-6`}>
-        <div className="mb-5 flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-xl">💬</div><div><h3 className="font-black text-slate-950">{t("settings.conversationMessagesTitle")}</h3><p className="text-xs text-slate-500">{t("settings.conversationMessagesSubtitle")}</p></div></div>
+      <div className={`${cardClass} p-4`}>
+        <div className="mb-4 flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-emerald-50 text-base">💬</div><div><h3 className="text-[15px] font-semibold text-slate-900">{t("settings.conversationMessagesTitle")}</h3><p className="text-xs text-slate-500">{t("settings.conversationMessagesSubtitle")}</p></div></div>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.welcomeMessage")}</label><textarea rows={3} className={inputClass} value={form.welcome_message} onChange={(e) => update("welcome_message", e.target.value)} placeholder={t("settings.welcomeMessagePlaceholder")} /></div>
-          <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.defaultReply")}</label><textarea rows={3} className={inputClass} value={form.default_reply} onChange={(e) => update("default_reply", e.target.value)} placeholder={t("settings.defaultReplyPlaceholder")} /></div>
-          <div><label className="mb-1 block text-sm font-bold text-slate-700">{t("settings.closingMessage")}</label><textarea rows={3} className={inputClass} value={form.closing_message} onChange={(e) => update("closing_message", e.target.value)} placeholder={t("settings.closingMessagePlaceholder")} /></div>
+          <div><label className="mb-1 block text-[13px] font-medium text-slate-700">{t("settings.welcomeMessage")}</label><textarea rows={3} className={inputClass} value={form.welcome_message} onChange={(e) => update("welcome_message", e.target.value)} placeholder={t("settings.welcomeMessagePlaceholder")} /></div>
+          <div><label className="mb-1 block text-[13px] font-medium text-slate-700">{t("settings.defaultReply")}</label><textarea rows={3} className={inputClass} value={form.default_reply} onChange={(e) => update("default_reply", e.target.value)} placeholder={t("settings.defaultReplyPlaceholder")} /></div>
+          <div><label className="mb-1 block text-[13px] font-medium text-slate-700">{t("settings.closingMessage")}</label><textarea rows={3} className={inputClass} value={form.closing_message} onChange={(e) => update("closing_message", e.target.value)} placeholder={t("settings.closingMessagePlaceholder")} /></div>
         </div>
       </div>
 

@@ -2,9 +2,10 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { PageHeader, ui } from "../../components/app/primitives.jsx";
 
-const inputClass = "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50";
-const cardClass = "rounded-3xl border border-slate-200 bg-white shadow-sm";
+const inputClass = ui.input;
+const cardClass = ui.card;
 
 function StatusBadge({ active, t }) {
   return <span className={`rounded-full px-3 py-1 text-xs font-bold ${active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{active ? t("common.active") : t("common.inactive")}</span>;
@@ -92,42 +93,39 @@ export default function ClientAutoReplies() {
   const remaining = autoLimit ? Math.max(autoLimit - replies.length, 0) : "∞";
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.35em] text-indigo-600">AUTO REPLIES</p>
-          <h2 className="mt-1 text-2xl font-black text-slate-950">{t("navigation.autoReplies")}</h2>
-          <p className="mt-1 text-sm text-slate-500">{t("autoRepliesPage.subtitle")}</p>
-        </div>
-        <button onClick={openCreate} className="h-11 rounded-2xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700">{t("autoRepliesPage.addButton")}</button>
-      </div>
+    <div className="space-y-4">
+      <PageHeader
+        title={t("navigation.autoReplies")}
+        description={t("autoRepliesPage.subtitle")}
+        actions={<button onClick={openCreate} className={ui.btnPrimary}>{t("autoRepliesPage.addButton")}</button>}
+      />
 
       {error && <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</div>}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <div className={`${cardClass} p-5`}><p className="text-sm text-slate-500">{t("autoRepliesPage.statUsed")}</p><p className="mt-2 text-3xl font-black">{replies.length}<span className="text-base text-slate-400"> / {autoLimit || "∞"}</span></p></div>
-        <div className={`${cardClass} p-5`}><p className="text-sm text-slate-500">{t("autoRepliesPage.statActiveLabel")}</p><p className="mt-2 text-3xl font-black text-emerald-600">{activeCount}</p></div>
-        <div className={`${cardClass} p-5`}><p className="text-sm text-slate-500">{t("autoRepliesPage.statRemaining")}</p><p className="mt-2 text-3xl font-black text-indigo-600">{remaining}</p></div>
+        <div className={`${cardClass} p-4`}><p className="text-sm text-slate-500">{t("autoRepliesPage.statUsed")}</p><p className="mt-1 text-xl font-bold">{replies.length}<span className="text-base text-slate-400"> / {autoLimit || "∞"}</span></p></div>
+        <div className={`${cardClass} p-4`}><p className="text-sm text-slate-500">{t("autoRepliesPage.statActiveLabel")}</p><p className="mt-1 text-xl font-bold text-emerald-600">{activeCount}</p></div>
+        <div className={`${cardClass} p-4`}><p className="text-sm text-slate-500">{t("autoRepliesPage.statRemaining")}</p><p className="mt-1 text-xl font-bold text-indigo-600">{remaining}</p></div>
       </div>
 
       <div className={`${cardClass} overflow-hidden`}>
         <div className="flex items-center gap-3 border-b border-slate-100 p-4">
           <input className={`${inputClass} max-w-xl`} placeholder={t("autoRepliesPage.searchPlaceholder")} value={search} onChange={(e) => setSearch(e.target.value)} />
-          <button onClick={loadData} className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50">↻ {t("common.refresh")}</button>
+          <button onClick={loadData} className="h-9 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50">↻ {t("common.refresh")}</button>
         </div>
-        {loading ? <div className="p-10 text-center text-slate-500">{t("common.loading")}</div> : filtered.length === 0 ? <div className="p-10 text-center text-slate-400">{t("autoRepliesPage.empty")}</div> : (
+        {loading ? <div className="p-4 text-center text-slate-500">{t("common.loading")}</div> : filtered.length === 0 ? <div className="p-4 text-center text-slate-400">{t("autoRepliesPage.empty")}</div> : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[780px] text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-4 text-start">{t("autoRepliesPage.colTrigger")}</th><th className="px-5 py-4 text-start">{t("autoRepliesPage.colReply")}</th><th className="px-5 py-4 text-start">{t("common.status")}</th><th className="px-5 py-4 text-start">{t("leads.colActions")}</th></tr></thead>
+              <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500"><tr><th className="px-4 py-2.5 text-start">{t("autoRepliesPage.colTrigger")}</th><th className="px-4 py-2.5 text-start">{t("autoRepliesPage.colReply")}</th><th className="px-4 py-2.5 text-start">{t("common.status")}</th><th className="px-4 py-2.5 text-start">{t("leads.colActions")}</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
-                {filtered.map((r) => <tr key={r.id} className="hover:bg-slate-50/70"><td className="px-5 py-4"><span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">{r.trigger_text}</span></td><td className="max-w-xl px-5 py-4 text-slate-600"><p className="line-clamp-2">{r.reply_text}</p></td><td className="px-5 py-4"><button onClick={() => toggleActive(r)}><StatusBadge active={r.is_active} t={t} /></button></td><td className="px-5 py-4"><div className="flex gap-2"><button onClick={() => startEdit(r)} className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">{t("common.edit")}</button><button onClick={() => deleteReply(r.id)} className="rounded-xl bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100">{t("common.delete")}</button></div></td></tr>)}
+                {filtered.map((r) => <tr key={r.id} className="hover:bg-slate-50/70"><td className="px-4 py-2.5"><span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">{r.trigger_text}</span></td><td className="max-w-xl px-4 py-2.5 text-slate-600"><p className="line-clamp-2">{r.reply_text}</p></td><td className="px-4 py-2.5"><button onClick={() => toggleActive(r)}><StatusBadge active={r.is_active} t={t} /></button></td><td className="px-4 py-2.5"><div className="flex gap-2"><button onClick={() => startEdit(r)} className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">{t("common.edit")}</button><button onClick={() => deleteReply(r.id)} className="rounded-xl bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100">{t("common.delete")}</button></div></td></tr>)}
               </tbody>
             </table>
           </div>
         )}
       </div>
 
-      {drawerOpen && <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/40" onClick={() => setDrawerOpen(false)}><div className="h-full w-full max-w-xl overflow-y-auto bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}><div className="mb-6 flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.25em] text-indigo-600">AUTO REPLY</p><h3 className="mt-1 text-2xl font-black text-slate-950">{form.id ? t("autoRepliesPage.drawerEditTitle") : t("autoRepliesPage.drawerAddTitle")}</h3></div><button onClick={() => setDrawerOpen(false)} className="rounded-xl border px-3 py-2 text-sm">{t("common.close")}</button></div><div className="space-y-4"><div><label className="mb-1 block text-sm font-bold text-slate-700">{t("autoRepliesPage.colTrigger")}</label><input className={inputClass} value={form.trigger_text} onChange={(e) => setForm((f) => ({ ...f, trigger_text: e.target.value }))} placeholder={t("autoRepliesPage.fieldKeywordPlaceholder")} /></div><div><label className="mb-1 block text-sm font-bold text-slate-700">{t("autoRepliesPage.fieldReplyText")}</label><textarea className={`${inputClass} min-h-[170px]`} value={form.reply_text} onChange={(e) => setForm((f) => ({ ...f, reply_text: e.target.value }))} placeholder={t("autoRepliesPage.fieldReplyPlaceholder")} /></div><div><label className="mb-1 block text-sm font-bold text-slate-700">{t("common.status")}</label><select className={inputClass} value={form.is_active ? "1" : "0"} onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.value === "1" }))}><option value="1">{t("common.active")}</option><option value="0">{t("common.inactive")}</option></select></div><button onClick={saveReply} disabled={saving} className="h-12 w-full rounded-2xl bg-indigo-600 font-bold text-white shadow-lg shadow-indigo-200 disabled:opacity-60">{saving ? t("common.saving") : form.id ? t("autoRepliesPage.saveEdits") : t("autoRepliesPage.addReply")}</button></div></div></div>}
+      {drawerOpen && <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/40" onClick={() => setDrawerOpen(false)}><div className="h-full w-full max-w-xl overflow-y-auto bg-white p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}><div className="mb-6 flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.25em] text-indigo-600">AUTO REPLY</p><h3 className="mt-1 text-xl font-bold text-slate-900">{form.id ? t("autoRepliesPage.drawerEditTitle") : t("autoRepliesPage.drawerAddTitle")}</h3></div><button onClick={() => setDrawerOpen(false)} className="rounded-xl border px-3 py-2 text-sm">{t("common.close")}</button></div><div className="space-y-4"><div><label className="mb-1 block text-[13px] font-medium text-slate-700">{t("autoRepliesPage.colTrigger")}</label><input className={inputClass} value={form.trigger_text} onChange={(e) => setForm((f) => ({ ...f, trigger_text: e.target.value }))} placeholder={t("autoRepliesPage.fieldKeywordPlaceholder")} /></div><div><label className="mb-1 block text-[13px] font-medium text-slate-700">{t("autoRepliesPage.fieldReplyText")}</label><textarea className={`${inputClass} min-h-[170px]`} value={form.reply_text} onChange={(e) => setForm((f) => ({ ...f, reply_text: e.target.value }))} placeholder={t("autoRepliesPage.fieldReplyPlaceholder")} /></div><div><label className="mb-1 block text-[13px] font-medium text-slate-700">{t("common.status")}</label><select className={inputClass} value={form.is_active ? "1" : "0"} onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.value === "1" }))}><option value="1">{t("common.active")}</option><option value="0">{t("common.inactive")}</option></select></div><button onClick={saveReply} disabled={saving} className="h-12 w-full rounded-2xl bg-indigo-600 font-bold text-white shadow-sm disabled:opacity-60">{saving ? t("common.saving") : form.id ? t("autoRepliesPage.saveEdits") : t("autoRepliesPage.addReply")}</button></div></div></div>}
     </div>
   );
 }
