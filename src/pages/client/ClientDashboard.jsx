@@ -3,51 +3,57 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
-import ChannelIcon from "../../lib/channelIcons.jsx";
 import {
-  ChatBubbleLeftRightIcon,
-  UserGroupIcon,
-  UserPlusIcon,
   ArrowPathIcon,
-  ClockIcon,
+  ChatBubbleLeftRightIcon,
   CheckCircleIcon,
-  PlusIcon,
+  ClockIcon,
   Cog6ToothIcon,
   InboxIcon,
+  PlusIcon,
+  SparklesIcon,
+  Squares2X2Icon,
+  UserPlusIcon,
 } from "@heroicons/react/24/outline";
-import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-} from "recharts";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { PERMISSIONS, hasUserPermission } from "../../lib/permissions.js";
+import {
+  Button,
+  Card,
+  CardHeader,
+  EmptyState,
+  ProgressBar,
+  Skeleton,
+  StatTile,
+  StatusPill,
+  conversationStatusTone,
+} from "../../components/app/primitives.jsx";
+import { AppChannelTile } from "../../components/app/Channel.jsx";
 
-// "auto"/"system"/"quick_reply" are internal reply-source labels that read
-// the same in Arabic and English (developer-facing shorthand, not a
-// translated sentence) — only "ai" and "human" have real approved
-// terminology, resolved via t() below.
-function getSourceLabel(key, t) {
-  if (key === "ai") return t("replyMode.ai");
-  if (key === "human") return t("roles.agent");
-  return { auto: "Auto", system: "System", quick_reply: "Quick" }[key] || key;
-}
+// Client Home — every number on this page is real data:
+//   - /api/conversation?resource=dashboard (server-side summary: open /
+//     waiting counts, recent conversations, reply_source breakdown, 7-day
+//     activity buckets, billing-period message usage, integrations list)
+//   - leads count, plan, subscription (existing reads, unchanged)
+// Widgets for data that does not exist (live activity feed, channel health,
+// conversations fully handled by AI, exact local "today") are intentionally
+// absent. See engineering/reports/claude/2026-10-07-client-portal-ui-audit-and-migration-plan.md §13.
 
 // Reply-source order/keys are the product's real set — see AutoResponder_*
-// n8n `state_payload` (ai | auto | human | quick_reply | system). Not
-// invented, not derived from conversation_state.
+// n8n `state_payload` (ai | auto | human | quick_reply | system).
 const SOURCE_KEYS = ["ai", "auto", "human", "quick_reply", "system"];
 
-const SOURCE_COLORS = {
-  ai: "bg-violet-50 text-violet-700 border-violet-100",
-  auto: "bg-emerald-50 text-emerald-700 border-emerald-100",
-  system: "bg-slate-50 text-slate-700 border-slate-100",
-  quick_reply: "bg-blue-50 text-blue-700 border-blue-100",
-  human: "bg-amber-50 text-amber-700 border-amber-100",
+const SOURCE_BAR = {
+  ai: "bg-violet-500",
+  auto: "bg-indigo-500",
+  human: "bg-amber-500",
+  quick_reply: "bg-sky-500",
+  system: "bg-slate-400",
 };
+
+function getSourceLabel(key, t) {
+  return t(`home.source.${key}`, { defaultValue: key });
+}
 
 function getSubscriptionStatusLabel(status, t) {
   const map = {
@@ -59,6 +65,12 @@ function getSubscriptionStatusLabel(status, t) {
     upgraded: t("common.upgraded"),
   };
   return map[status] || status;
+}
+
+function getConversationStatusLabel(status, t) {
+  if (status === "waiting_human") return t("home.statusWaiting");
+  if (status === "closed") return t("home.statusClosed");
+  return t("home.statusOpen");
 }
 
 function relativeTime(value, t) {
@@ -94,74 +106,18 @@ function getDaysRemaining(endDate) {
   return Math.round((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-function UsageBar({ label, used, limit }) {
+// Same semantics as before: limit null/undefined => unlimited.
+function UsageRow({ label, used, limit }) {
   const { t } = useTranslation();
-  if (limit === null || limit === undefined) {
-    return (
-      <div>
-        <div className="mb-1.5 flex items-center justify-between text-xs font-semibold text-slate-500">
-          <span>{label}</span>
-          <span>{t("common.unlimited")}</span>
-        </div>
-        <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-          <div className="h-full w-full rounded-full bg-slate-200" />
-        </div>
-      </div>
-    );
-  }
-
-  const percent = limit > 0 ? Math.min(100, Math.round(((used || 0) / limit) * 100)) : 0;
-  const barColor = percent >= 100 ? "bg-rose-500" : percent >= 80 ? "bg-amber-500" : "bg-indigo-600";
-
+  const unlimited = limit === null || limit === undefined;
+  const percent = !unlimited && limit > 0 ? Math.min(100, Math.round(((used || 0) / limit) * 100)) : 0;
   return (
     <div>
-      <div className="mb-1.5 flex items-center justify-between text-xs font-semibold text-slate-500">
-        <span>{label}</span>
-        <span>{used || 0} / {limit}</span>
+      <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
+        <span className="font-medium text-slate-600">{label}</span>
+        <span className="font-semibold tabular-nums text-slate-900">{unlimited ? t("common.unlimited") : `${used || 0} / ${limit}`}</span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-        <div className={`h-full rounded-full ${barColor}`} style={{ width: `${percent}%` }} />
-      </div>
-    </div>
-  );
-}
-
-function StatCard({ title, value, subtitle, icon: Icon, tone = "violet" }) {
-  const toneClass = {
-    violet: "bg-violet-50 text-violet-700 border-violet-100",
-    emerald: "bg-emerald-50 text-emerald-700 border-emerald-100",
-    blue: "bg-blue-50 text-blue-700 border-blue-100",
-    amber: "bg-amber-50 text-amber-700 border-amber-100",
-    rose: "bg-rose-50 text-rose-700 border-rose-100",
-  }[tone];
-
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-slate-500">{title}</p>
-          <p className="mt-2 text-3xl font-black tracking-tight text-slate-950">{value}</p>
-          <p className="mt-2 text-xs font-medium text-slate-400">{subtitle}</p>
-        </div>
-        <div className={`rounded-2xl border p-3 ${toneClass}`}>
-          <Icon className="h-6 w-6" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SectionCard({ title, subtitle, action, children }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-black text-slate-950">{title}</h2>
-          {subtitle && <p className="mt-0.5 text-xs font-medium text-slate-400">{subtitle}</p>}
-        </div>
-        {action}
-      </div>
-      {children}
+      {unlimited ? <div className="h-1.5 rounded-full bg-slate-100" /> : <ProgressBar percent={percent} />}
     </div>
   );
 }
@@ -336,258 +292,340 @@ export default function ClientDashboard() {
   const messagesUsage = summary?.messages_usage || null;
   const daysRemaining = subscription?.end_date ? getDaysRemaining(subscription.end_date) : null;
 
+  // ---- Presentation-only derivations from the same real data ----------
+  const canInbox = hasUserPermission(user, PERMISSIONS.INBOX);
+  const canLeads = hasUserPermission(user, PERMISSIONS.LEADS);
+  const canIntegrations = hasUserPermission(user, PERMISSIONS.INTEGRATIONS);
+
+  // AI share of REPLIES (outbound messages with reply_source = "ai") over the
+  // server's automation window. This is NOT "conversations fully handled by
+  // AI" — that metric does not exist and is not shown.
+  const automation = summary?.automation || null;
+  const outboundTotal = automation?.outbound_total || 0;
+  const aiReplies = (automation?.stats || []).find((x) => x.key === "ai")?.value || 0;
+  const aiShare = outboundTotal > 0 ? Math.round((aiReplies / outboundTotal) * 100) : null;
+  const periodLabel = automation?.basis === "billing_period" ? t("home.periodBilling") : t("home.periodTrailing");
+  const messages7d = (summary?.chart?.days || []).reduce((sum, d) => sum + (d.inbound || 0) + (d.outbound || 0), 0);
+  const activeChannels = integrations.filter((i) => i.is_active).length;
+
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-3xl font-black tracking-tight text-slate-950">{t("dashboard.greeting", { name: displayName })}</h1>
-          <p className="mt-1 text-sm font-medium text-slate-500">{t("dashboard.subtitle")}</p>
+    <div className="space-y-4 lg:space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="truncate text-xl font-semibold tracking-tight text-slate-900 rtl:tracking-normal sm:text-2xl">
+            {t("home.welcome", { name: displayName })}
+          </h2>
+          <p className="mt-0.5 text-sm text-slate-500">{t("home.subtitle")}</p>
         </div>
-        <button
-          type="button"
-          onClick={loadDashboard}
-          disabled={refreshing || !realClientId}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
-        >
+        <Button onClick={loadDashboard} disabled={refreshing || !realClientId}>
           <ArrowPathIcon className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
           {t("common.refresh")}
-        </button>
+        </Button>
       </div>
 
       {error && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm font-medium text-rose-700">
+          {error}
+        </div>
       )}
 
-      {/* 1. Conversations */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard title={t("dashboard.openConversationsTitle")} value={loading ? "..." : dashboard.openConversations} subtitle={t("dashboard.openConversationsSubtitle")} icon={ChatBubbleLeftRightIcon} tone="violet" />
-        <StatCard title={t("common.waitingHuman")} value={loading ? "..." : dashboard.waitingHuman} subtitle={t("dashboard.waitingHumanSubtitle")} icon={ClockIcon} tone="amber" />
-        <StatCard title={t("navigation.leads")} value={loading ? "..." : leadsCount} subtitle={t("dashboard.leadsSubtitle")} icon={UserPlusIcon} tone="emerald" />
-        <StatCard title={t("dashboard.channelsTitle")} value={loading ? "..." : dashboard.connectedIntegrations} subtitle={t("dashboard.channelsSubtitle")} icon={UserGroupIcon} tone="blue" />
+      {/* KPI row — real values only */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        <StatTile
+          label={t("dashboard.openConversationsTitle")}
+          value={dashboard.openConversations}
+          loading={loading}
+          icon={ChatBubbleLeftRightIcon}
+          tone="indigo"
+          hint={t("home.openHint")}
+          href={canInbox ? "/client/messages" : undefined}
+        />
+        <StatTile
+          label={t("common.waitingHuman")}
+          value={dashboard.waitingHuman}
+          loading={loading}
+          icon={ClockIcon}
+          tone="amber"
+          hint={t("home.waitingHint")}
+          href={canInbox ? "/client/messages" : undefined}
+        />
+        <StatTile
+          label={t("home.leadsCaptured")}
+          value={leadsCount}
+          loading={loading}
+          icon={UserPlusIcon}
+          tone="emerald"
+          hint={t("home.leadsHint")}
+          href={canLeads ? "/client/leads" : undefined}
+        />
+        <StatTile
+          label={t("home.activeChannels")}
+          value={activeChannels}
+          loading={loading}
+          icon={Squares2X2Icon}
+          tone="sky"
+          hint={t("home.channelsHint", { total: integrations.length })}
+          href={canIntegrations ? "/client/integrations" : undefined}
+        />
+        <StatTile
+          label={t("home.aiShare")}
+          value={aiShare === null ? null : `${aiShare}%`}
+          loading={loading}
+          icon={SparklesIcon}
+          tone="violet"
+          hint={aiShare === null ? t("home.aiShareEmpty") : t("home.aiShareHint", { ai: aiReplies, total: outboundTotal })}
+          className="col-span-2 md:col-span-1"
+        />
       </div>
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
-        <div className="xl:col-span-2">
-          <SectionCard
+      <div className="grid gap-4 xl:grid-cols-3">
+        {/* Recent conversations */}
+        <Card className="xl:col-span-2">
+          <CardHeader
             title={t("dashboard.recentConversationsTitle")}
             subtitle={t("dashboard.recentConversationsSubtitle")}
             action={
-              <Link to="/client/messages" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50">
-                {t("dashboard.openConversationsLink")}
-              </Link>
+              canInbox && (
+                <Link to="/client/messages" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">
+                  {t("home.openInbox")}
+                </Link>
+              )
             }
-          >
-            {recentConversations.length === 0 ? (
-              <div className="flex min-h-[220px] items-center justify-center rounded-2xl border border-dashed border-slate-200 text-sm font-semibold text-slate-400">
-                {t("dashboard.noConversations")}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {recentConversations.map((conversation) => (
-                  <div key={conversation.id} className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-slate-50/50 p-4 transition hover:border-violet-200 hover:bg-white">
-                    <ChannelIcon channel={conversation.channel} size="h-11 w-11" />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate text-sm font-black text-slate-950">{conversation.sender || t("common.noName")}</p>
-                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">{conversation.status || "active"}</span>
-                      </div>
-                      <p className="mt-1 truncate text-sm font-medium text-slate-500">{conversation.lastMessage || t("dashboard.noMessage")}</p>
+          />
+          {loading ? (
+            <div className="space-y-2">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-14 w-full" />
+              ))}
+            </div>
+          ) : recentConversations.length === 0 ? (
+            <EmptyState icon={InboxIcon} title={t("dashboard.noConversations")} />
+          ) : (
+            <ul className="-mx-2 divide-y divide-slate-100">
+              {recentConversations.map((conversation) => (
+                <li key={conversation.id} className="flex items-center gap-3 rounded-xl px-2 py-2.5">
+                  <AppChannelTile channel={conversation.channel} className="h-9 w-9 rounded-xl" iconClassName="h-[18px] w-[18px]" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <p className="truncate text-sm font-semibold text-slate-900"><bdi>{conversation.sender || t("common.noName")}</bdi></p>
+                      <StatusPill tone={conversationStatusTone(conversation.status)}>{getConversationStatusLabel(conversation.status, t)}</StatusPill>
                     </div>
-                    <div className="text-end">
-                      <p className="text-xs font-bold text-slate-400">{relativeTime(conversation.updatedAt, t)}</p>
-                      <p className="mt-1 text-xs font-semibold text-slate-500">{t("dashboard.messageCount", { count: conversation.count })}</p>
-                    </div>
+                    <p className="mt-0.5 truncate text-xs text-slate-500"><bdi>{conversation.lastMessage || t("dashboard.noMessage")}</bdi></p>
                   </div>
+                  <div className="shrink-0 text-end">
+                    <p className="text-[11px] text-slate-400">{relativeTime(conversation.updatedAt, t)}</p>
+                    <p className="mt-0.5 text-[11px] font-medium text-slate-500">{t("dashboard.messageCount", { count: conversation.count })}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        {/* Replies by source + AI share of replies */}
+        <Card>
+          <CardHeader title={t("home.repliesBySource")} subtitle={periodLabel} />
+          {loading ? (
+            <Skeleton className="h-40 w-full" />
+          ) : outboundTotal === 0 ? (
+            <EmptyState icon={SparklesIcon} title={t("home.aiShareEmpty")} />
+          ) : (
+            <>
+              <div className="mb-4 rounded-xl bg-violet-50/70 px-3.5 py-3">
+                <p className="text-xs font-medium text-violet-700">{t("home.aiShare")}</p>
+                <p className="mt-0.5 text-2xl font-bold tabular-nums text-violet-900">{aiShare}%</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-violet-700/80">{t("home.aiShareNote")}</p>
+              </div>
+              <ul className="space-y-3">
+                {dashboard.sourceStats.map((source) => (
+                  <li key={source.key}>
+                    <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
+                      <span className="font-medium text-slate-600">{getSourceLabel(source.key, t)}</span>
+                      <span className="font-semibold tabular-nums text-slate-900">
+                        {source.value} <span className="font-normal text-slate-400">· {source.percentage}%</span>
+                      </span>
+                    </div>
+                    <ProgressBar percent={source.percentage} tone={SOURCE_BAR[source.key]} />
+                  </li>
                 ))}
-              </div>
-            )}
-          </SectionCard>
-        </div>
+              </ul>
+            </>
+          )}
+        </Card>
+      </div>
 
-        {/* 2. Messages / Automation */}
-        <SectionCard title={t("dashboard.automationTitle")} subtitle={t("dashboard.automationSubtitle")}>
-          <div className="space-y-4">
-            {dashboard.sourceStats.map((source) => (
-              <div key={source.key}>
-                <div className="mb-2 flex items-center justify-between">
-                  <span className={`rounded-full border px-2.5 py-1 text-xs font-black ${SOURCE_COLORS[source.key]}`}>{getSourceLabel(source.key, t)}</span>
-                  <span className="text-sm font-black text-slate-950">{source.value}</span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                  <div className="h-full rounded-full bg-violet-600" style={{ width: `${source.percentage}%` }} />
-                </div>
-              </div>
-            ))}
+      <div className="grid gap-4 xl:grid-cols-3">
+        {/* 7-day activity */}
+        <Card className="xl:col-span-2">
+          <CardHeader
+            title={t("dashboard.messageActivityTitle")}
+            subtitle={t("home.activityRange")}
+            action={!loading && <StatusPill tone="indigo">{t("home.messages7d", { count: messages7d })}</StatusPill>}
+          />
+          <div className="mb-2 flex items-center gap-4 text-[11px] text-slate-500">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-indigo-600" />
+              {t("dashboard.chartInbound")}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              {t("dashboard.chartOutbound")}
+            </span>
           </div>
-        </SectionCard>
-      </div>
-
-      {/* 5/6/7. Plan, Subscription, Usage */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <SectionCard title={t("common.currentPlan")} subtitle={null}>
-          {plan ? (
-            <div>
-              <p className="text-2xl font-black text-slate-950">{plan.name}</p>
-              {plan.description && <p className="mt-2 text-sm text-slate-500">{plan.description}</p>}
-              {plan.price != null && (
-                <p className="mt-3 inline-flex rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">{plan.price}</p>
-              )}
-            </div>
-          ) : (
-            <div className="flex min-h-[100px] items-center justify-center rounded-2xl border border-dashed border-slate-200 text-sm font-semibold text-slate-400">
-              {t("dashboard.noPlan")}
-            </div>
-          )}
-        </SectionCard>
-
-        <SectionCard title={t("common.subscriptionDetails")} subtitle={null}>
-          {subscription ? (
-            <div className="space-y-3 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">{t("common.type")}</span>
-                <span className="font-bold text-slate-900">{subscription.subscription_type === "trial" ? t("common.trial") : t("common.paid")}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">{t("common.status")}</span>
-                <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${subscriptionStatus?.is_active ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
-                  {getSubscriptionStatusLabel(subscription.status, t)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">{t("featureSettingsPage.startDateLabel")}</span>
-                <span className="font-semibold text-slate-700">{formatDate(subscription.start_date, i18n.language)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">{t("featureSettingsPage.endDateLabel")}</span>
-                <span className="font-semibold text-slate-700">{formatDate(subscription.end_date, i18n.language)}</span>
-              </div>
-              <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-                <span className="text-slate-500">{t("common.daysRemaining")}</span>
-                <span className={`font-black ${daysRemaining !== null && daysRemaining < 0 ? "text-rose-600" : "text-indigo-600"}`}>
-                  {daysRemaining === null ? "—" : daysRemaining < 0 ? t("common.expired") : t("featureSettingsPage.remainingDaysValue", { days: daysRemaining })}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="flex min-h-[100px] items-center justify-center rounded-2xl border border-dashed border-slate-200 text-sm font-semibold text-slate-400">
-              {t("dashboard.noSubscription")}
-            </div>
-          )}
-        </SectionCard>
-
-        <SectionCard title={t("common.usage")} subtitle={null}>
-          {subscription && plan ? (
-            <div className="space-y-4">
-              {/* Messages Usage = actual public.messages rows counted
-                  server-side over the CURRENT subscription billing period
-                  ([start_date .. min(end_date, now)]); limit is that
-                  period's plan.messages_limit (null => unlimited). Not the
-                  stale subscriptions.messages_used counter. */}
-              <UsageBar
-                label={t("common.messagesLabel")}
-                used={messagesUsage?.used ?? subscription.messages_used ?? 0}
-                limit={messagesUsage?.plan_known ? messagesUsage.limit : (plan.messages_limit ?? null)}
-              />
-              <UsageBar label={t("dashboard.usageAiReplies")} used={subscription.ai_replies_used} limit={plan.ai_replies_limit} />
-              <UsageBar label={t("dashboard.usageAutoReplies")} used={subscription.auto_replies_used} limit={plan.auto_replies_limit} />
-            </div>
-          ) : (
-            <div className="flex min-h-[100px] items-center justify-center rounded-2xl border border-dashed border-slate-200 text-sm font-semibold text-slate-400">
-              {t("dashboard.usageUnavailable")}
-            </div>
-          )}
-        </SectionCard>
-      </div>
-
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
-        <div className="xl:col-span-2">
-          <SectionCard title={t("dashboard.messageActivityTitle")} subtitle={t("dashboard.messageActivitySubtitle")}>
-            <div className="h-72">
+          <div className="h-60" dir="ltr">
+            {loading ? (
+              <Skeleton className="h-full w-full" />
+            ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={dashboard.chartData} margin={{ top: 10, right: 8, left: 0, bottom: 0 }}>
+                <AreaChart data={dashboard.chartData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="inboundGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.18} />
+                    <linearGradient id="homeInbound" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.2} />
                       <stop offset="95%" stopColor="#4f46e5" stopOpacity={0} />
                     </linearGradient>
-                    <linearGradient id="outboundGradient" x1="0" y1="0" x2="0" y2="1">
+                    <linearGradient id="homeOutbound" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#10b981" stopOpacity={0.18} />
                       <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="day" tickLine={false} axisLine={false} />
-                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
-                  <Tooltip />
-                  <Area type="monotone" dataKey="inbound" stroke="#4f46e5" strokeWidth={3} fill="url(#inboundGradient)" name={t("dashboard.chartInbound")} />
-                  <Area type="monotone" dataKey="outbound" stroke="#10b981" strokeWidth={3} fill="url(#outboundGradient)" name={t("dashboard.chartOutbound")} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#eef0f6" vertical={false} />
+                  <XAxis dataKey="day" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#94a3b8" }} />
+                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#94a3b8" }} width={40} />
+                  <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 12 }} />
+                  <Area type="monotone" dataKey="inbound" stroke="#4f46e5" strokeWidth={2.2} fill="url(#homeInbound)" name={t("dashboard.chartInbound")} />
+                  <Area type="monotone" dataKey="outbound" stroke="#10b981" strokeWidth={2.2} fill="url(#homeOutbound)" name={t("dashboard.chartOutbound")} />
                 </AreaChart>
               </ResponsiveContainer>
-            </div>
-          </SectionCard>
-        </div>
+            )}
+          </div>
+        </Card>
 
-        <div className="space-y-5">
-          {/* 4. Integrations */}
-          <SectionCard
-            title={t("navigation.integrations")}
-            subtitle={t("dashboard.integrationsSubtitle")}
-            action={<Link to="/client/integrations" className="text-xs font-black text-violet-700">{t("dashboard.manage")}</Link>}
-          >
-            <div className="space-y-3">
-              {integrations.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-center text-sm font-semibold text-slate-400">{t("dashboard.noChannels")}</div>
+        {/* Plan & usage — same data and rules as before */}
+        <Card>
+          <CardHeader title={t("home.planUsage")} />
+          {loading ? (
+            <Skeleton className="h-40 w-full" />
+          ) : (
+            <div className="space-y-4">
+              {plan ? (
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs text-slate-500">{t("common.currentPlan")}</p>
+                    <p className="mt-0.5 truncate text-base font-semibold text-slate-900">{plan.name}</p>
+                    {plan.description && <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{plan.description}</p>}
+                  </div>
+                  {plan.price != null && <StatusPill tone="indigo">{plan.price}</StatusPill>}
+                </div>
               ) : (
-                integrations.slice(0, 5).map((item) => {
-                  const slug = item.features?.slug || "integration";
-                  return (
-                    <div key={item.id} className="flex items-center justify-between rounded-2xl border border-slate-200 p-3">
-                      <div className="flex items-center gap-3">
-                        <ChannelIcon channel={slug} size="h-10 w-10" />
-                        <div>
-                          <p className="text-sm font-black text-slate-900">{item.features?.name || slug}</p>
-                          <p className="text-xs font-semibold text-slate-400">{item.is_active ? t("common.active") : t("common.inactive")}</p>
-                        </div>
-                      </div>
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${item.is_active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                        {item.is_active ? t("common.active") : t("common.inactive")}
-                      </span>
-                    </div>
-                  );
-                })
+                <EmptyState title={t("dashboard.noPlan")} className="py-5" />
               )}
-            </div>
-          </SectionCard>
 
-          <SectionCard title={t("dashboard.quickActionsTitle")} subtitle={null}>
-            <div className="grid grid-cols-2 gap-3">
-              {hasUserPermission(user, PERMISSIONS.INBOX) && (
-                <Link to="/client/messages" className="rounded-2xl border border-slate-200 p-4 transition hover:border-violet-200 hover:bg-violet-50/40">
-                  <InboxIcon className="mb-3 h-5 w-5 text-violet-700" />
-                  <p className="text-sm font-black text-slate-900">{t("dashboard.openConversationsLink")}</p>
-                </Link>
+              {subscription ? (
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-2 rounded-xl bg-slate-50 px-3 py-2.5 text-xs">
+                  <dt className="text-slate-500">{t("common.status")}</dt>
+                  <dd className="text-end">
+                    <StatusPill tone={subscriptionStatus?.is_active ? "emerald" : "rose"}>{getSubscriptionStatusLabel(subscription.status, t)}</StatusPill>
+                  </dd>
+                  <dt className="text-slate-500">{t("common.type")}</dt>
+                  <dd className="text-end font-medium text-slate-800">{subscription.subscription_type === "trial" ? t("common.trial") : t("common.paid")}</dd>
+                  <dt className="text-slate-500">{t("featureSettingsPage.endDateLabel")}</dt>
+                  <dd className="text-end font-medium text-slate-800">{formatDate(subscription.end_date, i18n.language)}</dd>
+                  <dt className="text-slate-500">{t("common.daysRemaining")}</dt>
+                  <dd className={`text-end font-semibold ${daysRemaining !== null && daysRemaining < 0 ? "text-rose-600" : "text-indigo-600"}`}>
+                    {daysRemaining === null ? "—" : daysRemaining < 0 ? t("common.expired") : t("featureSettingsPage.remainingDaysValue", { days: daysRemaining })}
+                  </dd>
+                </dl>
+              ) : (
+                <EmptyState title={t("dashboard.noSubscription")} className="py-5" />
               )}
-              {hasUserPermission(user, PERMISSIONS.AUTO_REPLIES) && (
-                <Link to="/client/auto-replies" className="rounded-2xl border border-slate-200 p-4 transition hover:border-violet-200 hover:bg-violet-50/40">
-                  <PlusIcon className="mb-3 h-5 w-5 text-violet-700" />
-                  <p className="text-sm font-black text-slate-900">{t("navigation.autoReplies")}</p>
-                </Link>
-              )}
-              {hasUserPermission(user, PERMISSIONS.AUTO_REPLIES) && (
-                <Link to="/client/quick-replies" className="rounded-2xl border border-slate-200 p-4 transition hover:border-violet-200 hover:bg-violet-50/40">
-                  <CheckCircleIcon className="mb-3 h-5 w-5 text-violet-700" />
-                  <p className="text-sm font-black text-slate-900">{t("navigation.quickReplies")}</p>
-                </Link>
-              )}
-              {hasUserPermission(user, PERMISSIONS.SETTINGS) && (
-                <Link to="/client/settings" className="rounded-2xl border border-slate-200 p-4 transition hover:border-violet-200 hover:bg-violet-50/40">
-                  <Cog6ToothIcon className="mb-3 h-5 w-5 text-violet-700" />
-                  <p className="text-sm font-black text-slate-900">{t("navigation.settings")}</p>
-                </Link>
+
+              {subscription && plan ? (
+                <div className="space-y-3">
+                  {/* Messages Usage = actual public.messages rows counted
+                      server-side over the CURRENT subscription billing period;
+                      limit is that period's plan.messages_limit (null =>
+                      unlimited). Not the stale subscriptions.messages_used. */}
+                  <UsageRow
+                    label={t("common.messagesLabel")}
+                    used={messagesUsage?.used ?? subscription.messages_used ?? 0}
+                    limit={messagesUsage?.plan_known ? messagesUsage.limit : (plan.messages_limit ?? null)}
+                  />
+                  <UsageRow label={t("dashboard.usageAiReplies")} used={subscription.ai_replies_used} limit={plan.ai_replies_limit} />
+                  <UsageRow label={t("dashboard.usageAutoReplies")} used={subscription.auto_replies_used} limit={plan.auto_replies_limit} />
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400">{t("dashboard.usageUnavailable")}</p>
               )}
             </div>
-          </SectionCard>
-        </div>
+          )}
+        </Card>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-3">
+        {/* Channels — Active / Inactive is what the data means (enabled), not health */}
+        <Card className="xl:col-span-2">
+          <CardHeader
+            title={t("home.channels")}
+            subtitle={t("home.channelsNote")}
+            action={
+              canIntegrations && (
+                <Link to="/client/integrations" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">
+                  {t("dashboard.manage")}
+                </Link>
+              )
+            }
+          />
+          {loading ? (
+            <Skeleton className="h-16 w-full" />
+          ) : integrations.length === 0 ? (
+            <EmptyState icon={Squares2X2Icon} title={t("dashboard.noChannels")} />
+          ) : (
+            <ul className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
+              {integrations.map((item) => {
+                const slug = item.features?.slug || "integration";
+                return (
+                  <li key={item.id} className="flex items-center gap-3 rounded-xl border border-slate-200/80 px-3 py-2.5">
+                    <AppChannelTile channel={slug} className="h-8 w-8 rounded-lg" iconClassName="h-4 w-4" />
+                    <p className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">{item.features?.name || slug}</p>
+                    <StatusPill tone={item.is_active ? "emerald" : "slate"} dot>
+                      {item.is_active ? t("common.active") : t("common.inactive")}
+                    </StatusPill>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Card>
+
+        <Card>
+          <CardHeader title={t("dashboard.quickActionsTitle")} />
+          <div className="grid grid-cols-2 gap-2">
+            {canInbox && (
+              <Link to="/client/messages" className="rounded-xl border border-slate-200/80 p-3 transition hover:border-indigo-200 hover:bg-indigo-50/40">
+                <InboxIcon className="mb-2 h-5 w-5 text-indigo-600" />
+                <p className="text-xs font-semibold text-slate-800">{t("home.openInbox")}</p>
+              </Link>
+            )}
+            {hasUserPermission(user, PERMISSIONS.AUTO_REPLIES) && (
+              <Link to="/client/auto-replies" className="rounded-xl border border-slate-200/80 p-3 transition hover:border-indigo-200 hover:bg-indigo-50/40">
+                <PlusIcon className="mb-2 h-5 w-5 text-indigo-600" />
+                <p className="text-xs font-semibold text-slate-800">{t("shell.tabs.autoReplies")}</p>
+              </Link>
+            )}
+            {hasUserPermission(user, PERMISSIONS.AUTO_REPLIES) && (
+              <Link to="/client/quick-replies" className="rounded-xl border border-slate-200/80 p-3 transition hover:border-indigo-200 hover:bg-indigo-50/40">
+                <CheckCircleIcon className="mb-2 h-5 w-5 text-indigo-600" />
+                <p className="text-xs font-semibold text-slate-800">{t("shell.tabs.quickReplies")}</p>
+              </Link>
+            )}
+            {hasUserPermission(user, PERMISSIONS.SETTINGS) && (
+              <Link to="/client/settings" className="rounded-xl border border-slate-200/80 p-3 transition hover:border-indigo-200 hover:bg-indigo-50/40">
+                <Cog6ToothIcon className="mb-2 h-5 w-5 text-indigo-600" />
+                <p className="text-xs font-semibold text-slate-800">{t("shell.nav.settings")}</p>
+              </Link>
+            )}
+          </div>
+        </Card>
       </div>
     </div>
   );

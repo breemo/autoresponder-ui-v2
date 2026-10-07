@@ -990,5 +990,63 @@
     "domainNote": "The chat only works on domains listed in Allowed domains for this website. This code contains only your public widget key.",
     "previewChat": "Preview / Test chat",
     "previewHostHint": "Preview runs on {{host}} — add it to Allowed domains to test the chat here, otherwise the widget will show \"not available\"."
+  },
+  "shell": {
+    "nav": {
+      "home": "Home",
+      "inbox": "Inbox",
+      "leads": "Leads",
+      "replies": "Replies",
+      "aiAgent": "AI Agent",
+      "integrations": "Integrations",
+      "team": "Team",
+      "settings": "Settings",
+      "myAccount": "My Account",
+      "myPerformance": "My Performance"
+    },
+    "tabs": {
+      "autoReplies": "Auto Replies",
+      "quickReplies": "Quick Replies",
+      "members": "Members",
+      "performance": "Performance"
+    },
+    "mainNav": "Main navigation",
+    "sectionNav": "Section navigation",
+    "userMenu": "Account menu",
+    "expandSidebar": "Expand Sidebar",
+    "collapseSidebar": "Collapse Sidebar"
+  },
+  "home": {
+    "welcome": "Welcome back, {{name}}",
+    "subtitle": "Here is what is happening across your conversations.",
+    "openHint": "Open and waiting conversations",
+    "waitingHint": "Customers waiting for your team",
+    "leadsCaptured": "Leads Captured",
+    "leadsHint": "All captured leads",
+    "activeChannels": "Active Channels",
+    "channelsHint": "of {{total}} configured",
+    "aiShare": "AI Share of Replies",
+    "aiShareHint": "{{ai}} of {{total}} replies sent by the AI Agent",
+    "aiShareEmpty": "No replies in this period yet",
+    "aiShareNote": "Share of outbound replies sent by the AI Agent in this period. It is not the share of conversations handled entirely by AI.",
+    "periodBilling": "Current billing period",
+    "periodTrailing": "Last 30 days",
+    "repliesBySource": "Replies by Source",
+    "source": {
+      "ai": "AI Agent",
+      "auto": "Auto Replies",
+      "human": "Team",
+      "quick_reply": "Quick Replies",
+      "system": "System"
+    },
+    "openInbox": "Open Inbox",
+    "statusOpen": "Open",
+    "statusWaiting": "Waiting for Agent",
+    "statusClosed": "Closed",
+    "activityRange": "Last 7 days (UTC days)",
+    "messages7d": "{{count}} messages",
+    "planUsage": "Plan & Usage",
+    "channels": "Channels",
+    "channelsNote": "Active means the channel is enabled. Connection health is not monitored here."
   }
 }

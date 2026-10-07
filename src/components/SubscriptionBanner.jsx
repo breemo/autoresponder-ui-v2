@@ -53,10 +53,10 @@ export default function SubscriptionBanner() {
   if (!status || status.is_active) return null;
 
   return (
-    <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-start gap-2">
-        <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 shrink-0" />
-        <p>
+    <div className="mb-3 flex shrink-0 items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 sm:text-sm">
+      <div className="flex min-w-0 flex-1 items-start gap-2">
+        <ExclamationTriangleIcon className="mt-px h-4 w-4 shrink-0" />
+        <p className="min-w-0">
           {t("subscriptionBanner.message")}
         </p>
       </div>
@@ -65,7 +65,7 @@ export default function SubscriptionBanner() {
         type="button"
         disabled
         title={t("subscriptionBanner.renewButtonTitle")}
-        className="shrink-0 cursor-not-allowed rounded-xl border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-700 opacity-70"
+        className="shrink-0 cursor-not-allowed rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-semibold text-amber-700 opacity-70"
       >
         {t("subscriptionBanner.renewButton")}
       </button>
