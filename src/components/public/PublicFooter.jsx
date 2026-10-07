@@ -9,7 +9,7 @@ const COLUMNS = [
     title: "Product",
     links: [
       { label: "Channels", section: SECTION_IDS.channels },
-      { label: "AI Assistant", section: SECTION_IDS.features },
+      { label: "AI Agent", section: SECTION_IDS.features },
       { label: "Shared Inbox", section: SECTION_IDS.team },
       { label: "Leads", section: SECTION_IDS.leads },
     ],

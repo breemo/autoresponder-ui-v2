@@ -108,3 +108,24 @@ test("no fabricated commercial claims: no prices, testimonials or social profile
   assert.ok(PREVIEWS.includes("sample data"));
   assert.ok(LANDING.includes("Live Monitoring is coming soon."));
 });
+
+test("language context follows the live i18next language (no stale label/dir after a signed-out switch)", () => {
+  const ctx = read("src/context/LanguageContext.jsx");
+  assert.ok(ctx.includes('i18n.on("languageChanged", onChange);'));
+  assert.ok(ctx.includes('i18n.off("languageChanged", onChange)'));
+  assert.ok(ctx.includes("language: activeLanguage,"));
+  assert.ok(ctx.includes('isRtl: activeLanguage !== "en",'));
+  const login = read("src/pages/Login.jsx");
+  assert.ok(login.includes('{lang?.language === "ar" ? "English" : "العربية"}'));
+  assert.ok(login.includes('dir={isRtl ? "rtl" : "ltr"}'));
+});
+
+test('public website and auth copy never say "AI Assistant"', () => {
+  for (const src of [...PUBLIC_SOURCES, read("src/pages/Login.jsx")]) {
+    assert.equal(/ai assistant/i.test(src), false);
+  }
+  for (const lng of ["en", "ar"]) {
+    const login = JSON.stringify(JSON.parse(read(`src/locales/${lng}/translation.json`)).login);
+    assert.equal(/ai assistant/i.test(login), false);
+  }
+});

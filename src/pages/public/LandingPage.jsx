@@ -269,7 +269,7 @@ const PLAN_DIMENSIONS = ["Monthly messages", "AI replies", "Connected channel ac
 
 const TRIAL_INCLUDES = [
   "WhatsApp, Instagram, Messenger, Telegram & Website Chat",
-  "AI assistant that answers from your business information",
+  "AI Agent that answers from your business information",
   "Shared inbox with human handover",
   "Automatic lead capture",
   "Auto replies and quick replies",
@@ -397,7 +397,7 @@ export default function LandingPage() {
         <FeatureSection
           id={SECTION_IDS.features}
           eyebrow="AI Agent"
-          title="Your AI assistant handles the conversations"
+          title="Your AI Agent handles the conversations"
           text="It answers common questions using your business information, collects customer details and keeps conversations moving — around the clock."
           items={[
             "Understands what the customer is asking for",
@@ -406,7 +406,7 @@ export default function LandingPage() {
             "Supports booking-related conversations where configured",
             "Hands the conversation to your team when needed",
           ]}
-          cta={<PrimaryButton to={TRIAL_PATH}>Try the AI assistant</PrimaryButton>}
+          cta={<PrimaryButton to={TRIAL_PATH}>Try the AI Agent</PrimaryButton>}
           visual={<ChatPreview />}
         />
         <FeatureSection

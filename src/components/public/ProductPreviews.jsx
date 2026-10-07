@@ -66,7 +66,7 @@ const SIDEBAR = [
   { icon: HomeIcon, label: "Home", active: true },
   { icon: InboxIcon, label: "Inbox", badge: "12" },
   { icon: UsersIcon, label: "Leads" },
-  { icon: CpuChipIcon, label: "AI Assistant" },
+  { icon: CpuChipIcon, label: "AI Agent" },
   { icon: PuzzlePieceIcon, label: "Integrations" },
   { icon: UserGroupIcon, label: "Team" },
   { icon: Cog6ToothIcon, label: "Settings" },
@@ -200,7 +200,7 @@ export function MessageBubble({ channel, reply, text, time, className = "" }) {
     <div className={`flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-white px-3 py-2.5 shadow-lg shadow-slate-900/[0.06] ${className}`}>
       <ChannelTile channel={channel} className="h-8 w-8 rounded-full" iconClassName="h-4 w-4" />
       <p className="text-[13px] text-slate-700">{text}</p>
-      <span className="ml-auto pl-2 text-[10px] text-slate-400">{time}</span>
+      <span className="ms-auto ps-2 text-[10px] text-slate-400">{time}</span>
     </div>
   );
 }

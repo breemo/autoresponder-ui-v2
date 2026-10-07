@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useCallback } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useCallback, useState } from "react";
 import i18n, { SUPPORTED_LANGUAGES, FALLBACK_LANGUAGE } from "../lib/i18n.js";
 import { useAuth } from "./AuthContext.jsx";
 import { supabase } from "../lib/supabaseClient";
@@ -73,6 +73,21 @@ export function LanguageProvider({ children }) {
     writeLocalCache(resolved);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolved]);
+
+  // The language actually rendered right now. `resolved` above is derived
+  // from the user + local cache during render, so a switch that changes
+  // neither React state nor the user object (e.g. the Login page toggle
+  // while signed out) would leave `language` / `isRtl` stale until the next
+  // provider re-render. Tracking i18next's own languageChanged event keeps
+  // the context in sync with what react-i18next is already rendering.
+  const [activeLanguage, setActiveLanguage] = useState(resolved);
+  useEffect(() => {
+    const onChange = (lng) => {
+      if (SUPPORTED_LANGUAGES.includes(lng)) setActiveLanguage(lng);
+    };
+    i18n.on("languageChanged", onChange);
+    return () => i18n.off("languageChanged", onChange);
+  }, []);
 
   // Changes the CURRENT USER's own preference (My Account page). Applied
   // to the live UI immediately regardless of whether the DB write
@@ -184,14 +199,14 @@ export function LanguageProvider({ children }) {
 
   const value = useMemo(
     () => ({
-      language: resolved,
+      language: activeLanguage,
       supportedLanguages: SUPPORTED_LANGUAGES,
-      isRtl: resolved !== "en",
+      isRtl: activeLanguage !== "en",
       setUserLanguage,
       clearUserLanguage,
       setClientDefaultLanguage,
     }),
-    [resolved, setUserLanguage, clearUserLanguage, setClientDefaultLanguage]
+    [activeLanguage, setUserLanguage, clearUserLanguage, setClientDefaultLanguage]
   );
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;

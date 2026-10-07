@@ -23,7 +23,7 @@ const stripStatusEmoji = (text) => String(text || "").replace(/^\s*(❌|✅)\s*/
 
 function BrandPanel({ t }) {
   return (
-    <div className="relative hidden overflow-hidden rounded-[2rem] bg-gradient-to-br from-indigo-600 via-indigo-600 to-violet-600 p-10 text-white shadow-2xl shadow-indigo-600/25 lg:flex lg:flex-col xl:p-12">
+    <div className="relative hidden overflow-hidden rounded-[1.6rem] bg-gradient-to-br from-indigo-600 via-indigo-600 to-violet-600 p-10 text-white lg:flex lg:flex-col xl:p-12">
       <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-white/10 blur-2xl" />
       <div className="pointer-events-none absolute -bottom-28 -right-20 h-80 w-80 rounded-full bg-violet-300/25 blur-3xl" />
 
@@ -31,9 +31,11 @@ function BrandPanel({ t }) {
         <BrandLogo tone="light" />
       </Link>
 
-      <div className="relative mt-auto pt-16">
-        <h2 className="max-w-md text-3xl font-bold leading-tight tracking-tight xl:text-[2.4rem]">{t("login.brandHeadline")}</h2>
-        <p className="mt-4 max-w-md text-[15px] leading-relaxed text-indigo-100">{t("login.brandText")}</p>
+      <div className="relative mt-auto pt-12">
+        <h2 className="max-w-md text-balance text-[2rem] font-bold leading-tight tracking-tight rtl:leading-snug rtl:tracking-normal xl:text-[2.25rem]">
+          {t("login.brandHeadline")}
+        </h2>
+        <p className="mt-4 max-w-md text-[15px] leading-relaxed text-indigo-100 rtl:leading-loose">{t("login.brandText")}</p>
 
         <ul className="mt-7 space-y-3">
           {["brandPoint1", "brandPoint2", "brandPoint3"].map((key) => (
@@ -44,7 +46,7 @@ function BrandPanel({ t }) {
           ))}
         </ul>
 
-        <div className="mt-10 max-w-sm space-y-3" aria-hidden="true">
+        <div className="mt-9 max-w-sm space-y-3" aria-hidden="true">
           <MessageBubble channel="whatsapp" text={t("login.sampleCustomer")} time="10:24" />
           <div className="ms-10 rounded-2xl rounded-se-md bg-white/15 px-4 py-2.5 ring-1 ring-white/20 backdrop-blur">
             <p className="text-[13px] leading-snug text-white">{t("login.sampleReply")}</p>
@@ -52,7 +54,7 @@ function BrandPanel({ t }) {
           </div>
         </div>
 
-        <div className="mt-10 flex items-center gap-2.5">
+        <div className="mt-9 flex items-center gap-2.5">
           {CHANNELS.map((c) => (
             <ChannelTile key={c.key} channel={c.key} className="h-9 w-9 rounded-xl ring-2 ring-white/20" iconClassName="h-[18px] w-[18px]" />
           ))}
@@ -188,153 +190,154 @@ export default function Login() {
     "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-[15px] text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/15 disabled:bg-slate-50";
 
   return (
-    <div dir={isRtl ? "rtl" : "ltr"} className="relative min-h-screen overflow-x-hidden bg-white text-slate-900">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden lg:hidden">
-        <div className="absolute -left-40 -top-40 h-[420px] w-[420px] rounded-full bg-indigo-200/40 blur-3xl" />
-        <div className="absolute -right-32 top-24 h-[360px] w-[360px] rounded-full bg-violet-200/40 blur-3xl" />
+    <div dir={isRtl ? "rtl" : "ltr"} lang={lang?.language || undefined} className="relative flex min-h-screen flex-col overflow-x-hidden bg-slate-50/70 text-slate-900">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -left-40 -top-40 h-[480px] w-[480px] rounded-full bg-indigo-200/40 blur-3xl" />
+        <div className="absolute -bottom-40 -right-32 h-[440px] w-[440px] rounded-full bg-violet-200/40 blur-3xl" />
       </div>
 
-      <div className="relative mx-auto grid min-h-screen max-w-7xl gap-6 p-4 sm:p-6 lg:grid-cols-[1.05fr_1fr] lg:gap-10 lg:p-6">
-        <BrandPanel t={t} />
+      <div className="relative mx-auto flex w-full max-w-[1120px] flex-1 flex-col px-4 py-5 sm:px-6 lg:justify-center lg:py-10">
+        {/* Top row: aligned to the auth shell's edges. */}
+        <div className="flex items-center justify-between gap-3 pb-4 lg:px-2 lg:pb-5">
+          <Link
+            to={PUBLIC_HOME_PATH}
+            className="rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 lg:hidden"
+            aria-label="Auto Responder"
+          >
+            <BrandLogo />
+          </Link>
+          <Link
+            to={PUBLIC_HOME_PATH}
+            className="group hidden items-center gap-2 rounded-full py-2 text-sm font-medium text-slate-600 transition hover:text-indigo-700 lg:inline-flex"
+          >
+            <ArrowLeftIcon className="h-4 w-4 transition group-hover:-translate-x-0.5 rtl:rotate-180 rtl:group-hover:translate-x-0.5" />
+            {t("login.backToHome")}
+          </Link>
+          <button
+            type="button"
+            onClick={switchLanguage}
+            lang={lang?.language === "ar" ? "en" : "ar"}
+            className="rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:border-indigo-200 hover:text-indigo-700"
+          >
+            {lang?.language === "ar" ? "English" : "العربية"}
+          </button>
+        </div>
 
-        <div className="flex flex-col">
-          <div className="flex items-center justify-between gap-3 px-1 py-2 lg:px-4">
-            <Link
-              to={PUBLIC_HOME_PATH}
-              className="rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 lg:hidden"
-              aria-label="Auto Responder"
-            >
-              <BrandLogo />
-            </Link>
-            <Link
-              to={PUBLIC_HOME_PATH}
-              className="group hidden items-center gap-2 rounded-full px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-indigo-700 lg:inline-flex"
-            >
-              <ArrowLeftIcon className="h-4 w-4 transition group-hover:-translate-x-0.5 rtl:rotate-180 rtl:group-hover:translate-x-0.5" />
-              {t("login.backToHome")}
-            </Link>
-            <button
-              type="button"
-              onClick={switchLanguage}
-              className="rounded-full border border-slate-200 bg-white/80 px-3.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-indigo-200 hover:text-indigo-700"
-            >
-              {lang?.language === "ar" ? "English" : "العربية"}
-            </button>
-          </div>
+        {/* Auth shell: brand panel + login form as one composition. */}
+        <div className="rounded-[2rem] border border-slate-200/80 bg-white p-2 shadow-[0_40px_90px_-40px_rgba(49,46,129,0.35)] lg:grid lg:min-h-[640px] lg:grid-cols-[1.08fr_1fr]">
+          <BrandPanel t={t} />
 
-          <main className="flex flex-1 items-start justify-center pb-8 pt-4 sm:pt-10 lg:items-center lg:py-10">
-            <div className="w-full max-w-md">
-              <div className="rounded-3xl border border-slate-200/80 bg-white p-7 shadow-[0_30px_70px_-30px_rgba(79,70,229,0.35)] sm:p-9">
-                <BrandMark className="h-11 w-11 rounded-2xl" iconClassName="h-6 w-6" />
-                <h1 className="mt-6 text-2xl font-bold tracking-tight text-slate-900 sm:text-[1.75rem]">{t("login.welcomeTitle")}</h1>
-                <p className="mt-2 text-[15px] leading-relaxed text-slate-500">{t("login.welcomeSubtitle")}</p>
+          <main className="flex items-center justify-center px-5 py-8 sm:px-10 sm:py-12 lg:px-12">
+            <div className="w-full max-w-[380px]">
+              <BrandMark className="h-11 w-11 rounded-2xl" iconClassName="h-6 w-6" />
+              <h1 className="mt-6 text-2xl font-bold tracking-tight text-slate-900 rtl:tracking-normal sm:text-[1.75rem]">{t("login.welcomeTitle")}</h1>
+              <p className="mt-2 text-[15px] leading-relaxed text-slate-500">{t("login.welcomeSubtitle")}</p>
 
-                {message && (
-                  <div
-                    role={message.tone === "error" ? "alert" : "status"}
-                    className={`mt-6 flex items-start gap-2.5 rounded-xl border px-3.5 py-3 text-sm font-medium ${
-                      message.tone === "error"
-                        ? "border-rose-200 bg-rose-50 text-rose-700"
-                        : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    }`}
-                  >
-                    {message.tone === "error" ? (
-                      <ExclamationCircleIcon className="mt-px h-5 w-5 shrink-0" />
-                    ) : (
-                      <CheckCircleIcon className="mt-px h-5 w-5 shrink-0" />
-                    )}
-                    <span>{stripStatusEmoji(message.text)}</span>
-                  </div>
-                )}
+              {message && (
+                <div
+                  role={message.tone === "error" ? "alert" : "status"}
+                  className={`mt-6 flex items-start gap-2.5 rounded-xl border px-3.5 py-3 text-sm font-medium ${
+                    message.tone === "error"
+                      ? "border-rose-200 bg-rose-50 text-rose-700"
+                      : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  }`}
+                >
+                  {message.tone === "error" ? (
+                    <ExclamationCircleIcon className="mt-px h-5 w-5 shrink-0" />
+                  ) : (
+                    <CheckCircleIcon className="mt-px h-5 w-5 shrink-0" />
+                  )}
+                  <span>{stripStatusEmoji(message.text)}</span>
+                </div>
+              )}
 
-                <form onSubmit={onSubmit} className="mt-6 space-y-4">
-                  <div>
-                    <label htmlFor="login-email" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                      {t("login.emailLabel")}
-                    </label>
+              <form onSubmit={onSubmit} className="mt-6 space-y-4">
+                <div>
+                  <label htmlFor="login-email" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                    {t("login.emailLabel")}
+                  </label>
+                  <input
+                    id="login-email"
+                    type="email"
+                    name="email"
+                    autoComplete="email"
+                    inputMode="email"
+                    dir="ltr"
+                    placeholder="name@company.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className={`${inputClass} ${isRtl ? "text-right" : ""}`}
+                    disabled={loading}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="login-password" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                    {t("login.passwordLabel")}
+                  </label>
+                  <div className="relative" dir={isRtl ? "rtl" : "ltr"}>
                     <input
-                      id="login-email"
-                      type="email"
-                      name="email"
-                      autoComplete="email"
-                      inputMode="email"
+                      id="login-password"
+                      type={showPassword ? "text" : "password"}
+                      name="password"
+                      autoComplete="current-password"
                       dir="ltr"
-                      placeholder="name@company.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className={`${inputClass} ${isRtl ? "text-right" : ""}`}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className={`${inputClass} ${isRtl ? "ps-12 text-right" : "pe-12"}`}
                       disabled={loading}
                       required
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      className="absolute inset-y-0 end-0 flex w-12 items-center justify-center rounded-e-xl text-slate-400 transition hover:text-indigo-600 focus:outline-none focus-visible:text-indigo-600"
+                      aria-label={showPassword ? t("login.hidePassword") : t("login.showPassword")}
+                      aria-pressed={showPassword}
+                    >
+                      {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                    </button>
                   </div>
-
-                  <div>
-                    <label htmlFor="login-password" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                      {t("login.passwordLabel")}
-                    </label>
-                    <div className="relative">
-                      <input
-                        id="login-password"
-                        type={showPassword ? "text" : "password"}
-                        name="password"
-                        autoComplete="current-password"
-                        dir="ltr"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className={`${inputClass} pe-12 ${isRtl ? "text-right" : ""}`}
-                        disabled={loading}
-                        required
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword((v) => !v)}
-                        className="absolute inset-y-0 end-0 flex w-12 items-center justify-center rounded-e-xl text-slate-400 transition hover:text-indigo-600 focus:outline-none focus-visible:text-indigo-600"
-                        aria-label={showPassword ? t("login.hidePassword") : t("login.showPassword")}
-                        aria-pressed={showPassword}
-                      >
-                        {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="group mt-2 inline-flex w-full items-center justify-center gap-2 rounded-full bg-indigo-600 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-indigo-600/25 transition hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
-                  >
-                    {loading ? (
-                      <>
-                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden="true" />
-                        {t("login.submitting")}
-                      </>
-                    ) : (
-                      <>
-                        {t("login.submit")}
-                        <ArrowRightIcon className="h-4 w-4 transition group-hover:translate-x-0.5 rtl:rotate-180 rtl:group-hover:-translate-x-0.5" />
-                      </>
-                    )}
-                  </button>
-                </form>
-
-                <div className="mt-8 border-t border-slate-100 pt-6 text-center">
-                  <p className="text-sm text-slate-500">{t("login.newHere")}</p>
-                  <Link
-                    to={TRIAL_PATH}
-                    className="mt-3 inline-flex w-full items-center justify-center rounded-full border border-indigo-200 bg-indigo-50/40 px-6 py-3 text-sm font-semibold text-indigo-700 transition hover:border-indigo-300 hover:bg-indigo-50"
-                  >
-                    {t("login.startTrial", { days: TRIAL_DAYS })}
-                  </Link>
                 </div>
-              </div>
 
-              <div className="mt-6 text-center lg:hidden">
-                <Link to={PUBLIC_HOME_PATH} className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-indigo-700">
-                  <ArrowLeftIcon className="h-4 w-4 rtl:rotate-180" />
-                  {t("login.backToHome")}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="group mt-2 inline-flex w-full items-center justify-center gap-2 rounded-full bg-indigo-600 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-indigo-600/25 transition hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {loading ? (
+                    <>
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden="true" />
+                      {t("login.submitting")}
+                    </>
+                  ) : (
+                    <>
+                      {t("login.submit")}
+                      <ArrowRightIcon className="h-4 w-4 transition group-hover:translate-x-0.5 rtl:rotate-180 rtl:group-hover:-translate-x-0.5" />
+                    </>
+                  )}
+                </button>
+              </form>
+
+              <div className="mt-8 border-t border-slate-100 pt-6 text-center">
+                <p className="text-sm text-slate-500">{t("login.newHere")}</p>
+                <Link
+                  to={TRIAL_PATH}
+                  className="mt-3 inline-flex w-full items-center justify-center rounded-full border border-indigo-200 bg-indigo-50/40 px-6 py-3 text-sm font-semibold text-indigo-700 transition hover:border-indigo-300 hover:bg-indigo-50"
+                >
+                  {t("login.startTrial", { days: TRIAL_DAYS })}
                 </Link>
               </div>
             </div>
           </main>
+        </div>
+
+        <div className="mt-6 text-center lg:hidden">
+          <Link to={PUBLIC_HOME_PATH} className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-indigo-700">
+            <ArrowLeftIcon className="h-4 w-4 rtl:rotate-180" />
+            {t("login.backToHome")}
+          </Link>
         </div>
       </div>
     </div>
