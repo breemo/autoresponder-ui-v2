@@ -12,6 +12,7 @@ import {
   ChevronDownIcon,
   Cog6ToothIcon,
   CpuChipIcon,
+  CreditCardIcon,
   HomeIcon,
   Squares2X2Icon,
   UserCircleIcon,
@@ -58,6 +59,7 @@ const NAV_ICONS = {
   settings: Cog6ToothIcon,
   myAccount: UserCircleIcon,
   myPerformance: ChartPieIcon,
+  planBilling: CreditCardIcon,
 };
 
 function useMediaQuery(query) {

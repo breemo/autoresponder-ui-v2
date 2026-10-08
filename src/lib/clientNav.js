@@ -36,10 +36,13 @@ export const CLIENT_NAV = [
   { key: "settings", to: "/client/settings", permission: PERMISSIONS.SETTINGS, match: ["/client/settings"] },
 ];
 
-// Personal pages (no permission) live in the user menu.
+// Personal pages (no permission) live in the user menu, plus Plan & Billing
+// (account-level, gated by the same AI_SETTINGS permission its sections had
+// on the AI Agent page — keeps the primary sidebar unchanged).
 export const CLIENT_USER_MENU = [
   { key: "myAccount", to: "/client/account" },
   { key: "myPerformance", to: "/client/my-performance" },
+  { key: "planBilling", to: "/client/plan-billing", permission: PERMISSIONS.AI_SETTINGS },
 ];
 
 export const ACCOUNT_PATH = "/client/account";
@@ -55,7 +58,7 @@ export function visibleClientNav(user) {
 
 export function visibleUserMenu(user) {
   if (user?.must_change_password) return CLIENT_USER_MENU.filter((i) => i.key === "myAccount");
-  return CLIENT_USER_MENU;
+  return CLIENT_USER_MENU.filter((item) => !item.permission || hasUserPermission(user, item.permission));
 }
 
 export function activeNavKey(pathname, items = CLIENT_NAV) {
@@ -76,6 +79,7 @@ const TITLE_KEYS = {
   "/client/settings": "shell.nav.settings",
   "/client/account": "shell.nav.myAccount",
   "/client/my-performance": "shell.nav.myPerformance",
+  "/client/plan-billing": "shell.nav.planBilling",
 };
 
 export function pageTitleKey(pathname) {

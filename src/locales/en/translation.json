@@ -1046,8 +1046,34 @@
     "composerReply": "Reply",
     "composerNote": "Internal note"
   },
+  "planBilling": {
+    "title": "Plan & Billing",
+    "subtitle": "Your current subscription, remaining usage and subscription history.",
+    "loadFailed": "Couldn't load subscription data. Try refreshing."
+  },
+  "aiAgent": {
+    "behaviorSubtitle": "Personality, tone, default language, rules and instructions your AI Agent follows when replying to customers.",
+    "title": "AI Agent",
+    "subtitle": "Configure how your AI Agent responds to customers across your connected channels.",
+    "openIntegrations": "Open Integrations",
+    "viewSettings": "View",
+    "notSet": "Not set",
+    "instructionsSet": "{{count}} of {{total}} set",
+    "notInPlan": "AI Agent isn't included in your current plan.",
+    "channelsTitle": "Channel Integration Status",
+    "channelsSubtitle": "Integration status of the channels in your plan. Live connection health is shown on the Integrations page.",
+    "channelsLoadFailed": "Couldn't load channel status.",
+    "noChannels": "No channels in your current plan.",
+    "notSetUp": "Not set up",
+    "settingsTitle": "AI Settings",
+    "saveChanges": "Save Changes",
+    "documentsCount": "Documents ({{count}})",
+    "searchDocuments": "Search documents…",
+    "noDocumentMatches": "No documents match your search."
+  },
   "shell": {
     "nav": {
+      "planBilling": "Plan & Billing",
       "home": "Home",
       "inbox": "Inbox",
       "leads": "Leads",
@@ -1072,6 +1098,7 @@
     "collapseSidebar": "Collapse Sidebar"
   },
   "home": {
+    "viewPlanBilling": "Plan & Billing",
     "welcome": "Welcome back, {{name}}",
     "subtitle": "Here is what is happening across your conversations.",
     "openHint": "Open and waiting conversations",

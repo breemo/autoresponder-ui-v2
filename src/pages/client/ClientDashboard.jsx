@@ -501,7 +501,16 @@ export default function ClientDashboard() {
 
         {/* Plan & usage — same data and rules as before */}
         <Card>
-          <CardHeader title={t("home.planUsage")} />
+          <CardHeader
+            title={t("home.planUsage")}
+            action={
+              hasUserPermission(user, PERMISSIONS.AI_SETTINGS) && (
+                <Link to="/client/plan-billing" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">
+                  {t("home.viewPlanBilling")}
+                </Link>
+              )
+            }
+          />
           {loading ? (
             <Skeleton className="h-40 w-full" />
           ) : (

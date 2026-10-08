@@ -18,7 +18,13 @@ const ACS = read("src/pages/admin/AdminClientSettings.jsx");
 
 test("C: client mode is the clientIdOverride path for non-admins", () => {
   assert.ok(ACS.includes('const isClientMode = Boolean(clientIdOverride) && user?.role !== "admin";'));
-  assert.ok(read("src/pages/client/ClientFeatureSettings.jsx").includes("<AdminClientSettings clientIdOverride={clientId} />"));
+  // AI Agent redesign: the client page no longer renders AdminClientSettings;
+  // the invariant is unchanged — it never loads or saves channel configs
+  // (only the read-only Integrations "list" for status).
+  const page = read("src/pages/client/ClientFeatureSettings.jsx");
+  assert.ok(!/import AdminClientSettings|<AdminClientSettings/.test(page));
+  assert.ok(!/resource=feature_settings|save_config|set_active|save_instagram_config/.test(page));
+  assert.ok(page.includes('body: JSON.stringify({ action: "list", actor_user_id: user?.id })'));
 });
 
 test("C: client mode never loads channel configs and cannot open/save a channel drawer", () => {

@@ -36,6 +36,7 @@ import ClientAutoReplies from "./pages/client/ClientAutoReplies.jsx";
 import ClientSettings from "./pages/client/ClientSettings.jsx";
 import ClientIntegrations from "./pages/client/ClientIntegrations.jsx";
 import ClientFeatureSettings from "./pages/client/ClientFeatureSettings.jsx";
+import ClientPlanBilling from "./pages/client/ClientPlanBilling.jsx";
 import ClientLeads from "./pages/client/ClientLeads.jsx";
 import ClientQuickReplies from "./pages/client/ClientQuickReplies.jsx";
 import ClientTeam from "./pages/client/ClientTeam.jsx";
@@ -154,6 +155,12 @@ export default function App() {
           <Route
             path="/client/feature-settings"
             element={<ClientRoute permission={PERMISSIONS.AI_SETTINGS}><ClientFeatureSettings /></ClientRoute>}
+          />
+          {/* Plan & Billing: the subscription sections moved out of AI Agent —
+              same AI_SETTINGS gate those sections had, so visibility is unchanged. */}
+          <Route
+            path="/client/plan-billing"
+            element={<ClientRoute permission={PERMISSIONS.AI_SETTINGS}><ClientPlanBilling /></ClientRoute>}
           />
           <Route
             path="/client/team"

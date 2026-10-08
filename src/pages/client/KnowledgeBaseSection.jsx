@@ -5,6 +5,8 @@ import {
   ArrowPathIcon,
   DocumentTextIcon,
   EyeIcon,
+  MagnifyingGlassIcon,
+  PlusIcon,
   TrashIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
@@ -97,7 +99,9 @@ function StatusBadge({ status, t }) {
   );
 }
 
-export default function KnowledgeBaseSection({ clientId, actorUserId, readOnly = false }) {
+// variant: "default" (Admin Portal + legacy layout, unchanged) | "agent"
+// (Client AI Agent page presentation). Both share every handler below.
+export default function KnowledgeBaseSection({ clientId, actorUserId, readOnly = false, variant = "default" }) {
   const { t } = useTranslation();
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -108,6 +112,7 @@ export default function KnowledgeBaseSection({ clientId, actorUserId, readOnly =
   const [busyId, setBusyId] = useState(null); // document id currently reprocessing/replacing/deleting
   const [viewingDocument, setViewingDocument] = useState(null);
   const [viewUrl, setViewUrl] = useState("");
+  const [docQuery, setDocQuery] = useState(""); // agent variant: local filter only
   const fileInputRef = useRef(null);
   const replaceInputRef = useRef(null);
   const replaceTargetId = useRef(null);
@@ -302,6 +307,112 @@ export default function KnowledgeBaseSection({ clientId, actorUserId, readOnly =
     [documents, t]
   );
 
+  const modals = (
+    <>
+      {pendingFile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+          <div className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h4 className="font-bold text-slate-900">{pendingFile.file.name}</h4>
+              <button type="button" onClick={() => setPendingFile(null)}><XMarkIcon className="h-5 w-5 text-slate-400" /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-600">{t("knowledgeBase.titleFieldLabel")}</label>
+                <input
+                  type="text"
+                  value={pendingFile.title}
+                  onChange={(e) => setPendingFile((prev) => ({ ...prev, title: e.target.value }))}
+                  placeholder={t("knowledgeBase.titleFieldPlaceholder")}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  disabled={uploading}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-600">{t("knowledgeBase.categoryLabel")}</label>
+                <select
+                  value={pendingFile.category}
+                  onChange={(e) => setPendingFile((prev) => ({ ...prev, category: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  disabled={uploading}
+                >
+                  {KNOWLEDGE_CATEGORIES.map((cat) => (
+                    <option key={cat} value={cat}>{categoryLabelFor(cat, t)}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="mt-5 flex gap-2">
+              <button type="button" onClick={handleAddDocument} disabled={uploading} className="flex-1 rounded-2xl bg-indigo-600 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-60">
+                {uploading ? t("settings.saving") : t("knowledgeBase.addDocument")}
+              </button>
+              <button type="button" onClick={() => setPendingFile(null)} disabled={uploading} className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+                {t("knowledgeBase.cancel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {viewingDocument && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+          <div className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h4 className="font-bold text-slate-900">{t("knowledgeBase.viewDetailsTitle")}</h4>
+              <button type="button" onClick={() => setViewingDocument(null)}><XMarkIcon className="h-5 w-5 text-slate-400" /></button>
+            </div>
+            <dl className="space-y-2 text-sm">
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">{t("knowledgeBase.columnName")}</dt><dd className="truncate font-semibold text-slate-800">{viewingDocument.title}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">{t("knowledgeBase.columnType")}</dt><dd className="font-semibold text-slate-800">{categoryLabelFor(viewingDocument.category, t)}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">{t("knowledgeBase.columnFileType")}</dt><dd className="font-semibold text-slate-800">{viewingDocument.file_type}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">{t("knowledgeBase.columnSize")}</dt><dd className="font-semibold text-slate-800">{formatFileSize(viewingDocument.size)}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">{t("knowledgeBase.columnStatus")}</dt><dd><StatusBadge status={viewingDocument.status} t={t} /></dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">{t("knowledgeBase.columnUpdated")}</dt><dd className="font-semibold text-slate-800">{formatDate(viewingDocument.updated_at)}</dd></div>
+              {viewingDocument.status === "failed" && viewingDocument.status_error && (
+                <div className="flex justify-between gap-3"><dt className="text-slate-500">{t("knowledgeBase.columnStatus")}</dt><dd className="font-semibold text-rose-600">{viewingDocument.status_error}</dd></div>
+              )}
+            </dl>
+            {viewUrl && (
+              <a href={viewUrl} target="_blank" rel="noopener noreferrer" className="mt-4 block text-center text-sm font-semibold text-indigo-600 hover:underline">
+                {t("knowledgeBase.openFile")}
+              </a>
+            )}
+            <button type="button" onClick={() => setViewingDocument(null)} className="mt-4 w-full rounded-2xl border border-slate-200 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
+              {t("knowledgeBase.close")}
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  if (variant === "agent") {
+    return (
+      <AgentKnowledgeBase
+        t={t}
+        readOnly={readOnly}
+        loading={loading}
+        error={error}
+        rows={rows}
+        docQuery={docQuery}
+        setDocQuery={setDocQuery}
+        dragOver={dragOver}
+        setDragOver={setDragOver}
+        onDrop={handleDrop}
+        fileInputRef={fileInputRef}
+        replaceInputRef={replaceInputRef}
+        onBrowseChange={handleBrowseChange}
+        onReplaceChange={handleReplaceChange}
+        busyId={busyId}
+        onView={handleView}
+        onReprocess={handleReprocess}
+        onReplace={handleReplaceClick}
+        onDelete={handleDelete}
+        modals={modals}
+      />
+    );
+  }
+
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
@@ -407,80 +518,7 @@ export default function KnowledgeBaseSection({ clientId, actorUserId, readOnly =
         </>
       )}
 
-      {pendingFile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
-          <div className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h4 className="font-bold text-slate-900">{pendingFile.file.name}</h4>
-              <button type="button" onClick={() => setPendingFile(null)}><XMarkIcon className="h-5 w-5 text-slate-400" /></button>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-600">{t("knowledgeBase.titleFieldLabel")}</label>
-                <input
-                  type="text"
-                  value={pendingFile.title}
-                  onChange={(e) => setPendingFile((prev) => ({ ...prev, title: e.target.value }))}
-                  placeholder={t("knowledgeBase.titleFieldPlaceholder")}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                  disabled={uploading}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-600">{t("knowledgeBase.categoryLabel")}</label>
-                <select
-                  value={pendingFile.category}
-                  onChange={(e) => setPendingFile((prev) => ({ ...prev, category: e.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                  disabled={uploading}
-                >
-                  {KNOWLEDGE_CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>{categoryLabelFor(cat, t)}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="mt-5 flex gap-2">
-              <button type="button" onClick={handleAddDocument} disabled={uploading} className="flex-1 rounded-2xl bg-indigo-600 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-60">
-                {uploading ? t("settings.saving") : t("knowledgeBase.addDocument")}
-              </button>
-              <button type="button" onClick={() => setPendingFile(null)} disabled={uploading} className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
-                {t("knowledgeBase.cancel")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {viewingDocument && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
-          <div className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h4 className="font-bold text-slate-900">{t("knowledgeBase.viewDetailsTitle")}</h4>
-              <button type="button" onClick={() => setViewingDocument(null)}><XMarkIcon className="h-5 w-5 text-slate-400" /></button>
-            </div>
-            <dl className="space-y-2 text-sm">
-              <div className="flex justify-between gap-3"><dt className="text-slate-500">{t("knowledgeBase.columnName")}</dt><dd className="truncate font-semibold text-slate-800">{viewingDocument.title}</dd></div>
-              <div className="flex justify-between gap-3"><dt className="text-slate-500">{t("knowledgeBase.columnType")}</dt><dd className="font-semibold text-slate-800">{categoryLabelFor(viewingDocument.category, t)}</dd></div>
-              <div className="flex justify-between gap-3"><dt className="text-slate-500">{t("knowledgeBase.columnFileType")}</dt><dd className="font-semibold text-slate-800">{viewingDocument.file_type}</dd></div>
-              <div className="flex justify-between gap-3"><dt className="text-slate-500">{t("knowledgeBase.columnSize")}</dt><dd className="font-semibold text-slate-800">{formatFileSize(viewingDocument.size)}</dd></div>
-              <div className="flex justify-between gap-3"><dt className="text-slate-500">{t("knowledgeBase.columnStatus")}</dt><dd><StatusBadge status={viewingDocument.status} t={t} /></dd></div>
-              <div className="flex justify-between gap-3"><dt className="text-slate-500">{t("knowledgeBase.columnUpdated")}</dt><dd className="font-semibold text-slate-800">{formatDate(viewingDocument.updated_at)}</dd></div>
-              {viewingDocument.status === "failed" && viewingDocument.status_error && (
-                <div className="flex justify-between gap-3"><dt className="text-slate-500">{t("knowledgeBase.columnStatus")}</dt><dd className="font-semibold text-rose-600">{viewingDocument.status_error}</dd></div>
-              )}
-            </dl>
-            {viewUrl && (
-              <a href={viewUrl} target="_blank" rel="noopener noreferrer" className="mt-4 block text-center text-sm font-semibold text-indigo-600 hover:underline">
-                {t("knowledgeBase.openFile")}
-              </a>
-            )}
-            <button type="button" onClick={() => setViewingDocument(null)} className="mt-4 w-full rounded-2xl border border-slate-200 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
-              {t("knowledgeBase.close")}
-            </button>
-          </div>
-        </div>
-      )}
+      {modals}
     </div>
   );
 }
@@ -505,5 +543,152 @@ function DocumentRowActions({ doc, readOnly, busy, t, onView, onReprocess, onRep
         </>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// "agent" presentation (Client AI Agent page): upload zone + documents panel.
+// Same data, handlers, validation (accept + validateKnowledgeFileMeta),
+// statuses and actions as the default layout; only the markup differs.
+// ---------------------------------------------------------------------------
+const FILE_TONES = {
+  PDF: "bg-rose-50 text-rose-600",
+  DOC: "bg-blue-50 text-blue-600",
+  DOCX: "bg-blue-50 text-blue-600",
+};
+
+function AgentKnowledgeBase({
+  t,
+  readOnly,
+  loading,
+  error,
+  rows,
+  docQuery,
+  setDocQuery,
+  dragOver,
+  setDragOver,
+  onDrop,
+  fileInputRef,
+  replaceInputRef,
+  onBrowseChange,
+  onReplaceChange,
+  busyId,
+  onView,
+  onReprocess,
+  onReplace,
+  onDelete,
+  modals,
+}) {
+  const q = docQuery.trim().toLowerCase();
+  const visible = q ? rows.filter((d) => `${d.title || ""} ${d.file_name || ""} ${d.categoryLabel || ""}`.toLowerCase().includes(q)) : rows;
+
+  return (
+    <section className="min-w-0 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]" aria-labelledby="kb-title">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 ring-1 ring-inset ring-indigo-100">
+            <DocumentTextIcon className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <h2 id="kb-title" className="text-[15px] font-semibold text-slate-900">{t("knowledgeBase.title")}</h2>
+            <p className="mt-0.5 text-xs text-slate-500">{t("knowledgeBase.subtitle")}</p>
+          </div>
+        </div>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 text-sm font-semibold text-white shadow-sm shadow-indigo-600/20 transition hover:bg-indigo-700"
+          >
+            <PlusIcon className="h-4 w-4" />
+            {t("knowledgeBase.addDocument")}
+          </button>
+        )}
+      </div>
+
+      {error && <div className="mb-4 rounded-xl border border-rose-100 bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">{error}</div>}
+
+      <input ref={fileInputRef} type="file" className="hidden" onChange={onBrowseChange} accept={KNOWLEDGE_ACCEPT_ATTRIBUTE} />
+      <input ref={replaceInputRef} type="file" className="hidden" onChange={onReplaceChange} accept={KNOWLEDGE_ACCEPT_ATTRIBUTE} />
+
+      <div className={`grid gap-4 ${readOnly ? "" : "lg:grid-cols-2"}`}>
+        {!readOnly && (
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={onDrop}
+            data-testid="kb-dropzone"
+            className={`flex min-h-[180px] flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed p-6 text-center transition ${
+              dragOver ? "border-indigo-300 bg-indigo-50" : "border-slate-200 bg-slate-50/60"
+            }`}
+          >
+            <ArrowUpTrayIcon className="h-7 w-7 text-slate-400" />
+            <p className="text-sm font-medium text-slate-700">{t("knowledgeBase.dropzoneTitle")}</p>
+            <p className="text-xs text-slate-400">{t("knowledgeBase.dropzoneOr")}</p>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="mt-1 inline-flex h-9 items-center rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700"
+            >
+              {t("knowledgeBase.browseButton")}
+            </button>
+            <p className="mt-1 text-[11px] text-slate-400">{t("knowledgeBase.dropzoneHint")}</p>
+          </div>
+        )}
+
+        <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200/80">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3 py-2.5">
+            <h3 className="text-[13px] font-semibold text-slate-900" data-testid="kb-count">
+              {t("aiAgent.documentsCount", { count: rows.length })}
+            </h3>
+            {rows.length > 0 && (
+              <div className="relative w-full sm:w-56">
+                <MagnifyingGlassIcon className="pointer-events-none absolute start-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="search"
+                  value={docQuery}
+                  onChange={(e) => setDocQuery(e.target.value)}
+                  placeholder={t("aiAgent.searchDocuments")}
+                  aria-label={t("aiAgent.searchDocuments")}
+                  className="h-8 w-full rounded-lg border border-slate-200 bg-white pe-2.5 ps-8 text-xs outline-none placeholder:text-slate-400 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50"
+                />
+              </div>
+            )}
+          </div>
+
+          {loading ? (
+            <div className="p-6 text-center text-sm text-slate-500">{t("common.loading")}</div>
+          ) : rows.length === 0 ? (
+            <div className="p-6 text-center">
+              <DocumentTextIcon className="mx-auto mb-2 h-8 w-8 text-slate-300" />
+              <p className="text-sm font-semibold text-slate-700">{t("knowledgeBase.emptyTitle")}</p>
+              <p className="mx-auto mt-1 max-w-md text-xs text-slate-500">{t("knowledgeBase.emptyDescription")}</p>
+            </div>
+          ) : visible.length === 0 ? (
+            <div className="p-6 text-center text-sm text-slate-500">{t("aiAgent.noDocumentMatches")}</div>
+          ) : (
+            <ul className="max-h-[360px] divide-y divide-slate-100 overflow-y-auto">
+              {visible.map((doc) => (
+                <li key={doc.id} data-doc-id={doc.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5 transition hover:bg-slate-50/70">
+                  <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[10px] font-bold ${FILE_TONES[doc.file_type] || "bg-slate-100 text-slate-500"}`}>
+                    {doc.file_type}
+                  </span>
+                  <div className="min-w-0 flex-1 basis-40">
+                    <p className="truncate text-[13px] font-medium text-slate-900" dir="auto" title={doc.file_name}>{doc.title}</p>
+                    <p className="truncate text-[11px] text-slate-500">{doc.updatedLabel}</p>
+                  </div>
+                  <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">{doc.categoryLabel}</span>
+                  <span className="w-16 shrink-0 text-end text-[11px] tabular-nums text-slate-500">{doc.sizeLabel}</span>
+                  <StatusBadge status={doc.status} t={t} />
+                  <DocumentRowActions doc={doc} readOnly={readOnly} busy={busyId === doc.id} t={t} onView={onView} onReprocess={onReprocess} onReplace={onReplace} onDelete={onDelete} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      {modals}
+    </section>
   );
 }

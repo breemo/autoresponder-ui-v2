@@ -101,7 +101,15 @@ test("density scale: shared tokens, PageHeader on every standard client page, no
     assert.equal(/tracking-[0.35em]/.test(src), false, p + " eyebrow");
     assert.equal(/rounded-3xl|font-black|text-3xl/.test(src), false, p + " legacy scale");
   }
-  assert.ok(read("src/pages/client/ClientFeatureSettings.jsx").includes('className="ar-density"'));
+  // AI Agent (Phase: AI Agent redesign) is client-only now — it no longer
+  // wraps the Admin component in .ar-density (that layer stays for any other
+  // shared admin surface).
+  const aiAgent = read("src/pages/client/ClientFeatureSettings.jsx");
+  assert.equal(/from "\.\.\/admin\//.test(aiAgent), false, "AI Agent must not import Admin components");
+  for (const p of ["ClientFeatureSettings", "ClientPlanBilling"]) {
+    assert.equal(/rounded-3xl|font-black|text-3xl/.test(read(`src/pages/client/${p}.jsx`)), false, p + " legacy scale");
+  }
+  assert.ok(read("src/pages/client/ClientPlanBilling.jsx").includes("<PageHeader"));
   assert.ok(read("src/index.css").includes(".ar-density .rounded-3xl"));
 });
 
