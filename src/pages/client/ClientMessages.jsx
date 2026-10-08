@@ -1,57 +1,41 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowLeftIcon, PhotoIcon, DocumentIcon, MicrophoneIcon, XMarkIcon, InformationCircleIcon } from "@heroicons/react/24/outline";
+import { ChatBubbleLeftRightIcon } from "@heroicons/react/24/outline";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
-import ChannelIcon from "../../lib/channelIcons.jsx";
-import LinkifiedText from "../../components/LinkifiedText.jsx";
+import { useLanguage } from "../../context/LanguageContext.jsx";
 import { appendUniqueMessages, prependUniqueMessages, deriveMessageCursors } from "../../lib/messagePagination.js";
 import { appendOlderConversations, upsertConversations, deriveConversationCursor } from "../../lib/conversationListPagination.js";
 import {
   MESSAGE_TYPES,
-  isMediaMessageType,
-  getAcceptAttribute,
   formatFileSize,
   validateMediaFile,
   canSendMediaOnChannel,
   canSendMediaTypeOnChannel,
 } from "../../lib/mediaMessages.js";
-import { getConversationIdentity } from "../../lib/conversationIdentity.js";
+import { cx } from "../../components/app/primitives.jsx";
+import { MEDIA_CONTROLS } from "./inbox/mediaControls.js";
+import useConversationCard from "./inbox/useConversationCard.js";
+import InboxConversationList from "./inbox/InboxConversationList.jsx";
+import InboxConversationHeader from "./inbox/InboxConversationHeader.jsx";
+import InboxMessageTimeline from "./inbox/InboxMessageTimeline.jsx";
+import InboxComposer from "./inbox/InboxComposer.jsx";
+import ConversationCard from "./inbox/ConversationCard.jsx";
 
-// Media controls — WhatsApp Media & Attachment Support v1. `type` maps each
-// button to a canonical MESSAGE_TYPES value (single source of truth for
-// both the composer below and the message renderer, which reuses this
-// same array to resolve a media message's icon/label). Enabled per
-// conversation by canSendMediaOnChannel() — see
-// SUPPORTED_MEDIA_CHANNEL_VALUES in src/lib/mediaMessages.js for exactly
-// which channel values are enabled (currently whatsapp/facebook/telegram)
-// and always false for any other/unknown channel. WhatsApp/Evolution is
-// the only channel with runtime-verified end-to-end n8n media delivery —
-// Facebook/Telegram controls are enabled here for controlled testing while
-// their own Human Reply MEDIA DRAFT delivery is completed.
-const MEDIA_CONTROLS = [
-  { key: "image", type: MESSAGE_TYPES.IMAGE, labelKey: "messagesPage.mediaImage", icon: PhotoIcon },
-  { key: "document", type: MESSAGE_TYPES.DOCUMENT, labelKey: "messagesPage.mediaDocument", icon: DocumentIcon },
-  { key: "voice", type: MESSAGE_TYPES.AUDIO, labelKey: "messagesPage.mediaVoice", icon: MicrophoneIcon },
-];
+// Client Inbox (Phase 3 redesign). This file remains the single container
+// for ALL Inbox state and logic — lists, pagination, polling, lifecycle
+// actions, ownership rules, sending and media upload are unchanged. Only the
+// presentation moved into the ./inbox components.
 
-function formatDate(value, lang) {
-  if (!value) return "—";
+// Desktop (xl+) Conversation Card column: collapsible, remembered per
+// browser. Purely a layout preference — never affects data or permissions.
+const DETAILS_STORAGE_KEY = "ar.inbox.details";
+function readDetailsOpen() {
   try {
-    return new Date(value).toLocaleString(lang === "en" ? "en-US" : "ar-EG", { dateStyle: "medium", timeStyle: "short" });
+    return localStorage.getItem(DETAILS_STORAGE_KEY) !== "0";
   } catch {
-    return value;
+    return true;
   }
-}
-
-function relativeTime(value, t) {
-  if (!value) return "—";
-  const diff = Date.now() - new Date(value).getTime();
-  const minutes = Math.max(1, Math.floor(diff / 60000));
-  if (minutes < 60) return t("common.timeMinutesAgo", { count: minutes });
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return t("common.timeHoursAgo", { count: hours });
-  return t("common.timeDaysAgo", { count: Math.floor(hours / 24) });
 }
 
 function getMessageText(msg = {}) {
@@ -68,11 +52,6 @@ function getMessageText(msg = {}) {
   );
 }
 
-function directionLabel(direction, t) {
-  if (["in", "inbound"].includes(direction)) return t("common.inbound");
-  if (["out", "outbound"].includes(direction)) return t("common.outbound");
-  return direction || "—";
-}
 
 // True when a real (server) message row is the persisted form of a pending
 // optimistic echo — an outbound row, at/after the echo's own timestamp,
@@ -91,591 +70,6 @@ function outboundRowMatchesPending(row = {}, pending = {}) {
     row.message_type === pending.message_type &&
     (!pending.media_file_name || row.media_file_name === pending.media_file_name)
   );
-}
-
-const platformStyles = {
-  facebook: "border-blue-100 bg-blue-50 text-blue-700",
-  telegram: "border-sky-100 bg-sky-50 text-sky-700",
-  whatsapp: "border-emerald-100 bg-emerald-50 text-emerald-700",
-  instagram: "border-pink-100 bg-pink-50 text-pink-700",
-};
-
-const statusStyles = {
-  active: "bg-emerald-50 text-emerald-700 border-emerald-100",
-  open: "bg-emerald-50 text-emerald-700 border-emerald-100",
-  closed: "bg-slate-100 text-slate-600 border-slate-200",
-  lead_captured: "bg-indigo-50 text-indigo-700 border-indigo-100",
-  waiting_human: "bg-amber-50 text-amber-700 border-amber-100",
-};
-
-// Resolves and caches a short-lived signed READ url for one media message,
-// then renders the actual media (image/audio) or a compact file card
-// (document). Extracted as its own component so each message manages its
-// own request/cache lifecycle independently — WhatsApp Media & Attachment
-// Support v1 Phase B. Never invoked for message_type "text" or a
-// historical/null message_type (see the isMedia guard at the call site) —
-// those keep rendering exactly as before, unchanged.
-//
-// If Storage isn't configured/created yet (see api/media.js (action: "sign_read") —
-// this is the expected state right now, since Task 1 explicitly does not
-// create the bucket), the fetch below resolves to success:false and this
-// simply shows the existing "unavailable" placeholder — it never throws or
-// breaks the surrounding message list.
-function MediaAttachment({ msg, mediaControl, isInbound, conversationId, actorUserId, t }) {
-  const [status, setStatus] = useState("idle"); // idle | loading | ready | error
-  // Distinguishes "Storage isn't set up yet" (the expected state right now
-  // — see api/media.js (action: "sign_read")'s STORAGE_NOT_CONFIGURED/STORAGE_UNAVAILABLE
-  // codes) from any other failure, so the placeholder can say so instead of
-  // a generic "failed to load" that would be misleading before Storage
-  // exists at all.
-  const [storageUnavailable, setStorageUnavailable] = useState(false);
-  // Cached in a ref, not state — updating it must never itself trigger a
-  // re-render; `status` alone drives rendering, and reading the ref during
-  // render for the ready case is safe because both are always set together.
-  const cacheRef = useRef({ url: "", expiresAt: 0 });
-  const MediaIcon = mediaControl?.icon;
-  const isImage = msg.message_type === MESSAGE_TYPES.IMAGE;
-  const isAudio = msg.message_type === MESSAGE_TYPES.AUDIO;
-
-  async function resolveUrl() {
-    if (!msg.media_path) return null;
-    if (cacheRef.current.url && Date.now() < cacheRef.current.expiresAt) {
-      return cacheRef.current.url;
-    }
-    setStatus("loading");
-    setStorageUnavailable(false);
-    try {
-      const response = await fetch("/api/media", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "sign_read",
-          conversation_id: conversationId,
-          actor_user_id: actorUserId,
-          media_path: msg.media_path,
-        }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || data?.success === false || !data?.url) {
-        setStatus("error");
-        setStorageUnavailable(data?.code === "STORAGE_NOT_CONFIGURED" || data?.code === "STORAGE_UNAVAILABLE");
-        return null;
-      }
-      // Small safety buffer (10s) so the cached URL is never handed out
-      // right as it's about to expire.
-      const ttlMs = Math.max(0, (Number(data.expires_in) || 60) - 10) * 1000;
-      cacheRef.current = { url: data.url, expiresAt: Date.now() + ttlMs };
-      setStatus("ready");
-      return data.url;
-    } catch {
-      setStatus("error");
-      return null;
-    }
-  }
-
-  // Images/audio need a src up front to render inline, so resolve as soon
-  // as this message mounts (or its media_path changes — it never does in
-  // practice, but this keeps the effect correct if it ever did). Documents
-  // resolve lazily on click instead (see handleOpenDocument), since a file
-  // card renders fine without ever fetching a URL if the user never opens
-  // it — this is the "avoid unnecessary repeated requests" behavior.
-  useEffect(() => {
-    cacheRef.current = { url: "", expiresAt: 0 };
-    if (!msg.media_path) {
-      setStatus("error");
-      return;
-    }
-    setStatus("idle");
-    if (isImage || isAudio) resolveUrl();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [msg.media_path, msg.message_type]);
-
-  async function handleOpenDocument() {
-    const url = await resolveUrl();
-    if (url) window.open(url, "_blank", "noopener,noreferrer");
-  }
-
-  const mutedClass = isInbound ? "text-slate-400" : "text-indigo-100";
-  const cardClass = isInbound ? "border-slate-200 bg-slate-50" : "border-white/20 bg-white/10";
-
-  const errorText = storageUnavailable ? t("messagesPage.storageUnavailable") : t("messagesPage.mediaLoadFailed");
-
-  if (isImage) {
-    if (status === "ready" && cacheRef.current.url) {
-      return (
-        <img
-          src={cacheRef.current.url}
-          alt={msg.media_file_name || ""}
-          className="mb-1.5 max-h-64 w-full rounded-xl border border-slate-200 object-cover"
-        />
-      );
-    }
-    return (
-      <div className={`mb-1.5 flex h-28 items-center justify-center rounded-xl border p-2 text-xs font-semibold ${cardClass} ${mutedClass}`}>
-        {status === "error" ? (
-          <button type="button" onClick={resolveUrl} className="underline">
-            {errorText} · {t("messagesPage.retry")}
-          </button>
-        ) : (
-          t("messagesPage.mediaLoading")
-        )}
-      </div>
-    );
-  }
-
-  if (isAudio) {
-    if (status === "ready" && cacheRef.current.url) {
-      return <audio controls src={cacheRef.current.url} className="mb-1.5 w-full" />;
-    }
-    return (
-      <div className={`mb-1.5 flex items-center gap-2 rounded-xl border p-2 text-xs font-semibold ${cardClass} ${mutedClass}`}>
-        {status === "error" ? (
-          <button type="button" onClick={resolveUrl} className="underline">
-            {errorText} · {t("messagesPage.retry")}
-          </button>
-        ) : (
-          t("messagesPage.mediaLoading")
-        )}
-      </div>
-    );
-  }
-
-  // document (also the safe default for any unexpected media message_type
-  // — never crashes, always falls back to the same compact card)
-  return (
-    <div className={`mb-1.5 flex items-center gap-2 rounded-xl border p-2 ${cardClass}`}>
-      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${isInbound ? "bg-white text-slate-400" : "bg-white/15 text-white"}`}>
-        {MediaIcon && <MediaIcon className="h-5 w-5" />}
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-xs font-bold">{msg.media_file_name || (mediaControl ? t(mediaControl.labelKey) : "")}</p>
-        <p className={`text-[11px] ${mutedClass}`}>{formatFileSize(msg.media_size_bytes) || t("messagesPage.mediaPreviewUnavailable")}</p>
-      </div>
-      <button
-        type="button"
-        onClick={handleOpenDocument}
-        disabled={status === "loading"}
-        className={`shrink-0 rounded-lg px-2 py-1 text-[11px] font-bold transition ${isInbound ? "text-indigo-600 hover:bg-indigo-100" : "text-white hover:bg-white/10"} disabled:opacity-50`}
-      >
-        {status === "loading" ? t("messagesPage.mediaLoading") : status === "error" ? t("messagesPage.retry") : t("messagesPage.openFile")}
-      </button>
-    </div>
-  );
-}
-
-function StatCard({ label, value, hint, icon, tone = "indigo" }) {
-  const tones = {
-    indigo: "bg-indigo-50 text-indigo-600 border-indigo-100",
-    emerald: "bg-emerald-50 text-emerald-600 border-emerald-100",
-    sky: "bg-sky-50 text-sky-600 border-sky-100",
-    amber: "bg-amber-50 text-amber-600 border-amber-100",
-  };
-  return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-slate-500">{label}</p>
-          <p className="mt-2 text-3xl font-bold tracking-tight text-slate-950">{value}</p>
-          <p className="mt-1 text-xs text-slate-400">{hint}</p>
-        </div>
-        <div className={`flex h-10 w-10 items-center justify-center rounded-2xl border text-xl ${tones[tone]}`}>{icon}</div>
-      </div>
-    </div>
-  );
-}
-
-// Conversation Card V1 — lifecycle/context summary + internal notes, shown
-// beside the chat (desktop) or as a drawer (tablet/mobile, see the
-// `variant`/`open`/`onClose` props). Entirely self-contained: fetches its
-// own data from /api/conversation (details + ?resource=notes) whenever
-// `conversationId` changes, independent of the conversations list state
-// ClientMessages itself already holds (that list only carries the small
-// subset of fields needed for badges — this card needs the fuller
-// lifecycle/notes detail those two endpoints alone provide). Conversation
-// Type/category is deliberately absent — out of scope for V1, deferred to
-// the future Conversation Session Model redesign.
-function ConversationCard({ conversationId, actorUserId, variant, open, onClose }) {
-  const { t } = useTranslation();
-
-  const [card, setCard] = useState(null);
-  const [cardLoading, setCardLoading] = useState(false);
-  const [cardError, setCardError] = useState("");
-
-  const [notes, setNotes] = useState([]);
-  const [notesLoading, setNotesLoading] = useState(false);
-  const [notesError, setNotesError] = useState("");
-
-  const [noteDraft, setNoteDraft] = useState("");
-  const [addingNote, setAddingNote] = useState(false);
-
-  const [editingNoteId, setEditingNoteId] = useState(null);
-  const [editingBody, setEditingBody] = useState("");
-  const [savingNoteId, setSavingNoteId] = useState(null);
-  const [deletingNoteId, setDeletingNoteId] = useState(null);
-
-  // Performance patch (frontend-only, read-only-safe): the drawer variant
-  // is only ever visible once the user explicitly opens it (the panel
-  // variant, xl+, is always visible while a conversation is selected and
-  // keeps fetching immediately, unchanged). Before this, BOTH variants
-  // fetched on every conversationId change regardless of `open`, so every
-  // conversation switch fired /api/conversation (card) + ?resource=notes
-  // TWICE — once from each variant — even though the drawer is auto-closed
-  // on every switch (see setCardOpen(false) below) and, on desktop, never
-  // shown at all. `loadedForRef` fetches the drawer's data lazily, exactly
-  // once per conversation, the first time it's actually opened — reopening
-  // it again without switching conversations does not refetch (matching
-  // today's behavior of never refetching on a pure open/close toggle), and
-  // any in-progress note draft/edit is preserved across a close+reopen
-  // exactly as before, since the component itself still stays mounted the
-  // whole time — only the network calls are skipped while hidden. Display
-  // state is still reset immediately on every conversationId change (even
-  // while hidden) so there is nothing stale to flash the instant it opens.
-  const loadedForRef = useRef(null);
-
-  useEffect(() => {
-    if (!conversationId || !actorUserId) {
-      setCard(null);
-      setNotes([]);
-      loadedForRef.current = null;
-      return;
-    }
-
-    if (loadedForRef.current === conversationId) {
-      // Already loaded (or currently loading) this conversation's data in
-      // this instance — an `open` toggle alone must never re-fetch or
-      // clear it.
-      return;
-    }
-
-    const isHiddenDrawer = variant === "drawer" && !open;
-
-    let cancelled = false;
-    setCard(null);
-    setCardError("");
-    setNotes([]);
-    setNotesError("");
-    setNoteDraft("");
-    setEditingNoteId(null);
-
-    if (isHiddenDrawer) {
-      setCardLoading(false);
-      setNotesLoading(false);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    loadedForRef.current = conversationId;
-    setCardLoading(true);
-    setNotesLoading(true);
-
-    const qs = `actor_user_id=${encodeURIComponent(actorUserId)}&conversation_id=${encodeURIComponent(conversationId)}`;
-
-    fetch(`/api/conversation?${qs}`)
-      .then((res) => res.json().catch(() => ({})))
-      .then((data) => {
-        if (cancelled) return;
-        if (!data?.success) throw new Error(data?.message || t("conversationCard.loadFailed"));
-        setCard(data);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        console.error(err);
-        setCardError(err.message || t("conversationCard.loadFailed"));
-      })
-      .finally(() => {
-        if (!cancelled) setCardLoading(false);
-      });
-
-    fetch(`/api/conversation?resource=notes&${qs}`)
-      .then((res) => res.json().catch(() => ({})))
-      .then((data) => {
-        if (cancelled) return;
-        if (!data?.success) throw new Error(data?.message || t("conversationCard.notesLoadFailed"));
-        setNotes(data.notes || []);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        console.error(err);
-        setNotesError(err.message || t("conversationCard.notesLoadFailed"));
-      })
-      .finally(() => {
-        if (!cancelled) setNotesLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [conversationId, actorUserId, variant, open]);
-
-  async function handleAddNote() {
-    const body = noteDraft.trim();
-    if (!body || addingNote) return;
-
-    setAddingNote(true);
-    setNotesError("");
-    try {
-      const response = await fetch("/api/conversation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "add_note", actor_user_id: actorUserId, conversation_id: conversationId, body }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data?.success) throw new Error(data?.message || t("conversationCard.noteAddFailed"));
-      setNotes((prev) => [data.note, ...prev]);
-      setNoteDraft("");
-    } catch (err) {
-      console.error(err);
-      setNotesError(err.message || t("conversationCard.noteAddFailed"));
-    } finally {
-      setAddingNote(false);
-    }
-  }
-
-  function startEditNote(note) {
-    setEditingNoteId(note.id);
-    setEditingBody(note.body);
-  }
-
-  function cancelEditNote() {
-    setEditingNoteId(null);
-    setEditingBody("");
-  }
-
-  async function saveEditNote(noteId) {
-    const body = editingBody.trim();
-    if (!body || savingNoteId) return;
-
-    setSavingNoteId(noteId);
-    setNotesError("");
-    try {
-      const response = await fetch("/api/conversation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "edit_note", actor_user_id: actorUserId, note_id: noteId, body }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data?.success) throw new Error(data?.message || t("conversationCard.noteEditFailed"));
-      setNotes((prev) => prev.map((n) => (n.id === noteId ? data.note : n)));
-      cancelEditNote();
-    } catch (err) {
-      console.error(err);
-      setNotesError(err.message || t("conversationCard.noteEditFailed"));
-    } finally {
-      setSavingNoteId(null);
-    }
-  }
-
-  async function deleteNote(noteId) {
-    if (deletingNoteId || !window.confirm(t("conversationCard.confirmDeleteNote"))) return;
-
-    setDeletingNoteId(noteId);
-    setNotesError("");
-    try {
-      const response = await fetch("/api/conversation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete_note", actor_user_id: actorUserId, note_id: noteId }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data?.success) throw new Error(data?.message || t("conversationCard.noteDeleteFailed"));
-      setNotes((prev) => prev.filter((n) => n.id !== noteId));
-    } catch (err) {
-      console.error(err);
-      setNotesError(err.message || t("conversationCard.noteDeleteFailed"));
-    } finally {
-      setDeletingNoteId(null);
-    }
-  }
-
-  function timelineEventLabel(event) {
-    const actor = event.actor_user?.name || t("roles.agent");
-    const target = event.target_user?.name || t("roles.agent");
-    const translated = t(`conversationCard.event.${event.event_type}`, { actor, target, defaultValue: "" });
-    return translated || event.event_type;
-  }
-
-  const conv = card?.conversation || null;
-  const lastEmployee = card?.last_employee || null;
-  const timeline = card?.timeline || [];
-
-  const content = (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-100 p-3">
-        <h2 className="font-bold text-slate-950">{t("conversationCard.title")}</h2>
-        {variant === "drawer" && (
-          <button type="button" onClick={onClose} aria-label={t("conversationCard.closePanel")} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100">
-            <XMarkIcon className="h-5 w-5" />
-          </button>
-        )}
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
-        {cardLoading && <p className="text-xs text-slate-400">{t("common.loading")}</p>}
-        {cardError && <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{cardError}</p>}
-
-        {conv && (
-          <div className="space-y-4">
-            <section>
-              <h3 className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{t("conversationCard.sectionConversation")}</h3>
-              <div className="mt-1.5 space-y-1 text-sm">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-500">{t("conversationCard.status")}</span>
-                  <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${statusStyles[conv.conversation_status] || "bg-slate-100 text-slate-600 border-slate-200"}`}>{conv.conversation_status || "active"}</span>
-                </div>
-                <div className="flex items-start justify-between gap-2">
-                  <span className="shrink-0 text-slate-500">{t("conversationCard.lastActivity")}</span>
-                  <span className="min-w-0 flex-1 break-words text-end font-semibold text-slate-700">{relativeTime(conv.updated_at, t)}</span>
-                </div>
-              </div>
-            </section>
-
-            <section>
-              <h3 className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{t("conversationCard.sectionAssignment")}</h3>
-              <div className="mt-1.5 space-y-1 text-sm">
-                <div className="flex items-start justify-between gap-2">
-                  <span className="shrink-0 text-slate-500">{t("conversationCard.systemSuggested")}</span>
-                  <span className="min-w-0 flex-1 break-words text-end font-semibold text-slate-700">{conv.system_assigned_user?.name || "—"}</span>
-                </div>
-                <div className="flex items-start justify-between gap-2">
-                  <span className="shrink-0 text-slate-500">{t("conversationCard.acceptedAssigned")}</span>
-                  <span className="min-w-0 flex-1 break-words text-end font-semibold text-slate-700">
-                    {conv.assigned_user_id ? (conv.assigned_user_id === actorUserId ? t("common.you") : conv.assigned_user?.name || t("roles.agent")) : t("messagesPage.unassigned")}
-                  </span>
-                </div>
-                <div className="flex items-start justify-between gap-2">
-                  <span className="shrink-0 text-slate-500">{t("conversationCard.lastEmployee")}</span>
-                  <span className="min-w-0 flex-1 break-words text-end font-semibold text-slate-700">
-                    {lastEmployee ? (lastEmployee.user?.id === actorUserId ? t("common.you") : lastEmployee.user?.name || t("roles.agent")) : "—"}
-                    {lastEmployee && lastEmployee.source !== "event" && (
-                      <span className="block text-[10px] font-normal text-slate-400">{t("conversationCard.lastEmployeeApproximate")}</span>
-                    )}
-                  </span>
-                </div>
-              </div>
-            </section>
-
-            <section>
-              <h3 className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{t("conversationCard.sectionLifecycle")}</h3>
-              <div className="mt-1.5 space-y-1 text-sm">
-                <div className="flex items-start justify-between gap-2">
-                  <span className="shrink-0 text-slate-500">{t("conversationCard.solvedBy")}</span>
-                  <span className="min-w-0 flex-1 break-words text-end font-semibold text-slate-700">{conv.solved_by_user?.name ? `${conv.solved_by_user.name} · ${relativeTime(conv.solved_at, t)}` : "—"}</span>
-                </div>
-                <div className="flex items-start justify-between gap-2">
-                  <span className="shrink-0 text-slate-500">{t("conversationCard.reopenedBy")}</span>
-                  <span className="min-w-0 flex-1 break-words text-end font-semibold text-slate-700">{conv.reopened_by_user?.name ? `${conv.reopened_by_user.name} · ${relativeTime(conv.reopened_at, t)}` : "—"}</span>
-                </div>
-              </div>
-            </section>
-
-            <section>
-              <h3 className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{t("conversationCard.sectionTimeline")}</h3>
-              {timeline.length === 0 ? (
-                <p className="mt-1.5 text-xs text-slate-400">{t("conversationCard.noEvents")}</p>
-              ) : (
-                <ul className="mt-1.5 space-y-2">
-                  {timeline.map((event) => (
-                    <li key={event.id} className="rounded-lg border border-slate-100 bg-slate-50/60 px-2.5 py-1.5 text-xs">
-                      <p className="font-semibold text-slate-700">{timelineEventLabel(event)}</p>
-                      <p className="mt-0.5 text-[11px] text-slate-400">{relativeTime(event.created_at, t)}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          </div>
-        )}
-
-        <section className="mt-4 border-t border-slate-100 pt-3">
-          <h3 className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{t("conversationCard.sectionNotes")}</h3>
-          <p className="mt-1 text-[11px] text-slate-400">{t("conversationCard.notesHint")}</p>
-
-          {notesError && <p className="mt-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{notesError}</p>}
-
-          <div className="mt-2 space-y-2">
-            <textarea
-              value={noteDraft}
-              onChange={(e) => setNoteDraft(e.target.value)}
-              placeholder={t("conversationCard.noteAddPlaceholder")}
-              rows={2}
-              className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50"
-            />
-            <button
-              type="button"
-              onClick={handleAddNote}
-              disabled={!noteDraft.trim() || addingNote}
-              className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50"
-            >
-              {addingNote ? t("conversationCard.adding") : t("conversationCard.addNote")}
-            </button>
-          </div>
-
-          {notesLoading ? (
-            <p className="mt-3 text-xs text-slate-400">{t("common.loading")}</p>
-          ) : notes.length === 0 ? (
-            <p className="mt-3 text-xs text-slate-400">{t("conversationCard.noNotes")}</p>
-          ) : (
-            <ul className="mt-3 space-y-2">
-              {notes.map((note) => (
-                <li key={note.id} className="rounded-xl border border-slate-100 bg-white p-2.5 text-sm shadow-sm">
-                  {editingNoteId === note.id ? (
-                    <div className="space-y-2">
-                      <textarea
-                        value={editingBody}
-                        onChange={(e) => setEditingBody(e.target.value)}
-                        rows={2}
-                        className="w-full resize-none rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50"
-                      />
-                      <div className="flex gap-2">
-                        <button type="button" onClick={() => saveEditNote(note.id)} disabled={!editingBody.trim() || savingNoteId === note.id} className="rounded-lg bg-indigo-600 px-2.5 py-1 text-[11px] font-bold text-white disabled:opacity-50">
-                          {savingNoteId === note.id ? t("conversationCard.saving") : t("conversationCard.save")}
-                        </button>
-                        <button type="button" onClick={cancelEditNote} className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50">
-                          {t("conversationCard.cancel")}
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <p className="whitespace-pre-wrap text-slate-700">{note.body}</p>
-                      <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-slate-400">
-                        <span>
-                          {note.author?.name || t("roles.agent")} · {relativeTime(note.created_at, t)}
-                          {note.updated_at && ` · ${t("conversationCard.editedSuffix")}`}
-                        </span>
-                        {note.author_user_id === actorUserId && (
-                          <span className="flex shrink-0 gap-2">
-                            <button type="button" onClick={() => startEditNote(note)} className="font-bold text-indigo-600 hover:underline">
-                              {t("conversationCard.edit")}
-                            </button>
-                            <button type="button" onClick={() => deleteNote(note.id)} disabled={deletingNoteId === note.id} className="font-bold text-red-600 hover:underline disabled:opacity-50">
-                              {t("conversationCard.delete")}
-                            </button>
-                          </span>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
-    </div>
-  );
-
-  if (variant === "drawer") {
-    return (
-      <div className={`fixed inset-0 z-40 xl:hidden ${open ? "flex" : "hidden"}`}>
-        <div className="absolute inset-0 bg-slate-900/30" onClick={onClose} />
-        <div className="relative ms-auto flex h-full w-full max-w-sm flex-col bg-white shadow-xl">{content}</div>
-      </div>
-    );
-  }
-
-  return content;
 }
 
 export default function ClientMessages() {
@@ -720,6 +114,19 @@ export default function ClientMessages() {
   // card is always visible as its own grid column and this is ignored
   // (the info button that toggles it is itself hidden at 2xl+).
   const [cardOpen, setCardOpen] = useState(false);
+
+  // Phase 3: desktop (xl+) card column collapse state (persisted) and the
+  // composer mode (reply to customer vs. internal note).
+  const [detailsOpen, setDetailsOpen] = useState(readDetailsOpen);
+  useEffect(() => {
+    try {
+      localStorage.setItem(DETAILS_STORAGE_KEY, detailsOpen ? "1" : "0");
+    } catch {
+      /* storage unavailable — keep the in-memory preference */
+    }
+  }, [detailsOpen]);
+  const [composerMode, setComposerMode] = useState("reply");
+  const { isRtl } = useLanguage();
 
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -1855,596 +1262,209 @@ export default function ClientMessages() {
     canSendMediaTypeOnChannel(selectedChannelValue, c.type)
   );
 
-  const stats = useMemo(() => ({
-    total: conversations.length,
-    active: conversations.filter((c) => ["active", "open"].includes(c.conversation_status)).length,
-    closed: conversations.filter((c) => c.conversation_status === "closed").length,
-    leads: conversations.filter((c) => c.has_lead).length,
-  }), [conversations]);
+  // One shared Conversation Card data source (details + notes) for the
+  // panel, the drawer and the composer's Internal Note mode — one fetch per
+  // conversation, exactly the requests the previous card made.
+  const cardData = useConversationCard({
+    conversationId: selectedConversation?.conversation_id || null,
+    actorUserId: user?.id,
+    enabled: !!selectedConversation,
+    t,
+  });
 
+  // A new conversation always opens in Reply mode.
+  useEffect(() => {
+    setComposerMode("reply");
+  }, [selectedConversationId]);
+
+
+  // Composer notice — identical texts/conditions to the previous composer.
+  const composerNotice = !selectedConversation
+    ? ""
+    : isClosedConversation
+      ? reopenWindowExpired
+        ? t(
+            "messagesPage.conversationArchivedNotice",
+            "هذه المحادثة مؤرشفة (مضى أكثر من ساعتين على إغلاقها) ولا يمكن إعادة فتحها. أي رسالة جديدة من العميل ستبدأ محادثة جديدة."
+          )
+        : t("messagesPage.conversationClosedNotice")
+      : isWaitingHuman
+        ? selectedConversation.assigned_user_id
+          ? t("messagesPage.claimedByNotice", { name: selectedConversation.assigned_user?.name || t("roles.agent") })
+          : t("messagesPage.mustClaimFirst")
+        : t(
+            "messagesPage.automationHandlingNotice",
+            "هذه المحادثة يديرها الرد الآلي حالياً. اضغط «تحويل إلى موظف» ثم «استلام المحادثة» للرد يدوياً."
+          );
+
+  // Details toggle: at xl+ it collapses/expands the card column; below xl
+  // it opens the drawer (same component, same shared data).
+  function toggleDetails() {
+    if (typeof window !== "undefined" && window.matchMedia("(min-width: 1280px)").matches) setDetailsOpen((v) => !v);
+    else setCardOpen(true);
+  }
+
+  // Three-tier responsive Inbox (unchanged tiers):
+  //   - < md: one pane at a time, chosen by mobileInboxView (never by
+  //     selectedConversationId); Back returns to the list.
+  //   - md–xl: list + chat side by side; Conversation Card is a drawer.
+  //   - xl+: list | chat | collapsible Conversation Card column.
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
-      <div className="flex shrink-0 items-center justify-end">
-        <button onClick={() => fetchInitialConversations()} className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50">↻ {t("common.refresh")}</button>
-      </div>
+      {error && <div className="shrink-0 rounded-xl border border-rose-100 bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">{error}</div>}
 
-      {error && <div className="shrink-0 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>}
-
-      {/* Three-tier responsive Inbox, coordinated with
-          SharedDashboardLayout's sidebar breakpoint (also xl — see that
-          file):
-            - Below md (mobile): single stacked column. mobileInboxView
-              (see its declaration above — deliberately NOT
-              selectedConversationId, which stays "which conversation's
-              content is loaded" on every viewport) toggles which of the
-              two panes is visible — a classic responsive master/detail
-              pattern, with the back button below returning to the list.
-              Conversation Card is a drawer here (see cardOpen below), never
-              a permanent third pane — it would leave no room for the chat.
-            - md to xl (tablet): both panes visible side by side
-              (md:grid-cols-[...]) at a slightly narrower list column, while
-              the dashboard sidebar is still an off-canvas drawer (< xl), so
-              the Inbox gets the full width instead of losing ~288px to a
-              persistent sidebar it doesn't have room for. mobileInboxView
-              is ignored here — the md:flex on the aside/section below
-              always wins. Conversation Card is still a drawer here too.
-            - xl+ (desktop): a third grid column appears (xl:grid-cols-[...])
-              for the Conversation Card as a permanent ~300px pane —
-              Sidebar | Conversation List | Chat | Conversation Card, per
-              the approved design. This is the same breakpoint the
-              dashboard sidebar itself becomes persistent at, so both
-              appear together. The drawer/info-button variant is hidden
-              here (xl:hidden on both) since the card is already always
-              visible. List narrowed to 320px and card to 300px (down
-              from an initial 380px/320px) specifically to give the Chat
-              column (minmax(0,1fr), gets whatever's left) more breathing
-              room at a real ~1360px desktop viewport — it already
-              scrolls/wraps its own content, never forces the row
-              wider. */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_300px]">
-        <aside className={`${mobileInboxView === "chat" ? "hidden md:flex" : "flex"} h-full min-h-0 flex-col border-e border-slate-100 bg-slate-50/50`}>
-          <div className="shrink-0 border-b border-slate-100 p-3">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="font-bold text-slate-950">{t("messagesPage.listTitle")}</h2>
-                <p className="mt-1 text-xs text-slate-500">
-                  {totalConversationsCount !== null && totalConversationsCount > filteredConversations.length
-                    ? t("messagesPage.countSuffixOfTotal", { count: filteredConversations.length, total: totalConversationsCount })
-                    : t("messagesPage.countSuffix", { count: filteredConversations.length })}
-                </p>
-              </div>
-              <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-600">Live</span>
-            </div>
-
-            <div className="space-y-2">
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("messagesPage.searchPlaceholder")} className="h-9 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50" />
-              <div className="grid grid-cols-2 gap-2">
-                <select value={channel} onChange={(e) => setChannel(e.target.value)} className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-indigo-300">
-                  <option value="all">{t("messagesPage.allChannels")}</option>
-                  <option value="facebook">Facebook</option>
-                  <option value="telegram">Telegram</option>
-                  <option value="whatsapp">WhatsApp</option>
-                  <option value="instagram">Instagram</option>
-                </select>
-                <select value={status} onChange={(e) => setStatus(e.target.value)} className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-indigo-300">
-                  <option value="all">{t("messagesPage.allStatuses")}</option>
-                  <option value="active">{t("messagesPage.statusActive")}</option>
-                  <option value="open">{t("messagesPage.statusOpen")}</option>
-                  <option value="closed">{t("messagesPage.statusClosed")}</option>
-                  <option value="lead_captured">{t("navigation.leads")}</option>
-                  <option value="waiting_human">{t("common.waitingHuman")}</option>
-                </select>
-              </div>
-              <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600">
-                <input type="checkbox" checked={leadsOnly} onChange={(e) => setLeadsOnly(e.target.checked)} />
-                {t("messagesPage.leadsOnlyFilter")}
-              </label>
-            </div>
-          </div>
-
-          <div className="flex-1 min-h-0 overflow-y-auto p-2" ref={conversationListScrollRef} onScroll={handleConversationListScroll}>
-            {loadingConversations ? (
-              <div className="p-8 text-center text-sm text-slate-500">{t("messagesPage.loadingConversations")}</div>
-            ) : filteredConversations.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-400">{t("messagesPage.noMatchingConversations")}</div>
-            ) : (
-              filteredConversations.map((conv) => {
-                const isActive = conv.conversation_id === selectedConversationId;
-                const platformClass = platformStyles[(conv.channel || conv.platform || "").toLowerCase()] || "border-slate-200 bg-slate-50 text-slate-600";
-                const statusClass = statusStyles[conv.conversation_status] || "bg-slate-100 text-slate-600 border-slate-200";
-
-                // Explicit selection: the only two writers of
-                // mobileInboxView are this click and the Back button below
-                // — never fetches/realtime/filtering.
-                return (
-                  <button
-                    key={conv.conversation_id}
-                    onClick={() => {
-                      setSelectedConversationId(conv.conversation_id);
-                      setMobileInboxView("chat");
-                    }}
-                    className={`mb-1.5 w-full rounded-xl border p-2 text-start transition ${isActive ? "border-indigo-200 bg-white shadow-sm ring-4 ring-indigo-50" : "border-transparent hover:border-slate-200 hover:bg-white"}`}
-                  >
-                    <div className="flex items-start gap-3">
-      <ChannelIcon channel={conv.channel || conv.platform} />
-                      <div className="min-w-0 flex-1">
-                        {(() => {
-                          const idn = getConversationIdentity(conv);
-                          return (
-                            <>
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="truncate text-sm font-bold text-slate-950">{idn.primary || t("common.noName")}</p>
-                                <span className="shrink-0 text-[11px] text-slate-400">{relativeTime(conv.last_message_at || conv.updated_at, t)}</span>
-                              </div>
-                              {idn.secondary && <p className="truncate text-[11px] leading-4 text-slate-400" dir="ltr">{idn.secondary}</p>}
-                            </>
-                          );
-                        })()}
-                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{conv.last_message || t("messagesPage.noMessageYet")}</p>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                          <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${platformClass}`}>{conv.channel || conv.platform || t("messagesPage.unknownChannel")}</span>
-                          {/* Only shown once a client actually has more than
-                              one WhatsApp number connected -- see
-                              multipleWhatsappNumbers in fetchConversations.
-                              Plain literal label (not a translation key):
-                              this is a small, additive identifier, not new
-                              page copy, and keeps this change scoped to
-                              this one file. */}
-                          {multipleWhatsappNumbers && conv.platform?.toLowerCase() === "whatsapp" && conv.whatsapp_instance && (
-                            <span className="rounded-full border border-teal-100 bg-teal-50 px-2 py-0.5 text-[11px] font-bold text-teal-700">
-                              WhatsApp: {conv.whatsapp_instance.display_name || conv.whatsapp_instance.phone}
-                            </span>
-                          )}
-                          <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${statusClass}`}>{conv.conversation_status || "active"}</span>
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">{t("messagesPage.messagesCountSuffix", { count: conv.messages_count })}</span>
-                          {conv.unread_count > 0 && (
-                            <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[11px] font-bold text-white">{t("messagesPage.unreadCountSuffix", { count: conv.unread_count })}</span>
-                          )}
-                          {conv.assigned_user_id && (
-                            <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
-                              {t("messagesPage.claimedByPrefix", { name: conv.assigned_user?.name || t("roles.agent") })}
-                            </span>
-                          )}
-                          {/* Smart Assignment V1 — a system RECOMMENDATION,
-                              shown only while still unclaimed AND still
-                              waiting_human. Deliberately a different color
-                              (indigo, not emerald) from the "claimed by"
-                              badge above so it never reads as final
-                              ownership. Falls back to a neutral "Unassigned"
-                              label when there is no recommendation either.
-                              Gated on conversation_status too (not just
-                              assigned_user_id) because neither solve nor
-                              reopen clears system_assigned_user_id — an
-                              active/closed/reopened conversation can still
-                              carry a stale recommendation from a previous
-                              waiting_human cycle that must not be shown
-                              here. */}
-                          {conv.conversation_status === "waiting_human" && !conv.assigned_user_id && (
-                            conv.system_assigned_user_id ? (
-                              <span className="rounded-full border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-600">
-                                {conv.system_assigned_user_id === user?.id
-                                  ? t("messagesPage.systemSuggestedYou")
-                                  : t("messagesPage.systemSuggestedPrefix", { name: conv.system_assigned_user?.name || t("roles.agent") })}
-                              </span>
-                            ) : (
-                              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-bold text-slate-500">
-                                {t("messagesPage.unassigned")}
-                              </span>
-                            )
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })
-            )}
-            {/* Conversation List Pagination — no visible page numbers/
-                button; the next page loads automatically on scroll (see
-                handleConversationListScroll). This tiny row only occupies
-                space while actually loading, and never renders once
-                hasMoreConversations is false — no permanent layout
-                change. */}
-            {loadingMoreConversations && (
-              <div className="p-2 text-center text-[11px] text-slate-400">{t("messagesPage.loadingMoreConversations", "…")}</div>
-            )}
-          </div>
+      <div
+        className={cx(
+          "grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm md:grid-cols-[300px_minmax(0,1fr)]",
+          detailsOpen ? "xl:grid-cols-[320px_minmax(0,1fr)_320px]" : "xl:grid-cols-[320px_minmax(0,1fr)]"
+        )}
+      >
+        <aside className={`${mobileInboxView === "chat" ? "hidden md:flex" : "flex"} h-full min-h-0 flex-col border-e border-slate-200/80 bg-white`}>
+          <InboxConversationList
+            conversations={filteredConversations}
+            selectedConversationId={selectedConversationId}
+            onSelect={(id) => {
+              // Explicit selection: the only two writers of mobileInboxView
+              // are this click and the Back button — never fetches/polls.
+              setSelectedConversationId(id);
+              setMobileInboxView("chat");
+            }}
+            loading={loadingConversations}
+            loadingMore={loadingMoreConversations}
+            totalCount={totalConversationsCount}
+            search={search}
+            setSearch={setSearch}
+            channel={channel}
+            setChannel={setChannel}
+            status={status}
+            setStatus={setStatus}
+            leadsOnly={leadsOnly}
+            setLeadsOnly={setLeadsOnly}
+            onRefresh={() => fetchInitialConversations()}
+            listScrollRef={conversationListScrollRef}
+            onListScroll={handleConversationListScroll}
+            multipleWhatsappNumbers={multipleWhatsappNumbers}
+            userId={user?.id}
+            t={t}
+          />
         </aside>
 
-        <section className={`${mobileInboxView === "chat" ? "flex" : "hidden md:flex"} min-h-0 flex-col bg-white`}>
+        <section className={`${mobileInboxView === "chat" ? "flex" : "hidden md:flex"} min-h-0 min-w-0 flex-col bg-white`}>
           {!selectedConversation ? (
-            <div className="flex flex-1 items-center justify-center text-sm text-slate-400">{t("messagesPage.selectConversationPrompt")}</div>
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-sm text-slate-400">
+              <ChatBubbleLeftRightIcon className="h-8 w-8 text-slate-300" />
+              {t("messagesPage.selectConversationPrompt")}
+            </div>
           ) : (
             <>
-              <div className="shrink-0 border-b border-slate-100 p-3">
-                <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="flex min-w-0 items-start gap-3">
-                    {/* Below md the list is its own pane (see aside above)
-                        — this returns to it by switching mobileInboxView
-                        back to "list", NOT by clearing
-                        selectedConversationId (that stays "which
-                        conversation's content is loaded" regardless of
-                        which pane is showing, so the chat is still there,
-                        scrolled to the same place, if the user taps back
-                        into it from the list). Hidden at md+ where both
-                        panes are already visible side by side. Renders a
-                        visible "Back" label (not just the arrow icon) so
-                        it reads unambiguously as navigation rather than
-                        blending in with the other small icon-only controls
-                        in this header — flagged in mobile visual QA. */}
-                    <button
-                      type="button"
-                      onClick={() => setMobileInboxView("list")}
-                      className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 md:hidden"
-                      aria-label={t("common.back")}
-                    >
-                      <ArrowLeftIcon className="h-4 w-4 rtl:rotate-180" />
-                      {t("common.back")}
-                    </button>
-                    <ChannelIcon channel={selectedConversation.channel || selectedConversation.platform} size="h-10 w-10" />
-                    {/* min-w-0 so a long sender/lead name truncates instead
-                        of forcing this header row wider than its pane —
-                        the same truncate pattern the conversation list
-                        items already use (see filteredConversations.map
-                        above). */}
-                    <div className="min-w-0">
-                      {(() => {
-                        const idn = getConversationIdentity(selectedConversation, { selectedLeadName: selectedLead?.name });
-                        return (
-                          <>
-                            <h2 className="truncate text-base font-bold text-slate-950">{idn.primary || t("common.noName")}</h2>
-                            {idn.secondary && <p className="truncate text-xs leading-4 text-slate-400" dir="ltr">{idn.secondary}</p>}
-                          </>
-                        );
-                      })()}
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">{selectedConversation.channel || selectedConversation.platform || t("messagesPage.unknownChannel")}</span>
-                        {multipleWhatsappNumbers && selectedConversation.platform?.toLowerCase() === "whatsapp" && selectedConversation.whatsapp_instance && (
-                          <span className="rounded-full border border-teal-100 bg-teal-50 px-3 py-1 text-xs font-bold text-teal-700">
-                            WhatsApp: {selectedConversation.whatsapp_instance.display_name || selectedConversation.whatsapp_instance.phone}
-                          </span>
-                        )}
-                        <span className={`rounded-full border px-3 py-1 text-xs font-bold ${statusStyles[selectedConversation.conversation_status] || "bg-slate-100 text-slate-600 border-slate-200"}`}>{selectedConversation.conversation_status || "active"}</span>
-                        <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-600">{t("messagesPage.messagesCountSuffix", { count: visibleMessages.length })}</span>
-                      </div>
-                    </div>
-                  </div>
+              <InboxConversationHeader
+                conv={selectedConversation}
+                selectedLead={selectedLead}
+                multipleWhatsappNumbers={multipleWhatsappNumbers}
+                userId={user?.id}
+                conversationStatus={conversationStatus}
+                canControlConversation={canControlConversation}
+                reopenWindowExpired={reopenWindowExpired}
+                claimingId={claimingId}
+                updatingStatus={updatingStatus}
+                onClaim={claimConversation}
+                onTakeover={takeoverConversation}
+                onClose={closeConversation}
+                onReopen={reopenConversation}
+                onBack={() => setMobileInboxView("list")}
+                onToggleDetails={toggleDetails}
+                detailsPressed={detailsOpen}
+                t={t}
+              />
 
-                  {/* border-t/pt-2 (removed again at lg, where this sits
-                      beside the identity block instead of stacked below
-                      it) gives this control group its own visual
-                      separation from the identity/badges block above
-                      instead of the two running directly into each other
-                      — flagged as "excessively cramped" in mobile visual
-                      QA. */}
-                  <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2 lg:justify-end lg:border-t-0 lg:pt-0">
-                    {conversationStatus === "waiting_human" && !selectedConversation.assigned_user_id && (
-                      <>
-                        <span className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">{t("common.waitingHuman")}</span>
-                        {/* Smart Assignment V1 — a system RECOMMENDATION,
-                            not ownership: deliberately a different color
-                            from the "claimed by" pill below (and from
-                            the amber "waiting" badge above), and the Take
-                            Conversation button right after it stays fully
-                            enabled/available regardless of who this
-                            suggests — any eligible employee can still
-                            accept first. Falls back to a neutral
-                            "Unassigned" label when there is no
-                            recommendation either. */}
-                        {selectedConversation.system_assigned_user_id ? (
-                          <span className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-600">
-                            {selectedConversation.system_assigned_user_id === user?.id
-                              ? t("messagesPage.systemSuggestedYou")
-                              : t("messagesPage.systemSuggestedPrefix", { name: selectedConversation.system_assigned_user?.name || t("roles.agent") })}
-                          </span>
-                        ) : (
-                          <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-500">
-                            {t("messagesPage.unassigned")}
-                          </span>
-                        )}
-                        <button
-                          onClick={() => claimConversation(selectedConversation.conversation_id)}
-                          disabled={claimingId === selectedConversation.conversation_id}
-                          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50"
-                        >
-                          {claimingId === selectedConversation.conversation_id ? t("messagesPage.claiming") : t("messagesPage.claimConversation")}
-                        </button>
-                      </>
-                    )}
-                    {conversationStatus === "waiting_human" && selectedConversation.assigned_user_id && (
-                      // max-w-full truncate: this pill embeds the assigned
-                      // employee's name, which — unlike every other badge
-                      // in this header — is arbitrary-length user data, not
-                      // a fixed vocabulary word. Without a bound it could
-                      // force real horizontal overflow instead of wrapping
-                      // (flex-wrap only wraps BETWEEN items; it doesn't
-                      // shrink an individual item wider than its row).
-                      <span className="max-w-full truncate rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">
-                        {t("messagesPage.claimedByFullPrefix", { name: selectedConversation.assigned_user?.name || t("roles.agent") })}
-                      </span>
-                    )}
-                    {conversationStatus !== "waiting_human" && conversationStatus !== "closed" && (
-                      <button onClick={takeoverConversation} disabled={updatingStatus} className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">{t("common.transferToAgent")}</button>
-                    )}
-                    {conversationStatus !== "closed" && canControlConversation && (
-                      <button onClick={closeConversation} disabled={updatingStatus} className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">{t("common.close")}</button>
-                    )}
-                    {conversationStatus === "closed" && !reopenWindowExpired && (
-                      <button onClick={reopenConversation} disabled={updatingStatus} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm disabled:opacity-50">{t("messagesPage.reopenConversation")}</button>
-                    )}
-                    {conversationStatus === "closed" && reopenWindowExpired && (
-                      <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-500">
-                        {t("messagesPage.conversationArchivedBadge", "مؤرشفة")}
-                      </span>
-                    )}
-                    {/* Conversation Card V1 — opens the same card as the
-                        persistent xl+ panel, as a drawer/sheet. Hidden at
-                        xl+ since the panel is already always visible there
-                        (see the grid comment above). Available regardless
-                        of conversationStatus, unlike the action buttons
-                        above — the card's lifecycle/notes context is useful
-                        even for a closed/active conversation. */}
-                    <button
-                      type="button"
-                      onClick={() => setCardOpen(true)}
-                      aria-label={t("conversationCard.openButton")}
-                      className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-600 shadow-sm hover:bg-slate-50 xl:hidden"
-                    >
-                      <InformationCircleIcon className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
+              <InboxMessageTimeline
+                messages={visibleMessages}
+                events={cardData.card?.timeline}
+                timelineEventLabel={cardData.timelineEventLabel}
+                loadingMessages={loadingMessages}
+                hasMoreOlder={hasMoreOlder}
+                loadingOlder={loadingOlder}
+                onLoadOlder={loadOlderMessages}
+                hoveringTop={hoveringTop}
+                setHoveringTop={setHoveringTop}
+                nearTopScroll={nearTopScroll}
+                messagesScrollRef={messagesScrollRef}
+                onMessagesScroll={handleMessagesScroll}
+                conversationId={selectedConversation.conversation_id}
+                actorUserId={user?.id}
+                actorUserName={user?.name}
+                assignedUserId={selectedConversation.assigned_user_id}
+                assignedUserName={selectedConversation.assigned_user?.name}
+                t={t}
+                lang={i18n.language}
+              />
 
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                  <span className="font-bold text-slate-500">{t("messagesPage.leadLabelPrefix")}</span>
-                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 font-semibold text-slate-700">{selectedLead?.name || t("common.noName")}</span>
-                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 font-semibold text-slate-700">{selectedLead?.phone || t("messagesPage.noPhone")}</span>
-                </div>
-              </div>
-
-              {/* Message Pagination / Load Older Messages — the floating
-                  "Load older" control below is positioned against THIS
-                  wrapper (not the scrollable element itself), so it never
-                  scrolls with the message content and reserves zero
-                  permanent vertical space — it only ever overlays the top
-                  of the viewport, shown/hidden by opacity. */}
-              <div className="relative min-h-0 flex-1">
-              <div ref={messagesScrollRef} onScroll={handleMessagesScroll} className="h-full overflow-y-auto bg-slate-50/40 p-3">
-                {loadingMessages ? (
-                  <div className="p-8 text-center text-sm text-slate-500">{t("messagesPage.loadingMessages")}</div>
-                ) : visibleMessages.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-400">{t("messagesPage.noMessagesForConversation")}</div>
-                ) : (
-                  <div className="space-y-2.5">
-                    {visibleMessages.map((msg) => {
-                      const isInbound = ["inbound", "in"].includes(msg.direction);
-                      // isMediaMessageType(undefined/null) is false, so every
-                      // historical row (message_type never set) takes the
-                      // exact same path as before — no behavior change for
-                      // existing/text messages.
-                      const isMedia = isMediaMessageType(msg.message_type);
-                      const captionText = msg.message_text || getMessageText(msg);
-                      const mediaControl = isMedia ? MEDIA_CONTROLS.find((c) => c.type === msg.message_type) : null;
-                      return (
-                        <div key={msg.id} className={`flex ${isInbound ? "justify-start" : "justify-end"}`}>
-                          <div className={`max-w-[58%] rounded-2xl px-3.5 py-2.5 shadow-sm ${isInbound ? "rounded-tr-lg border border-slate-200 bg-white text-slate-800" : "rounded-tl-lg bg-indigo-600/95 text-white shadow-indigo-100"} ${msg._pending ? "opacity-70" : ""}`}>
-                            <div className="mb-1.5 flex items-center gap-2">
-                              <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${isInbound ? "bg-slate-100 text-slate-500" : "bg-white/15 text-white"}`}>{directionLabel(msg.direction, t)}</span>
-                              <span className={`text-[11px] ${isInbound ? "text-slate-400" : "text-indigo-100"}`}>{msg._pending ? t("messagesPage.sending") : formatDate(msg.created_at, i18n.language)}</span>
-                            </div>
-                            {isMedia && !msg._pending && (
-                              <MediaAttachment
-                                msg={msg}
-                                mediaControl={mediaControl}
-                                isInbound={isInbound}
-                                conversationId={selectedConversation.conversation_id}
-                                actorUserId={user?.id}
-                                t={t}
-                              />
-                            )}
-                            {(!isMedia || captionText || msg._pending) && (
-                              <div className="whitespace-pre-wrap break-words text-sm leading-6">
-                                {captionText ? (
-                                  <LinkifiedText text={captionText} />
-                                ) : isMedia ? (
-                                  msg.media_file_name || ""
-                                ) : (
-                                  "—"
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Load-older floating control — Message Pagination v1.
-                  Absolutely positioned against the wrapper above (never
-                  the scrollable element), so it is never part of the
-                  message layout and never pushes anything down; entirely
-                  absent from the DOM once hasMoreOlder is false. The
-                  outer div is the actual "near the top" hover-detection
-                  zone (bigger than the chip itself — the chip starts
-                  invisible, so hovering only the chip would be
-                  undiscoverable); the chip fades in on hover (desktop) or
-                  on scrolling near the top (touch/mobile — nearTopScroll,
-                  from the existing onScroll handler above). */}
-              {hasMoreOlder && !loadingMessages && (
-                <div
-                  className="pointer-events-auto absolute inset-x-0 top-0 z-10 flex h-16 justify-center"
-                  onMouseEnter={() => setHoveringTop(true)}
-                  onMouseLeave={() => setHoveringTop(false)}
-                >
-                  <button
-                    type="button"
-                    onClick={loadOlderMessages}
-                    disabled={loadingOlder}
-                    className={`mt-2 h-fit rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-xs font-bold text-slate-600 shadow-md backdrop-blur transition-opacity duration-150 disabled:cursor-wait ${
-                      hoveringTop || nearTopScroll ? "opacity-100" : "pointer-events-none opacity-0"
-                    }`}
-                  >
-                    {loadingOlder ? t("messagesPage.loadingOlderMessages", "⟳ جاري التحميل...") : t("messagesPage.loadOlderMessages", "↑ رسائل أقدم")}
-                  </button>
-                </div>
-              )}
-              </div>
-
-              {/* px-3 pt-3 + a safe-area-aware pb (instead of p-3) so the
-                  composer — the one piece of the Inbox that must "remain
-                  fully visible above browser/device UI" — stays clear of
-                  the home-indicator area on notched phones (viewport-
-                  fit=cover in index.html renders this pane edge-to-edge
-                  without this). max(0.75rem, ...) keeps the original
-                  0.75rem/p-3 spacing wherever the inset is 0, i.e.
-                  everywhere non-notched, including desktop. */}
-              <div className="shrink-0 border-t border-slate-100 bg-white px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]">
-                {sendError && (
-                  <div className="mb-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
-                    {sendError}
-                  </div>
-                )}
-
-                {!canSendHumanReply && (
-                  <div className="mb-2 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
-                    {isClosedConversation
-                      ? reopenWindowExpired
-                        ? t(
-                            "messagesPage.conversationArchivedNotice",
-                            "هذه المحادثة مؤرشفة (مضى أكثر من ساعتين على إغلاقها) ولا يمكن إعادة فتحها. أي رسالة جديدة من العميل ستبدأ محادثة جديدة."
-                          )
-                        : t("messagesPage.conversationClosedNotice")
-                      : isWaitingHuman
-                        ? selectedConversation.assigned_user_id
-                          ? t("messagesPage.claimedByNotice", { name: selectedConversation.assigned_user?.name || t("roles.agent") })
-                          : t("messagesPage.mustClaimFirst")
-                        : t(
-                            "messagesPage.automationHandlingNotice",
-                            "هذه المحادثة يديرها الرد الآلي حالياً. اضغط «تحويل إلى موظف» ثم «استلام المحادثة» للرد يدوياً."
-                          )}
-                  </div>
-                )}
-
-                {/* Selected-attachment preview — WhatsApp Media & Attachment
-                    Support v1. Upload only happens on Send (see
-                    handleFileSelected / sendHumanReply above), so this
-                    preview alone never writes to Storage. */}
-                {attachment && (
-                  <div className="mb-2 flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-2">
-                    {attachment.type === MESSAGE_TYPES.IMAGE && attachment.previewUrl ? (
-                      <img src={attachment.previewUrl} alt="" className="h-12 w-12 shrink-0 rounded-xl object-cover" />
-                    ) : (
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400">
-                        {attachment.type === MESSAGE_TYPES.AUDIO ? <MicrophoneIcon className="h-5 w-5" /> : <DocumentIcon className="h-5 w-5" />}
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold text-slate-900">{attachment.file.name}</p>
-                      <p className="text-xs text-slate-500">{formatFileSize(attachment.file.size)}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={removeAttachment}
-                      className="shrink-0 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
-                      aria-label={t("messagesPage.removeAttachment")}
-                    >
-                      <XMarkIcon className="h-4 w-4" />
-                    </button>
-                  </div>
-                )}
-
-                <div className="flex items-end gap-2">
-                  {/* Media controls — each button opens its hidden file
-                      input only when canSendMedia is true, i.e. the
-                      conversation's channel is in
-                      SUPPORTED_MEDIA_CHANNEL_VALUES (src/lib/mediaMessages.js
-                      — whatsapp/facebook/telegram today). Any other/unknown
-                      channel renders the same disabled "coming soon" state
-                      as before. */}
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    {availableMediaControls.map(({ key, type, labelKey, icon: Icon }) => (
-                      <React.Fragment key={key}>
-                        <input
-                          ref={(el) => {
-                            fileInputRefs.current[key] = el;
-                          }}
-                          type="file"
-                          accept={getAcceptAttribute(type)}
-                          className="hidden"
-                          onChange={(e) => handleFileSelected(type, e)}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleMediaButtonClick(key)}
-                          disabled={!canSendMedia || sending || !canSendHumanReply}
-                          title={canSendMedia ? t(labelKey) : t("messagesPage.mediaComingSoon", { label: t(labelKey) })}
-                          className={`flex h-11 w-11 items-center justify-center rounded-2xl border transition ${
-                            canSendMedia
-                              ? "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                              : "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
-                          }`}
-                        >
-                          <Icon className="h-5 w-5" />
-                        </button>
-                      </React.Fragment>
-                    ))}
-                  </div>
-
-                  <textarea
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={handleComposerKeyDown}
-                    disabled={sending || !canSendHumanReply}
-                    placeholder={
-                      canSendHumanReply
-                        ? attachment
-                          ? t("messagesPage.captionPlaceholder")
-                          : t("messagesPage.composerPlaceholderEnabled")
-                        : t("messagesPage.composerPlaceholderDisabled")
-                    }
-                    rows={2}
-                    // min-w-0: without it, a flex item's default min-width
-                    // is its content's intrinsic width — for a <textarea>
-                    // that's its default `cols` sizing (~20 characters),
-                    // which was wide enough to force horizontal overflow
-                    // of the whole composer row on narrow phones once the
-                    // 3 media buttons + send button were also on-screen.
-                    className="min-h-[44px] max-h-40 min-w-0 flex-1 resize-none rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50 disabled:bg-slate-50 disabled:text-slate-400"
-                  />
-
-                  <button
-                    type="button"
-                    onClick={sendHumanReply}
-                    disabled={sending || (!draft.trim() && !attachment) || !canSendHumanReply}
-                    className="h-11 shrink-0 rounded-2xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50"
-                  >
-                    {sending ? t("messagesPage.sending") : t("messagesPage.send")}
-                  </button>
-                </div>
-              </div>
+              <InboxComposer
+                mode={composerMode}
+                setMode={setComposerMode}
+                draft={draft}
+                setDraft={setDraft}
+                onKeyDown={handleComposerKeyDown}
+                onSend={sendHumanReply}
+                sending={sending}
+                sendError={sendError}
+                canSendHumanReply={canSendHumanReply}
+                noticeText={composerNotice}
+                attachment={attachment}
+                onRemoveAttachment={removeAttachment}
+                mediaControls={availableMediaControls}
+                canSendMedia={canSendMedia}
+                fileInputRefs={fileInputRefs}
+                onMediaButtonClick={handleMediaButtonClick}
+                onFileSelected={handleFileSelected}
+                noteDraft={cardData.noteDraft}
+                setNoteDraft={cardData.setNoteDraft}
+                addingNote={cardData.addingNote}
+                onAddNote={cardData.handleAddNote}
+                notesError={cardData.notesError}
+                t={t}
+              />
             </>
           )}
         </section>
 
-        {/* Conversation Card V1 — persistent 3rd column, xl+ only (see the
-            grid comment above). Always rendered as its own grid track so
-            the column width stays reserved even with no conversation
-            selected; the empty-state message below matches the chat pane's
-            own "select a conversation" placeholder. The drawer variant
-            below (< xl) is the same component, just mounted differently. */}
-        <aside className="hidden h-full min-h-0 flex-col border-s border-slate-100 bg-slate-50/50 xl:flex">
-          {selectedConversation ? (
-            <ConversationCard conversationId={selectedConversation.conversation_id} actorUserId={user?.id} variant="panel" />
-          ) : (
-            <div className="flex flex-1 items-center justify-center p-4 text-center text-sm text-slate-400">{t("messagesPage.selectConversationPrompt")}</div>
-          )}
-        </aside>
+        {/* Conversation Card — persistent, collapsible column at xl+. */}
+        {detailsOpen && (
+          <aside className="hidden h-full min-h-0 min-w-0 flex-col border-s border-slate-200/80 xl:flex">
+            {selectedConversation ? (
+              <ConversationCard
+                conv={selectedConversation}
+                data={cardData}
+                selectedLead={selectedLead}
+                actorUserId={user?.id}
+                multipleWhatsappNumbers={multipleWhatsappNumbers}
+                variant="panel"
+                onClose={() => setDetailsOpen(false)}
+                isRtl={isRtl}
+                t={t}
+                lang={i18n.language}
+              />
+            ) : (
+              <div className="flex flex-1 items-center justify-center p-4 text-center text-sm text-slate-400">{t("messagesPage.selectConversationPrompt")}</div>
+            )}
+          </aside>
+        )}
       </div>
 
       {selectedConversation && (
-        <ConversationCard conversationId={selectedConversation.conversation_id} actorUserId={user?.id} variant="drawer" open={cardOpen} onClose={() => setCardOpen(false)} />
+        <ConversationCard
+          conv={selectedConversation}
+          data={cardData}
+          selectedLead={selectedLead}
+          actorUserId={user?.id}
+          multipleWhatsappNumbers={multipleWhatsappNumbers}
+          variant="drawer"
+          open={cardOpen}
+          onClose={() => setCardOpen(false)}
+          isRtl={isRtl}
+          t={t}
+          lang={i18n.language}
+        />
       )}
     </div>
   );
