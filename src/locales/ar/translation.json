@@ -436,6 +436,8 @@
     "loadError": "فشل تحميل أرقام واتساب."
   },
   "leads": {
+    "openConversation": "فتح",
+    "conversationUnavailable": "هذه المحادثة غير متاحة في صندوق الوارد",
     "copyConversationId": "نسخ معرّف المحادثة",
     "capturedFrom": "تم التقاطه عبر {{channel}}",
     "exportTitle": "تنزيل العملاء المطابقين للفلاتر الحالية كملف CSV",
@@ -1010,6 +1012,8 @@
     "previewHostHint": "تعمل المعاينة على {{host}} — أضفه إلى النطاقات المسموحة لتجربة المحادثة هنا، وإلا ستظهر النافذة \"غير متاحة\"."
   },
   "inbox": {
+    "deepLinkUnavailable": "المحادثة المطلوبة غير متاحة. قد لا تكون موجودة أو ليس لديك صلاحية الوصول إليها.",
+    "showAllConversations": "عرض كل المحادثات",
     "today": "اليوم",
     "yesterday": "أمس",
     "tabAll": "الكل",

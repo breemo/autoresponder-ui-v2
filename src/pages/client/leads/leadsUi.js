@@ -122,3 +122,49 @@ export function leadsToCsv(rows, { channelOf, t, headers }) {
   }
   return "﻿" + lines.join("\r\n");
 }
+
+// Deterministic channel resolution for a lead, by EXACT conversation id only
+// (never by sender_id — one sender may exist on several channels/accounts).
+// Precedence:
+//   1. V2 `conversations` row (via the authorized Inbox list endpoint) —
+//      platform + WhatsApp account identity. source: "conversation"
+//   2. legacy `conversation_state` row with the same conversation_id
+//      (the previous source). source: "legacy"
+//   3. unresolved -> honest "unknown". source: null
+export function resolveLeadChannel(lead, v2ById, legacyById) {
+  const cid = lead?.conversation_id;
+  const v2 = cid && v2ById ? v2ById.get(cid) : null;
+  if (v2 && leadChannelKey(v2.platform) !== "unknown") {
+    const wa = leadChannelKey(v2.platform) === "whatsapp" ? v2.whatsapp_instance : null;
+    return {
+      platform: v2.platform,
+      key: leadChannelKey(v2.platform),
+      source: "conversation",
+      channelKey: v2.channel_key || null,
+      account: wa ? wa.display_name || wa.phone || null : null,
+      inInbox: true,
+    };
+  }
+  const legacy = cid && legacyById ? legacyById[cid] : null;
+  if (legacy && leadChannelKey(legacy) !== "unknown") {
+    return { platform: legacy, key: leadChannelKey(legacy), source: "legacy", channelKey: null, account: null, inInbox: !!v2 };
+  }
+  return { platform: null, key: "unknown", source: null, channelKey: null, account: null, inInbox: !!v2 };
+}
+
+// True when the resolved leads span more than one WhatsApp account — the
+// account name is only shown then (same rule as the Inbox).
+export function hasMultipleWhatsappAccounts(resolutions) {
+  const keys = new Set();
+  for (const r of resolutions) if (r.key === "whatsapp" && r.channelKey) keys.add(r.channelKey);
+  return keys.size > 1;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function isConversationUuid(value) {
+  return UUID_RE.test(String(value || ""));
+}
+
+export function inboxConversationHref(conversationId) {
+  return `/client/messages?conversation=${encodeURIComponent(conversationId)}`;
+}

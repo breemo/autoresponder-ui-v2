@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { PERMISSIONS, hasUserPermission } from "../../lib/permissions.js";
 import Pagination from "../../components/Pagination.jsx";
 import { AppChannelTile } from "../../components/app/Channel.jsx";
 import { PageHeader, Skeleton, cx, ui } from "../../components/app/primitives.jsx";
@@ -10,6 +12,7 @@ import {
   ArrowPathIcon,
   CalendarDaysIcon,
   ChatBubbleLeftRightIcon,
+  ChatBubbleOvalLeftEllipsisIcon,
   CheckIcon,
   ClipboardDocumentIcon,
   MagnifyingGlassIcon,
@@ -22,13 +25,18 @@ import {
   TIME_FILTERS,
   channelOptions,
   filterLeads,
+  hasMultipleWhatsappAccounts,
+  inboxConversationHref,
+  isConversationUuid,
   leadChannelKey,
   leadChannelLabel,
   leadStats,
   leadsToCsv,
   normalizePhone,
+  resolveLeadChannel,
   shortId,
 } from "./leads/leadsUi.js";
+import { fetchLeadConversations } from "./leads/leadConversations.js";
 
 const PAGE_SIZE = 10;
 
@@ -102,6 +110,12 @@ export default function ClientLeads() {
   // conversation_id -> platform, enriched separately since `leads` itself
   // has no channel column — read-only display enrichment, no schema change.
   const [channelByConversation, setChannelByConversation] = useState({});
+  // conversation_id -> V2 conversation identity (platform, channel_key,
+  // WhatsApp account), from the authorized Inbox list endpoint. The
+  // preferred channel source; also proves the conversation exists in this
+  // client's Inbox (Open Conversation). Only for users with Inbox access.
+  const [v2ById, setV2ById] = useState(() => new Map());
+  const canOpenInbox = hasUserPermission(user, PERMISSIONS.INBOX);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -119,6 +133,7 @@ export default function ClientLeads() {
     try {
       setLoading(true);
       setError("");
+      const v2Promise = canOpenInbox ? fetchLeadConversations(user?.id) : Promise.resolve({ status: "skipped", byId: new Map() });
 
       const { data, error } = await supabase
         .from("leads")
@@ -148,6 +163,10 @@ export default function ClientLeads() {
       } else {
         setChannelByConversation({});
       }
+
+      const v2 = await v2Promise;
+      if (v2.status !== "ok") console.warn("leads: conversation identity lookup", v2.status);
+      setV2ById(v2.byId);
     } catch (err) {
       console.error(err);
       setError(t("leads.errorFetch"));
@@ -161,19 +180,27 @@ export default function ClientLeads() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId]);
 
-  const channelOf = (lead) => channelByConversation[lead.conversation_id];
+  // One resolution per lead (exact conversation_id only — see
+  // resolveLeadChannel for the precedence).
+  const resolutionById = useMemo(() => {
+    const m = new Map();
+    for (const lead of leads) m.set(lead.id, resolveLeadChannel(lead, v2ById, channelByConversation));
+    return m;
+  }, [leads, v2ById, channelByConversation]);
+  const showAccounts = useMemo(() => hasMultipleWhatsappAccounts([...resolutionById.values()]), [resolutionById]);
+  const channelOf = (lead) => resolutionById.get(lead.id)?.platform || undefined;
 
   // Search + channel + time filter the full fetched dataset (not just the
   // current page) before pagination slices it.
   const filteredLeads = useMemo(
     () => filterLeads(leads, { search, channel, time, channelOf, t }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [leads, search, channel, time, channelByConversation, t]
+    [leads, search, channel, time, resolutionById, t]
   );
   const availableChannels = useMemo(
     () => channelOptions(leads, channelOf),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [leads, channelByConversation]
+    [leads, resolutionById]
   );
 
   // Reset to page 1 whenever the filtered set changes shape.
@@ -234,8 +261,31 @@ export default function ClientLeads() {
     const whatsappPhone = phone.startsWith("+") ? phone.slice(1) : phone;
     // wa.me only when the lead's actual channel is WhatsApp (unchanged rule).
     const whatsappLink = phone && channelOf(lead) === "whatsapp" ? `https://wa.me/${whatsappPhone}` : null;
-    return { key, label: leadChannelLabel(key, t), whatsappLink };
+    const res = resolutionById.get(lead.id);
+    const account = showAccounts ? res?.account || null : null;
+    // Open Conversation: only when the exact conversation was returned by
+    // this user's authorized Inbox list (it exists for this client).
+    const openHref = canOpenInbox && res?.inInbox && isConversationUuid(lead.conversation_id) ? inboxConversationHref(lead.conversation_id) : null;
+    return { key, label: leadChannelLabel(key, t), account, whatsappLink, openHref };
   }
+
+  const OpenConversation = ({ href }) =>
+    !canOpenInbox ? null : href ? (
+      <Link to={href} className={cx(actionBtn, "text-indigo-700")} data-action="open-conversation">
+        <ChatBubbleOvalLeftEllipsisIcon className="h-4 w-4" />
+        {t("leads.openConversation")}
+      </Link>
+    ) : (
+      <span
+        className={cx(actionBtn, "cursor-not-allowed opacity-50")}
+        aria-disabled="true"
+        title={t("leads.conversationUnavailable")}
+        data-action="open-conversation-unavailable"
+      >
+        <ChatBubbleOvalLeftEllipsisIcon className="h-4 w-4" />
+        {t("leads.openConversation")}
+      </span>
+    );
 
   const CopyPhoneButton = ({ lead }) => (
     <button type="button" onClick={() => copyValue(lead.phone)} disabled={!lead.phone} className={cx(actionBtn, "disabled:cursor-not-allowed disabled:opacity-50")}>
@@ -398,7 +448,9 @@ export default function ClientLeads() {
                               <p className="max-w-[220px] truncate font-semibold text-slate-900" title={lead.sender_id ? `${t("leads.colSender")}: ${lead.sender_id}` : undefined}>
                                 <bdi>{lead.name || t("common.noName")}</bdi>
                               </p>
-                              <p className="truncate text-xs text-slate-400">{t("leads.capturedFrom", { channel: m.label })}</p>
+                              <p className="truncate text-xs text-slate-400">{t("leads.capturedFrom", { channel: m.label })}
+                                {m.account && <span className="text-teal-700" dir="ltr"> · {m.account}</span>}
+                              </p>
                             </div>
                           </div>
                         </td>
@@ -417,6 +469,7 @@ export default function ClientLeads() {
                         </td>
                         <td className="px-4 py-2.5">
                           <div className="flex items-center gap-1.5">
+                            <OpenConversation href={m.openHref} />
                             <CopyPhoneButton lead={lead} />
                             <WhatsAppLink href={m.whatsappLink} />
                           </div>
@@ -441,7 +494,8 @@ export default function ClientLeads() {
                           <bdi>{lead.name || t("common.noName")}</bdi>
                         </p>
                         <p className="truncate text-xs text-slate-400">
-                          {m.label} · {formatDay(lead.created_at, lang)} {formatClock(lead.created_at, lang)}
+                          {m.label}
+                          {m.account && <span className="text-teal-700" dir="ltr"> · {m.account}</span>} · {formatDay(lead.created_at, lang)} {formatClock(lead.created_at, lang)}
                         </p>
                       </div>
                     </div>
@@ -450,7 +504,8 @@ export default function ClientLeads() {
                       <ConversationChip id={lead.conversation_id} />
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <CopyPhoneButton lead={lead} />
+                      <OpenConversation href={m.openHref} />
+                            <CopyPhoneButton lead={lead} />
                       <WhatsAppLink href={m.whatsappLink} />
                     </div>
                   </li>

@@ -89,7 +89,10 @@ test("Leads page: same data sources, no Open/ellipsis fake controls, AI Agent te
   assert.match(src, /\.from\("conversation_state"\)/);
   assert.match(src, /const PAGE_SIZE = 10;/);
   assert.match(src, /channelOf\(lead\) === "whatsapp" \? `https:\/\/wa\.me\//);
-  assert.doesNotMatch(src, /EllipsisHorizontal|EllipsisVertical|AI Assistant|\/client\/messages\?/);
+  assert.doesNotMatch(src, /EllipsisHorizontal|EllipsisVertical|AI Assistant/);
+  // Open Conversation only through the verified href, only with Inbox permission.
+  assert.match(src, /hasUserPermission\(user, PERMISSIONS\.INBOX\)/);
+  assert.match(src, /canOpenInbox && res\?\.inInbox && isConversationUuid\(lead\.conversation_id\) \? inboxConversationHref\(lead\.conversation_id\) : null/);
   const en = JSON.parse(read("src/locales/en/translation.json")).leads;
   const ar = JSON.parse(read("src/locales/ar/translation.json")).leads;
   assert.deepEqual(Object.keys(en).sort(), Object.keys(ar).sort());

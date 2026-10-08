@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChatBubbleLeftRightIcon } from "@heroicons/react/24/outline";
+import { useSearchParams } from "react-router-dom";
+import { ChatBubbleLeftRightIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useLanguage } from "../../context/LanguageContext.jsx";
@@ -30,6 +31,10 @@ import ConversationCard from "./inbox/ConversationCard.jsx";
 // Desktop (xl+) Conversation Card column: collapsible, remembered per
 // browser. Purely a layout preference — never affects data or permissions.
 const DETAILS_STORAGE_KEY = "ar.inbox.details";
+// Deep link from Leads: /client/messages?conversation=<conversations.id>.
+const CONVERSATION_PARAM = "conversation";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function readDetailsOpen() {
   try {
     return localStorage.getItem(DETAILS_STORAGE_KEY) !== "0";
@@ -126,6 +131,26 @@ export default function ClientMessages() {
     }
   }, [detailsOpen]);
   const [composerMode, setComposerMode] = useState("reply");
+
+  // Deep link (?conversation=<id>) — READ-ONLY selection of one exact
+  // conversation. It is resolved through the existing authorized list
+  // endpoint (exact-UUID search, scoped server-side to this actor's client);
+  // nothing is created, claimed, reopened or otherwise mutated. While the
+  // requested conversation is pending or unavailable, the usual "select the
+  // first conversation" fallback is suppressed so a different conversation
+  // is never opened in its place. status: loading | ready | missing | invalid
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedConversationId = searchParams.get(CONVERSATION_PARAM);
+  const [deepLink, setDeepLink] = useState(null);
+  const deepLinkBlocksAutoSelectRef = useRef(false);
+  deepLinkBlocksAutoSelectRef.current = !!requestedConversationId && deepLink?.status !== "ready";
+  // The resolved row, kept in the list while the default (unfiltered) view
+  // is active even if it is older than the loaded pages. pinnedExtraIdRef
+  // marks it as "not part of the server pages yet" so it never becomes the
+  // pagination cursor.
+  const pinnedConversationRef = useRef(null);
+  const pinnedExtraIdRef = useRef(null);
+  const filtersInitializedRef = useRef(false);
   const { isRtl } = useLanguage();
 
   const [loadingConversations, setLoadingConversations] = useState(true);
@@ -295,6 +320,26 @@ export default function ClientMessages() {
     if (added) setMultipleWhatsappNumbers(whatsappChannelKeysRef.current.size > 1);
   }
 
+  // Deep link helpers (see the deepLink state above).
+  function isDefaultConversationFilters(f) {
+    return (!f.status || f.status === "all") && (!f.channel || f.channel === "all") && !f.leadsOnly && !(f.search || "").trim();
+  }
+  function withPinnedConversation(rows, f) {
+    const pinned = pinnedConversationRef.current;
+    if (!pinned || !isDefaultConversationFilters(f) || rows.some((c) => c.conversation_id === pinned.conversation_id)) return rows;
+    return upsertConversations(rows, [pinned]);
+  }
+  function serverPagesCursor(rows) {
+    const extra = pinnedExtraIdRef.current;
+    return deriveConversationCursor(extra ? rows.filter((c) => c.conversation_id !== extra) : rows);
+  }
+  function clearConversationParam() {
+    if (!searchParams.has(CONVERSATION_PARAM)) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete(CONVERSATION_PARAM);
+    setSearchParams(next, { replace: true });
+  }
+
   // Initial load, and the reset triggered by every search/filter change
   // (see the effect below): the newest CONVERSATIONS_PAGE_SIZE
   // conversations matching the active filters, replacing whatever was
@@ -326,7 +371,10 @@ export default function ClientMessages() {
       const merged = data.conversations || [];
       applyWhatsappInstanceKeys(merged);
 
-      setConversations(merged);
+      const pinned = pinnedConversationRef.current;
+      const rows = withPinnedConversation(merged, filters);
+      pinnedExtraIdRef.current = pinned && rows !== merged ? pinned.conversation_id : null;
+      setConversations(rows);
       setHasMoreConversations(!!data.has_more);
       // total_count is always returned by the paginated endpoint's
       // initial-page response (see api/_lib/conversationListPage.js); the
@@ -344,7 +392,9 @@ export default function ClientMessages() {
       // window.matchMedia to work around selectedConversationId still
       // doing double duty; that's no longer needed now that the two
       // concerns are separate state.
-      setSelectedConversationId((current) => (current && merged.some((c) => c.conversation_id === current) ? current : merged[0]?.conversation_id || null));
+      setSelectedConversationId((current) =>
+        current && rows.some((c) => c.conversation_id === current) ? current : deepLinkBlocksAutoSelectRef.current ? null : rows[0]?.conversation_id || null
+      );
     } catch (err) {
       console.error(err);
       if (activeConversationFiltersRef.current === signature) setError(t("messagesPage.errorFetchConversations"));
@@ -383,8 +433,9 @@ export default function ClientMessages() {
       applyWhatsappInstanceKeys(olderRows);
 
       setConversations((prev) => {
+        if (olderRows.some((c) => c.conversation_id === pinnedExtraIdRef.current)) pinnedExtraIdRef.current = null;
         const merged = appendOlderConversations(prev, olderRows);
-        conversationsCursorRef.current = deriveConversationCursor(merged);
+        conversationsCursorRef.current = serverPagesCursor(merged);
         return merged;
       });
       setHasMoreConversations(!!data.has_more);
@@ -429,7 +480,7 @@ export default function ClientMessages() {
 
       setConversations((prev) => {
         const merged = upsertConversations(prev, changedRows);
-        conversationsCursorRef.current = deriveConversationCursor(merged);
+        conversationsCursorRef.current = serverPagesCursor(merged);
         return merged;
       });
     } catch (err) {
@@ -976,6 +1027,13 @@ export default function ClientMessages() {
   // change.
   useEffect(() => {
     if (!clientId) return;
+    if (filtersInitializedRef.current) {
+      // A user filter/search change ends the deep-link view.
+      pinnedConversationRef.current = null;
+      pinnedExtraIdRef.current = null;
+      clearConversationParam();
+    }
+    filtersInitializedRef.current = true;
     conversationsCursorRef.current = null;
     setHasMoreConversations(false);
     fetchInitialConversations();
@@ -1051,6 +1109,52 @@ export default function ClientMessages() {
   // below) purely to keep this change's diff minimal.
   const filteredConversations = conversations;
 
+  // Resolve the deep-linked conversation (direct navigation and refresh).
+  useEffect(() => {
+    if (!clientId || !user?.id) return undefined;
+    if (!requestedConversationId) {
+      setDeepLink(null);
+      return undefined;
+    }
+    const id = requestedConversationId.trim();
+    if (!UUID_RE.test(id)) {
+      setDeepLink({ id, status: "invalid" });
+      return undefined;
+    }
+    let cancelled = false;
+    setDeepLink({ id, status: "loading" });
+    (async () => {
+      try {
+        const params = new URLSearchParams({ resource: "list", actor_user_id: user.id, limit: "5", search: id });
+        const response = await fetch(`/api/conversation?${params.toString()}`);
+        const data = await response.json().catch(() => ({}));
+        if (cancelled) return;
+        const row = response.ok && data?.success !== false ? (data.conversations || []).find((c) => c.conversation_id === id) : null;
+        if (!row) {
+          setDeepLink({ id, status: "missing" });
+          return;
+        }
+        applyWhatsappInstanceKeys([row]);
+        pinnedConversationRef.current = row;
+        setConversations((prev) => {
+          if (prev.some((c) => c.conversation_id === id)) return prev;
+          pinnedExtraIdRef.current = id;
+          return upsertConversations(prev, [row]);
+        });
+        setDeepLink({ id, status: "ready" });
+        setSelectedConversationId(id);
+        setMobileInboxView("chat");
+      } catch (err) {
+        console.error(err);
+        if (!cancelled) setDeepLink({ id, status: "missing" });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId, user?.id, requestedConversationId]);
+
   useEffect(() => {
     if (filteredConversations.length === 0) {
       setSelectedConversationId(null);
@@ -1063,8 +1167,10 @@ export default function ClientMessages() {
     // selection) is safe on every viewport — see the note on
     // fetchConversations' own fallback above; this never touches
     // mobileInboxView, so it can never silently open the mobile chat pane.
-    if (!exists) setSelectedConversationId(filteredConversations[0].conversation_id);
-  }, [filteredConversations, selectedConversationId]);
+    if (!exists) setSelectedConversationId(deepLinkBlocksAutoSelectRef.current ? null : filteredConversations[0].conversation_id);
+    // requestedConversationId: re-run once a deep link is cleared, so the
+    // normal first-conversation fallback resumes.
+  }, [filteredConversations, selectedConversationId, requestedConversationId]);
 
   useEffect(() => {
     selectedConversationIdRef.current = selectedConversationId;
@@ -1313,6 +1419,16 @@ export default function ClientMessages() {
     <div className="flex h-full min-h-0 flex-col gap-2">
       {error && <div className="shrink-0 rounded-xl border border-rose-100 bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">{error}</div>}
 
+      {(deepLink?.status === "missing" || deepLink?.status === "invalid") && (
+        <div role="status" data-testid="deep-link-unavailable" className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+          <ExclamationTriangleIcon className="h-4 w-4 shrink-0" />
+          <span className="min-w-0 flex-1">{t("inbox.deepLinkUnavailable")}</span>
+          <button type="button" onClick={clearConversationParam} className="shrink-0 rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-semibold text-amber-900 transition hover:bg-amber-100">
+            {t("inbox.showAllConversations")}
+          </button>
+        </div>
+      )}
+
       <div
         className={cx(
           "grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm md:grid-cols-[300px_minmax(0,1fr)]",
@@ -1326,6 +1442,7 @@ export default function ClientMessages() {
             onSelect={(id) => {
               // Explicit selection: the only two writers of mobileInboxView
               // are this click and the Back button — never fetches/polls.
+              if (id !== requestedConversationId) clearConversationParam();
               setSelectedConversationId(id);
               setMobileInboxView("chat");
             }}
@@ -1353,7 +1470,11 @@ export default function ClientMessages() {
           {!selectedConversation ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-sm text-slate-400">
               <ChatBubbleLeftRightIcon className="h-8 w-8 text-slate-300" />
-              {t("messagesPage.selectConversationPrompt")}
+              {deepLink?.status === "loading"
+                ? t("messagesPage.loadingMessages")
+                : deepLink?.status === "missing" || deepLink?.status === "invalid"
+                  ? t("inbox.deepLinkUnavailable")
+                  : t("messagesPage.selectConversationPrompt")}
             </div>
           ) : (
             <>

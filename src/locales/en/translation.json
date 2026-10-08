@@ -436,6 +436,8 @@
     "loadError": "Failed to load WhatsApp numbers."
   },
   "leads": {
+    "openConversation": "Open",
+    "conversationUnavailable": "This conversation is not available in the Inbox",
     "copyConversationId": "Copy conversation ID",
     "capturedFrom": "Captured from {{channel}}",
     "exportTitle": "Download the leads matching the current filters as CSV",
@@ -1010,6 +1012,8 @@
     "previewHostHint": "Preview runs on {{host}} — add it to Allowed domains to test the chat here, otherwise the widget will show \"not available\"."
   },
   "inbox": {
+    "deepLinkUnavailable": "The requested conversation is not available. It may not exist or you may not have access to it.",
+    "showAllConversations": "Show all conversations",
     "today": "Today",
     "yesterday": "Yesterday",
     "tabAll": "All",
