@@ -85,7 +85,7 @@ export default function InstagramSetupSection({
     <div className="mt-5 space-y-4">
       {/* ---- Manual setup guide ---- */}
       <div className="rounded-2xl border border-fuchsia-100 bg-fuchsia-50/50 p-4">
-        <p className="text-sm font-bold text-slate-900">{t("instagramSetup.guideTitle")}</p>
+        <p className="text-sm font-semibold text-slate-900">{t("instagramSetup.guideTitle")}</p>
         <ol className="mt-2 list-decimal space-y-1 ps-5 text-xs leading-6 text-slate-600">
           <li>{t("instagramSetup.guideStepMetaOpen")}</li>
           <li>{t("instagramSetup.guideStepPasteWebhook")}</li>
@@ -93,7 +93,7 @@ export default function InstagramSetupSection({
           <li>{t("instagramSetup.guideStepSubscribeMessages")}</li>
           <li>{t("instagramSetup.guideStepMetaSave")}</li>
         </ol>
-        <p className="mt-3 text-sm font-bold text-slate-900">{t("instagramSetup.guideThenHereTitle")}</p>
+        <p className="mt-3 text-sm font-semibold text-slate-900">{t("instagramSetup.guideThenHereTitle")}</p>
         <ol className="mt-2 list-decimal space-y-1 ps-5 text-xs leading-6 text-slate-600">
           <li>{t("instagramSetup.guideStepEnterAccountId")}</li>
           <li>{t("instagramSetup.guideStepEnterPageId")}</li>
