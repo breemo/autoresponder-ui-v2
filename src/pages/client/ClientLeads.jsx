@@ -2,57 +2,98 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
-import ChannelIcon from "../../lib/channelIcons.jsx";
 import Pagination from "../../components/Pagination.jsx";
-import { PageHeader, ui } from "../../components/app/primitives.jsx";
+import { AppChannelTile } from "../../components/app/Channel.jsx";
+import { PageHeader, Skeleton, cx, ui } from "../../components/app/primitives.jsx";
 import {
+  ArrowDownTrayIcon,
   ArrowPathIcon,
+  CalendarDaysIcon,
+  ChatBubbleLeftRightIcon,
+  CheckIcon,
   ClipboardDocumentIcon,
   MagnifyingGlassIcon,
   PhoneIcon,
   UserGroupIcon,
+  UserIcon,
   UserPlusIcon,
-  CalendarDaysIcon,
-  ChatBubbleLeftRightIcon,
 } from "@heroicons/react/24/outline";
+import {
+  TIME_FILTERS,
+  channelOptions,
+  filterLeads,
+  leadChannelKey,
+  leadChannelLabel,
+  leadStats,
+  leadsToCsv,
+  normalizePhone,
+  shortId,
+} from "./leads/leadsUi.js";
 
 const PAGE_SIZE = 10;
 
-function formatDate(value, lang) {
+function formatDay(value, lang) {
   if (!value) return "—";
   try {
-    return new Date(value).toLocaleString(lang === "en" ? "en-US" : "ar-EG", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    return new Date(value).toLocaleDateString(lang === "en" ? "en-US" : "ar-EG", { year: "numeric", month: "short", day: "numeric" });
   } catch {
     return "—";
   }
 }
 
-function normalizePhone(phone) {
-  return String(phone || "").replace(/[^\d+]/g, "");
+function formatClock(value, lang) {
+  if (!value) return "";
+  try {
+    return new Date(value).toLocaleTimeString(lang === "en" ? "en-US" : "ar-EG", { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "";
+  }
 }
 
-function isToday(dateValue) {
-  if (!dateValue) return false;
-  const d = new Date(dateValue);
-  const now = new Date();
-  return d.toDateString() === now.toDateString();
+const KPI_TONES = {
+  indigo: "bg-indigo-50 text-indigo-600 ring-indigo-100",
+  emerald: "bg-emerald-50 text-emerald-600 ring-emerald-100",
+  sky: "bg-sky-50 text-sky-600 ring-sky-100",
+  violet: "bg-violet-50 text-violet-600 ring-violet-100",
+};
+
+// KPI card — real calculated values only (no trend/percentage: there is no
+// correct previous-period basis in the loaded data).
+function KpiCard({ icon: Icon, label, value, tone, loading }) {
+  return (
+    <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <span className={cx("inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ring-1 ring-inset", KPI_TONES[tone])}>
+        <Icon className="h-5 w-5" />
+      </span>
+      <div className="min-w-0">
+        <p className="text-xs font-medium leading-tight text-slate-500">{label}</p>
+        {loading ? <Skeleton className="mt-1.5 h-6 w-12" /> : <p className="mt-0.5 text-xl font-semibold tabular-nums text-slate-900">{value}</p>}
+      </div>
+    </div>
+  );
 }
 
-function isLastSevenDays(dateValue) {
-  if (!dateValue) return false;
-  const d = new Date(dateValue).getTime();
-  return Date.now() - d <= 7 * 24 * 60 * 60 * 1000;
+// Channel tile; unknown channels get a neutral person tile instead of initials.
+function LeadTile({ channelKey, className = "h-9 w-9 rounded-xl", iconClassName = "h-[18px] w-[18px]" }) {
+  if (channelKey === "unknown") {
+    return (
+      <span className={cx("inline-flex shrink-0 items-center justify-center bg-slate-100 text-slate-400", className)}>
+        <UserIcon className={iconClassName} />
+      </span>
+    );
+  }
+  return <AppChannelTile channel={channelKey} className={cx("shrink-0", className)} iconClassName={iconClassName} />;
 }
+
+const selectClass =
+  "h-9 rounded-lg border border-slate-200 bg-white pe-8 ps-3 text-[13px] text-slate-700 outline-none transition hover:bg-slate-50 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50";
+const actionBtn =
+  "inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500";
 
 export default function ClientLeads() {
   const { user } = useAuth();
   const { t, i18n } = useTranslation();
+  const lang = i18n.language;
   // client_id is resolved once at login via client_users (see Login.jsx) —
   // every user of this client shares the same client_id.
   const clientId = user?.client_id || null;
@@ -64,6 +105,8 @@ export default function ClientLeads() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [channel, setChannel] = useState("all");
+  const [time, setTime] = useState("all");
   const [page, setPage] = useState(1);
   const [copied, setCopied] = useState("");
 
@@ -118,24 +161,25 @@ export default function ClientLeads() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId]);
 
-  // Search filters the full fetched dataset (not just the current page)
-  // before pagination slices it, so results aren't limited to whatever 20
-  // rows happen to be showing.
-  const filteredLeads = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return leads;
+  const channelOf = (lead) => channelByConversation[lead.conversation_id];
 
-    return leads.filter((lead) => {
-      return `${lead.name || ""} ${lead.phone || ""} ${lead.sender_id || ""} ${lead.conversation_id || ""}`
-        .toLowerCase()
-        .includes(q);
-    });
-  }, [leads, search]);
+  // Search + channel + time filter the full fetched dataset (not just the
+  // current page) before pagination slices it.
+  const filteredLeads = useMemo(
+    () => filterLeads(leads, { search, channel, time, channelOf, t }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [leads, search, channel, time, channelByConversation, t]
+  );
+  const availableChannels = useMemo(
+    () => channelOptions(leads, channelOf),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [leads, channelByConversation]
+  );
 
-  // Reset to page 1 whenever the filtered set changes shape (new search).
+  // Reset to page 1 whenever the filtered set changes shape.
   useEffect(() => {
     setPage(1);
-  }, [search]);
+  }, [search, channel, time]);
 
   const totalPages = Math.max(1, Math.ceil(filteredLeads.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -144,26 +188,102 @@ export default function ClientLeads() {
     [filteredLeads, safePage]
   );
 
-  const stats = useMemo(() => {
-    const uniquePhones = new Set(leads.map((lead) => normalizePhone(lead.phone)).filter(Boolean));
-    return {
-      total: leads.length,
-      unique: uniquePhones.size,
-      today: leads.filter((lead) => isToday(lead.created_at)).length,
-      week: leads.filter((lead) => isLastSevenDays(lead.created_at)).length,
-    };
-  }, [leads]);
+  // KPIs are always over ALL loaded leads (unchanged formulas).
+  const stats = useMemo(() => leadStats(leads), [leads]);
+  const filtersActive = search.trim() !== "" || channel !== "all" || time !== "all";
 
-  async function copyValue(value) {
+  async function copyValue(value, key = value) {
     if (!value) return;
     try {
       await navigator.clipboard.writeText(value);
-      setCopied(value);
+      setCopied(key);
       setTimeout(() => setCopied(""), 1400);
     } catch (err) {
       console.error(err);
     }
   }
+
+  function resetFilters() {
+    setSearch("");
+    setChannel("all");
+    setTime("all");
+  }
+
+  // Export: CSV of exactly the rows currently matched by the filters — the
+  // same client-scoped records already shown on this page; nothing else is
+  // requested from the server.
+  function exportCsv() {
+    const csv = leadsToCsv(filteredLeads, {
+      channelOf,
+      t,
+      headers: [t("leads.colCustomer"), t("leads.colChannel"), t("leads.colPhone"), t("leads.colSender"), t("leads.colConversation"), t("leads.colCapturedAt")],
+    });
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function rowModel(lead) {
+    const key = leadChannelKey(channelOf(lead));
+    const phone = normalizePhone(lead.phone);
+    const whatsappPhone = phone.startsWith("+") ? phone.slice(1) : phone;
+    // wa.me only when the lead's actual channel is WhatsApp (unchanged rule).
+    const whatsappLink = phone && channelOf(lead) === "whatsapp" ? `https://wa.me/${whatsappPhone}` : null;
+    return { key, label: leadChannelLabel(key, t), whatsappLink };
+  }
+
+  const CopyPhoneButton = ({ lead }) => (
+    <button type="button" onClick={() => copyValue(lead.phone)} disabled={!lead.phone} className={cx(actionBtn, "disabled:cursor-not-allowed disabled:opacity-50")}>
+      {copied === lead.phone && lead.phone ? <CheckIcon className="h-4 w-4 text-emerald-600" /> : <ClipboardDocumentIcon className="h-4 w-4" />}
+      {copied === lead.phone && lead.phone ? t("common.copied") : t("common.copy")}
+    </button>
+  );
+
+  const WhatsAppLink = ({ href }) =>
+    href ? (
+      <a href={href} target="_blank" rel="noopener noreferrer" title={t("leads.openWhatsappTitle")} aria-label={t("leads.openWhatsappTitle")} className={cx(actionBtn, "px-1.5")}>
+        <AppChannelTile channel="whatsapp" className="h-5 w-5 rounded-md" iconClassName="h-3 w-3" />
+      </a>
+    ) : null;
+
+  const ConversationChip = ({ id }) =>
+    id ? (
+      <span className="inline-flex max-w-full items-center gap-1 rounded-lg bg-indigo-50/70 py-1 pe-1 ps-2 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-100" title={id}>
+        <span className="truncate font-mono" dir="ltr">
+          {shortId(id)}
+        </span>
+        <button
+          type="button"
+          onClick={() => copyValue(id, `conv:${id}`)}
+          aria-label={t("leads.copyConversationId")}
+          title={t("leads.copyConversationId")}
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-indigo-500 transition hover:bg-indigo-100 hover:text-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+        >
+          {copied === `conv:${id}` ? <CheckIcon className="h-3.5 w-3.5 text-emerald-600" /> : <ClipboardDocumentIcon className="h-3.5 w-3.5" />}
+        </button>
+      </span>
+    ) : (
+      <span className="text-slate-400">—</span>
+    );
+
+  const PhonePill = ({ phone }) => (
+    <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50/70 px-2.5 py-1 text-[13px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-100">
+      <PhoneIcon className="h-3.5 w-3.5 shrink-0" />
+      <span dir="ltr">{phone || "—"}</span>
+    </span>
+  );
+
+  const ChannelPill = ({ k, label }) => (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600 ring-1 ring-inset ring-slate-200">
+      <LeadTile channelKey={k} className="h-4 w-4 rounded" iconClassName="h-2.5 w-2.5" />
+      {label}
+    </span>
+  );
 
   return (
     <div className="space-y-4">
@@ -178,172 +298,127 @@ export default function ClientLeads() {
         }
       />
 
-      {error && (
-        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-          {error}
-        </div>
-      )}
+      {error && <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">{error}</div>}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-500">{t("leads.statTotal")}</p>
-              <p className="mt-1 text-xl font-bold text-slate-950">{stats.total}</p>
-            </div>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100">
-              <UserGroupIcon className="h-[18px] w-[18px]" />
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-500">{t("leads.statUnique")}</p>
-              <p className="mt-1 text-xl font-bold text-emerald-600">{stats.unique}</p>
-            </div>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100">
-              <PhoneIcon className="h-[18px] w-[18px]" />
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-500">{t("leads.statToday")}</p>
-              <p className="mt-1 text-xl font-bold text-blue-600">{stats.today}</p>
-            </div>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-600 ring-1 ring-blue-100">
-              <CalendarDaysIcon className="h-[18px] w-[18px]" />
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-500">{t("leads.statWeek")}</p>
-              <p className="mt-1 text-xl font-bold text-violet-600">{stats.week}</p>
-            </div>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-50 text-violet-600 ring-1 ring-violet-100">
-              <ChatBubbleLeftRightIcon className="h-[18px] w-[18px]" />
-            </div>
-          </div>
-        </div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <KpiCard icon={UserGroupIcon} tone="indigo" label={t("leads.statTotal")} value={stats.total} loading={loading} />
+        <KpiCard icon={PhoneIcon} tone="emerald" label={t("leads.statUnique")} value={stats.unique} loading={loading} />
+        <KpiCard icon={CalendarDaysIcon} tone="sky" label={t("leads.statToday")} value={stats.today} loading={loading} />
+        <KpiCard icon={ChatBubbleLeftRightIcon} tone="violet" label={t("leads.statWeek")} value={stats.week} loading={loading} />
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
+      <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="flex flex-col gap-3 border-b border-slate-100 p-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="min-w-0">
             <h2 className="text-[15px] font-semibold text-slate-900">{t("leads.listTitle")}</h2>
-            <p className="text-sm text-slate-500">
+            <p className="text-xs text-slate-500" data-testid="leads-count">
               {t("leads.listCount", { shown: filteredLeads.length, total: leads.length })}
             </p>
           </div>
 
-          <div className="relative w-full lg:w-96">
-            <MagnifyingGlassIcon className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-[7px] pe-3 ps-9 text-sm leading-5 outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-50"
-              placeholder={t("leads.searchPlaceholder")}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-0 flex-1 basis-full sm:basis-64 xl:w-80 xl:flex-none">
+              <MagnifyingGlassIcon className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="search"
+                className="h-9 w-full rounded-lg border border-slate-200 bg-white pe-3 ps-9 text-[13px] outline-none transition placeholder:text-slate-400 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50"
+                placeholder={t("leads.searchPlaceholder")}
+                aria-label={t("leads.searchPlaceholder")}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <select value={channel} onChange={(e) => setChannel(e.target.value)} className={cx(selectClass, "min-w-0 flex-1 basis-32 sm:flex-none sm:basis-auto")} aria-label={t("leads.colChannel")}>
+              <option value="all">{t("leads.allChannels")}</option>
+              {availableChannels.map((k) => (
+                <option key={k} value={k}>
+                  {leadChannelLabel(k, t)}
+                </option>
+              ))}
+            </select>
+            <select value={time} onChange={(e) => setTime(e.target.value)} className={cx(selectClass, "min-w-0 flex-1 basis-32 sm:flex-none sm:basis-auto")} aria-label={t("leads.timeLabel")}>
+              {TIME_FILTERS.map((v) => (
+                <option key={v} value={v}>
+                  {t(`leads.time_${v}`)}
+                </option>
+              ))}
+            </select>
+            <button type="button" onClick={resetFilters} disabled={!filtersActive} className={cx(actionBtn, "h-9 px-3 disabled:cursor-not-allowed disabled:opacity-50")}>
+              {t("leads.reset")}
+            </button>
+            <button
+              type="button"
+              onClick={exportCsv}
+              disabled={loading || filteredLeads.length === 0}
+              title={t("leads.exportTitle")}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-xs font-semibold text-white shadow-sm shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <ArrowDownTrayIcon className="h-4 w-4" />
+              {t("leads.export")}
+            </button>
           </div>
         </div>
 
         {loading ? (
-          <div className="p-4 text-center text-sm text-slate-500">{t("common.loading")}</div>
+          <div className="space-y-2 p-4">
+            {[0, 1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
+          </div>
         ) : filteredLeads.length === 0 ? (
-          <div className="p-4 text-center">
-            <UserPlusIcon className="mx-auto mb-3 h-10 w-10 text-slate-300" />
-            <p className="font-semibold text-slate-700">{t("leads.emptyTitle")}</p>
-            <p className="mt-1 text-sm text-slate-400">{t("leads.emptySubtitle")}</p>
+          <div className="p-8 text-center">
+            <UserPlusIcon className="mx-auto mb-2 h-8 w-8 text-slate-300" />
+            <p className="text-sm font-semibold text-slate-700">{t("leads.emptyTitle")}</p>
+            <p className="mt-1 text-xs text-slate-400">{t("leads.emptySubtitle")}</p>
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-sm">
-                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+            {/* xl+: table */}
+            <div className="hidden overflow-x-auto xl:block">
+              <table className="w-full min-w-[880px] text-sm">
+                <thead className="bg-slate-50/80 text-[11px] uppercase tracking-wide text-slate-500 rtl:tracking-normal">
                   <tr>
-                    <th className="px-4 py-2 text-start font-bold">{t("leads.colClient")}</th>
-                    <th className="px-4 py-2 text-start font-bold">{t("leads.colChannel")}</th>
-                    <th className="px-4 py-2 text-start font-bold">{t("leads.colPhone")}</th>
-                    <th className="px-4 py-2 text-start font-bold">{t("leads.colConversation")}</th>
-                    <th className="px-4 py-2 text-start font-bold">{t("leads.colCapturedAt")}</th>
-                    <th className="px-4 py-2 text-start font-bold">{t("leads.colActions")}</th>
+                    <th className="px-4 py-2.5 text-start font-semibold">{t("leads.colCustomer")}</th>
+                    <th className="px-3 py-2.5 text-start font-semibold">{t("leads.colChannel")}</th>
+                    <th className="px-3 py-2.5 text-start font-semibold">{t("leads.colPhone")}</th>
+                    <th className="px-3 py-2.5 text-start font-semibold">{t("leads.colConversation")}</th>
+                    <th className="px-3 py-2.5 text-start font-semibold">{t("leads.colCapturedAt")}</th>
+                    <th className="px-4 py-2.5 text-start font-semibold">{t("leads.colActions")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {pagedLeads.map((lead) => {
-                    const phone = normalizePhone(lead.phone);
-                    const whatsappPhone = phone.startsWith("+") ? phone.slice(1) : phone;
-                    const channel = channelByConversation[lead.conversation_id];
-                    // wa.me only makes sense when the lead's actual channel is
-                    // WhatsApp — previously this showed a hardcoded "WhatsApp"
-                    // action for every lead with a phone number regardless of
-                    // their real channel.
-                    const whatsappLink = phone && channel === "whatsapp" ? `https://wa.me/${whatsappPhone}` : null;
-
+                    const m = rowModel(lead);
                     return (
-                      <tr key={lead.id} className="transition hover:bg-slate-50/70">
-                        <td className="px-4 py-2">
-                          <div className="flex items-center gap-3">
-                            <ChannelIcon channel={channel} size="h-8 w-8" />
-                            <div>
-                              <p className="font-bold text-slate-950">{lead.name || t("common.noName")}</p>
-                              <p className="text-xs text-slate-400">Sender: {lead.sender_id || "—"}</p>
+                      <tr key={lead.id} data-lead-id={lead.id} className="transition hover:bg-slate-50/70 focus-within:bg-slate-50/70">
+                        <td className="px-4 py-2.5">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <LeadTile channelKey={m.key} />
+                            <div className="min-w-0">
+                              <p className="max-w-[220px] truncate font-semibold text-slate-900" title={lead.sender_id ? `${t("leads.colSender")}: ${lead.sender_id}` : undefined}>
+                                <bdi>{lead.name || t("common.noName")}</bdi>
+                              </p>
+                              <p className="truncate text-xs text-slate-400">{t("leads.capturedFrom", { channel: m.label })}</p>
                             </div>
                           </div>
                         </td>
-
-                        <td className="px-4 py-2 text-xs font-semibold text-slate-500">
-                          {channel || "—"}
+                        <td className="px-3 py-2.5">
+                          <ChannelPill k={m.key} label={m.label} />
                         </td>
-
-                        <td className="px-4 py-2">
-                          <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-bold text-emerald-700 ring-1 ring-emerald-100">
-                            <PhoneIcon className="h-4 w-4" />
-                            {lead.phone || "—"}
-                          </div>
+                        <td className="px-3 py-2.5">
+                          <PhonePill phone={lead.phone} />
                         </td>
-
-                        <td className="px-4 py-2">
-                          {lead.conversation_id ? (
-                            <span className="inline-flex max-w-[220px] truncate rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-100">
-                              {lead.conversation_id}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400">—</span>
-                          )}
+                        <td className="max-w-[200px] px-3 py-2.5">
+                          <ConversationChip id={lead.conversation_id} />
                         </td>
-
-                        <td className="px-4 py-2 text-slate-600">{formatDate(lead.created_at, i18n.language)}</td>
-
-                        <td className="px-4 py-2">
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={() => copyValue(lead.phone)}
-                              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
-                            >
-                              <ClipboardDocumentIcon className="h-4 w-4" />
-                              {copied === lead.phone ? t("common.copied") : t("common.copy")}
-                            </button>
-
-                            {whatsappLink && (
-                              <a
-                                href={whatsappLink}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title={t("leads.openWhatsappTitle")}
-                                className="inline-flex items-center justify-center rounded-xl transition hover:opacity-80"
-                              >
-                                <ChannelIcon channel="whatsapp" size="h-8 w-8" />
-                              </a>
-                            )}
+                        <td className="whitespace-nowrap px-3 py-2.5">
+                          <p className="text-[13px] text-slate-700">{formatDay(lead.created_at, lang)}</p>
+                          <p className="text-xs text-slate-400">{formatClock(lead.created_at, lang)}</p>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center gap-1.5">
+                            <CopyPhoneButton lead={lead} />
+                            <WhatsAppLink href={m.whatsappLink} />
                           </div>
                         </td>
                       </tr>
@@ -353,15 +428,45 @@ export default function ClientLeads() {
               </table>
             </div>
 
-            <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-100 px-4 py-2 sm:flex-row">
-              <p className="text-xs font-semibold text-slate-500">
+            {/* < xl: cards with the same information and actions (no hidden columns) */}
+            <ul className="divide-y divide-slate-100 sm:grid sm:grid-cols-2 sm:gap-px sm:divide-y-0 sm:bg-slate-100 lg:grid-cols-3 xl:hidden">
+              {pagedLeads.map((lead) => {
+                const m = rowModel(lead);
+                return (
+                  <li key={lead.id} data-lead-id={lead.id} className="min-w-0 space-y-2 bg-white px-4 py-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <LeadTile channelKey={m.key} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-semibold text-slate-900">
+                          <bdi>{lead.name || t("common.noName")}</bdi>
+                        </p>
+                        <p className="truncate text-xs text-slate-400">
+                          {m.label} · {formatDay(lead.created_at, lang)} {formatClock(lead.created_at, lang)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <PhonePill phone={lead.phone} />
+                      <ConversationChip id={lead.conversation_id} />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <CopyPhoneButton lead={lead} />
+                      <WhatsAppLink href={m.whatsappLink} />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+
+            <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-100 px-4 py-2.5 sm:flex-row">
+              <p className="text-xs font-medium text-slate-500" data-testid="leads-page-summary">
                 {t("leads.pageSummary", { page: safePage, total: totalPages, count: filteredLeads.length })}
               </p>
               <Pagination page={safePage} totalPages={totalPages} onPageChange={setPage} />
             </div>
           </>
         )}
-      </div>
+      </section>
     </div>
   );
 }
