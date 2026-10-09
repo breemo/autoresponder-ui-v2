@@ -1122,7 +1122,26 @@
   "teamDashboard": {
     "distributionTitle": "Handled vs solved by employee",
     "workloadTitle": "Current workload by employee",
-    "workloadEmpty": "No open conversations are assigned right now."
+    "workloadEmpty": "No open conversations are assigned right now.",
+    "distributionSubtitle": "Conversations each employee accepted and solved in the selected range",
+    "noActivity": "No conversations were handled or solved in this range.",
+    "workloadSubtitle": "Open conversations assigned and waiting for a human reply — share per employee",
+    "workloadTotal": "open assigned",
+    "workloadOthers": "Others ({{count}})",
+    "workloadIdle": "Employees without open assigned conversations: {{count}}",
+    "workloadSummary": "{{total}} open assigned conversations across {{count}} employees",
+    "pointInTime": "Right now · not filtered by range",
+    "todayOnly": "Today only · not filtered by range",
+    "firstResponseTitle": "Average first response by employee",
+    "resolutionTitle": "Average resolution by employee",
+    "durationSubtitle": "Per employee in the selected range, shortest first",
+    "durationEmpty": "No employee has enough data in this range yet.",
+    "teamAverage": "Team average",
+    "samples": "Cycles: {{count}}",
+    "notEnoughList": "Not enough data:",
+    "firstResponse": "First response",
+    "resolution": "Resolution",
+    "trendSubtitle": "Accepted and solved events per day in the selected range"
   },
   "shell": {
     "nav": {

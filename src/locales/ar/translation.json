@@ -1122,7 +1122,26 @@
   "teamDashboard": {
     "distributionTitle": "المحادثات المستلمة مقابل المحلولة لكل موظف",
     "workloadTitle": "عبء العمل الحالي لكل موظف",
-    "workloadEmpty": "لا توجد محادثات مفتوحة مُسندة حالياً."
+    "workloadEmpty": "لا توجد محادثات مفتوحة مُسندة حالياً.",
+    "distributionSubtitle": "المحادثات التي استلمها وحلّها كل موظف خلال الفترة المحددة",
+    "noActivity": "لم تُستلم أو تُحل أي محادثات خلال هذه الفترة.",
+    "workloadSubtitle": "المحادثات المفتوحة المُسندة بانتظار رد بشري — حصة كل موظف",
+    "workloadTotal": "مفتوحة مُسندة",
+    "workloadOthers": "آخرون ({{count}})",
+    "workloadIdle": "موظفون بلا محادثات مفتوحة مُسندة: {{count}}",
+    "workloadSummary": "{{total}} محادثة مفتوحة مُسندة موزعة على {{count}} موظفين",
+    "pointInTime": "الآن · غير مرتبط بالفترة المحددة",
+    "todayOnly": "اليوم فقط · غير مرتبط بالفترة المحددة",
+    "firstResponseTitle": "متوسط أول رد لكل موظف",
+    "resolutionTitle": "متوسط وقت الحل لكل موظف",
+    "durationSubtitle": "لكل موظف خلال الفترة المحددة، الأسرع أولاً",
+    "durationEmpty": "لا يوجد موظف لديه بيانات كافية في هذه الفترة بعد.",
+    "teamAverage": "متوسط الفريق",
+    "samples": "الدورات: {{count}}",
+    "notEnoughList": "لا توجد بيانات كافية:",
+    "firstResponse": "أول رد",
+    "resolution": "الحل",
+    "trendSubtitle": "أحداث الاستلام والحل يومياً خلال الفترة المحددة"
   },
   "shell": {
     "nav": {
