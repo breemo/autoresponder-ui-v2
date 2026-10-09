@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { KeyIcon, UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/outline";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { PageHeader, ui } from "../../components/app/primitives.jsx";
+import { Avatar, Card, EmptyState, PageHeader, Skeleton, StatusPill, ui } from "../../components/app/primitives.jsx";
+import { ActionMenu, Drawer, Modal, Notice } from "../../components/app/Overlay.jsx";
 import {
   PERMISSIONS,
   ROLES,
@@ -9,6 +11,10 @@ import {
   resolvePermissions,
   hasUserPermission,
 } from "../../lib/permissions.js";
+
+// Team Members. Every action, confirmation, last-owner lock and
+// /api/client-router?resource=users payload is unchanged; the server keeps
+// enforcing TEAM_MANAGEMENT and the owner rules. Presentation only.
 
 const inputClass = ui.input;
 
@@ -48,7 +54,7 @@ function PermissionChecklist({ selected, onToggle, lockedOn, t }) {
         return (
           <label
             key={key}
-            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm ${
+            className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-[13px] transition ${
               checked ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-slate-200 bg-white text-slate-600"
             } ${locked ? "opacity-70" : ""}`}
           >
@@ -57,8 +63,9 @@ function PermissionChecklist({ selected, onToggle, lockedOn, t }) {
               checked={checked}
               disabled={locked}
               onChange={() => onToggle(key)}
+              className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
             />
-            <span className="font-semibold">{t(`permissions.${key}`)}</span>
+            <span className="font-medium">{t(`permissions.${key}`)}</span>
           </label>
         );
       })}
@@ -299,288 +306,267 @@ export default function ClientTeam() {
     );
   }
 
+  const roleSelect = (member, busy, lastOwner) => (
+    <select
+      value={member.role}
+      disabled={busy || lastOwner}
+      onChange={(e) => handleChangeRole(member, e.target.value)}
+      aria-label={`${t("team.colRole")}: ${member.name || member.email}`}
+      className="h-8 rounded-lg border border-slate-200 bg-white pe-7 ps-2.5 text-xs font-semibold text-slate-700 outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50 disabled:opacity-50"
+      title={lastOwner ? t("team.lockLastOwnerRole") : undefined}
+    >
+      {ROLES.map((r) => (
+        <option key={r} value={r}>{t(`roles.${r}`)}</option>
+      ))}
+    </select>
+  );
+
+  const statusPill = (member) => (
+    <StatusPill tone={member.is_active ? "emerald" : "rose"} dot>
+      {member.is_active ? t("common.active") : t("common.inactive")}
+    </StatusPill>
+  );
+
+  const memberActions = (member, busy, lastOwner) => (
+    <div className="flex items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => openPermsModal(member)}
+        disabled={busy}
+        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50"
+      >
+        <KeyIcon className="h-4 w-4" />
+        {t("team.permissionsButton")}
+      </button>
+      <ActionMenu
+        label={`${t("team.colActions")}: ${member.name || member.email}`}
+        disabled={busy}
+        items={[
+          {
+            key: "toggle",
+            label: member.is_active ? t("team.deactivate") : t("common.activate"),
+            onSelect: () => handleToggleActive(member),
+            disabled: busy || lastOwner,
+            title: lastOwner ? t("team.lockLastOwnerToggle") : undefined,
+          },
+          {
+            key: "reset",
+            label: t("team.resetPassword"),
+            onSelect: () => handleResetPassword(member),
+            disabled: busy || !member.is_active,
+          },
+          {
+            key: "remove",
+            label: t("team.remove"),
+            onSelect: () => handleRemove(member),
+            disabled: busy || lastOwner,
+            title: lastOwner ? t("team.lockLastOwnerRemove") : undefined,
+            danger: true,
+          },
+        ]}
+      />
+    </div>
+  );
+
+  const identity = (member, isSelf) => (
+    <div className="flex min-w-0 items-center gap-3">
+      <Avatar name={member.name || member.email} className="h-8 w-8 text-xs" />
+      <div className="min-w-0">
+        <p className="truncate font-semibold text-slate-900">
+          <bdi>{member.name || "—"}</bdi>
+          {isSelf && <span className="ms-1.5 text-xs font-normal text-indigo-500">{t("team.you")}</span>}
+        </p>
+        <p className="truncate text-xs text-slate-500" dir="ltr">{member.email}</p>
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-4">
       <PageHeader
         title={t("navigation.team")}
         description={t("team.subtitle")}
         actions={
-          <button onClick={openAddDrawer} className={ui.btnPrimary}>
-            {t("team.addUser")}
+          <button type="button" onClick={openAddDrawer} className={ui.btnPrimary}>
+            <UserPlusIcon className="h-4 w-4" />
+            {String(t("team.addUser")).replace(/^\+\s*/, "")}
           </button>
         }
       />
 
-      {error && (
-        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
-          {error}
-        </div>
-      )}
+      {error && !drawerOpen && <Notice tone="error">{error}</Notice>}
+      {msg && <Notice tone="success">{msg}</Notice>}
 
-      {msg && (
-        <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-700">
-          {msg}
-        </div>
-      )}
-
-      <div className={`${cardClass} overflow-hidden`}>
+      <Card padded={false} className="overflow-hidden">
         {loading ? (
-          <div className="p-4 text-center text-sm text-slate-500">{t("team.loading")}</div>
+          <div className="space-y-2 p-4">
+            {[0, 1, 2].map((i) => <Skeleton key={i} className="h-11 w-full" />)}
+          </div>
         ) : members.length === 0 ? (
-          <div className="p-4 text-center text-sm text-slate-400">{t("team.empty")}</div>
+          <div className="p-4"><EmptyState icon={UserGroupIcon} title={t("team.empty")} /></div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-slate-100 bg-slate-50/60 text-xs font-bold uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-4 py-3 text-start">{t("common.name")}</th>
-                  <th className="px-4 py-3 text-start">{t("common.email")}</th>
-                  <th className="px-4 py-3 text-start">{t("team.colRole")}</th>
-                  <th className="px-4 py-3 text-start">{t("common.status")}</th>
-                  <th className="px-4 py-3 text-start">{t("team.colAddedAt")}</th>
-                  <th className="px-4 py-3 text-start">{t("account.lastLogin")}</th>
-                  <th className="px-4 py-3 text-start">{t("team.colActions")}</th>
-                </tr>
-              </thead>
+          <>
+            {/* lg+: table */}
+            <div className="hidden lg:block">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50/80 text-[11px] uppercase tracking-wide text-slate-500 rtl:tracking-normal">
+                  <tr>
+                    <th className="px-4 py-2.5 text-start font-semibold">{t("common.name")}</th>
+                    <th className="px-4 py-2.5 text-start font-semibold">{t("team.colRole")}</th>
+                    <th className="px-4 py-2.5 text-start font-semibold">{t("common.status")}</th>
+                    <th className="px-4 py-2.5 text-start font-semibold">{t("team.colAddedAt")}</th>
+                    <th className="px-4 py-2.5 text-start font-semibold">{t("account.lastLogin")}</th>
+                    <th className="w-44 px-4 py-2.5 text-start font-semibold">{t("team.colActions")}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {members.map((member) => {
+                    const busy = actionBusyId === member.client_user_id;
+                    const isSelf = member.user_id === user.id;
+                    const lastOwner = isLastActiveOwner(member);
+                    return (
+                      <tr key={member.client_user_id} data-member-id={member.user_id} className="transition hover:bg-slate-50/70">
+                        <td className="max-w-[280px] px-4 py-3">{identity(member, isSelf)}</td>
+                        <td className="px-4 py-3">{roleSelect(member, busy, lastOwner)}</td>
+                        <td className="px-4 py-3">{statusPill(member)}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">{formatDate(member.created_at, i18n.language)}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">{formatDate(member.last_login_at, i18n.language)}</td>
+                        <td className="px-4 py-3">{memberActions(member, busy, lastOwner)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-              <tbody>
-                {members.map((member) => {
-                  const busy = actionBusyId === member.client_user_id;
-                  const isSelf = member.user_id === user.id;
-                  const lastOwner = isLastActiveOwner(member);
-
-                  return (
-                    <tr key={member.client_user_id} className="border-b border-slate-50 last:border-0">
-                      <td className="px-4 py-3 font-bold text-slate-900">
-                        {member.name || "—"} {isSelf && <span className="text-xs font-normal text-indigo-500">{t("team.you")}</span>}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600" dir="ltr">{member.email}</td>
-                      <td className="px-4 py-3">
-                        <select
-                          value={member.role}
-                          disabled={busy || lastOwner}
-                          onChange={(e) => handleChangeRole(member, e.target.value)}
-                          className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-indigo-300 disabled:opacity-50"
-                          title={lastOwner ? t("team.lockLastOwnerRole") : undefined}
-                        >
-                          {ROLES.map((r) => (
-                            <option key={r} value={r}>{t(`roles.${r}`)}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`rounded-full px-3 py-1 text-xs font-bold ${member.is_active ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
-                          {member.is_active ? t("common.active") : t("common.inactive")}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-500">{formatDate(member.created_at, i18n.language)}</td>
-                      <td className="px-4 py-3 text-xs text-slate-500">{formatDate(member.last_login_at, i18n.language)}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <button
-                            onClick={() => openPermsModal(member)}
-                            disabled={busy}
-                            className="rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                          >
-                            {t("team.permissionsButton")}
-                          </button>
-
-                          <button
-                            onClick={() => handleToggleActive(member)}
-                            disabled={busy || lastOwner}
-                            title={lastOwner ? t("team.lockLastOwnerToggle") : undefined}
-                            className="rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                          >
-                            {member.is_active ? t("team.deactivate") : t("common.activate")}
-                          </button>
-
-                          <button
-                            onClick={() => handleResetPassword(member)}
-                            disabled={busy || !member.is_active}
-                            className="rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                          >
-                            {t("team.resetPassword")}
-                          </button>
-
-                          <button
-                            onClick={() => handleRemove(member)}
-                            disabled={busy || lastOwner}
-                            title={lastOwner ? t("team.lockLastOwnerRemove") : undefined}
-                            className="rounded-xl bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100 disabled:opacity-50"
-                          >
-                            {t("team.remove")}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+            {/* < lg: cards */}
+            <ul className="divide-y divide-slate-100 lg:hidden">
+              {members.map((member) => {
+                const busy = actionBusyId === member.client_user_id;
+                const isSelf = member.user_id === user.id;
+                const lastOwner = isLastActiveOwner(member);
+                return (
+                  <li key={member.client_user_id} data-member-id={member.user_id} className="space-y-2.5 px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      {identity(member, isSelf)}
+                      {statusPill(member)}
+                    </div>
+                    <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                      <dt className="text-slate-500">{t("team.colAddedAt")}</dt>
+                      <dd className="text-slate-700">{formatDate(member.created_at, i18n.language)}</dd>
+                      <dt className="text-slate-500">{t("account.lastLogin")}</dt>
+                      <dd className="text-slate-700">{formatDate(member.last_login_at, i18n.language)}</dd>
+                    </dl>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      {roleSelect(member, busy, lastOwner)}
+                      {memberActions(member, busy, lastOwner)}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
         )}
-      </div>
+      </Card>
 
-      {drawerOpen && (
-        <div
-          className="fixed inset-0 z-50 flex justify-end bg-slate-950/40"
-          onClick={() => !saving && setDrawerOpen(false)}
-        >
-          <form
-            onSubmit={handleAddUser}
-            onClick={(e) => e.stopPropagation()}
-            className="h-full w-full max-w-lg overflow-y-auto bg-white p-4 shadow-2xl"
-          >
-            <div className="mb-6 flex items-start justify-between">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.25em] text-indigo-600">TEAM</p>
-                <h3 className="mt-1 text-xl font-bold text-slate-900">{t("team.drawerAddTitle")}</h3>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setDrawerOpen(false)}
-                className="rounded-xl border px-3 py-2 text-sm"
-              >
-                {t("common.close")}
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm font-bold">{t("common.name")}</label>
-                <input
-                  className={inputClass}
-                  value={addForm.name}
-                  onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-bold">{t("common.email")}</label>
-                <input
-                  type="email"
-                  className={inputClass}
-                  value={addForm.email}
-                  onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
-                  dir="ltr"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-bold">{t("team.fieldRole")}</label>
-                <select
-                  className={inputClass}
-                  value={addForm.role}
-                  onChange={(e) => handleAddRoleChange(e.target.value)}
-                >
-                  {ROLES.map((r) => (
-                    <option key={r} value={r}>{t(`roles.${r}`)}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-bold">{t("team.fieldPermissions")}</label>
-                <PermissionChecklist selected={addForm.permissions} onToggle={toggleAddPermission} t={t} />
-                <p className="mt-2 text-xs text-slate-500">
-                  {t("team.permissionsAutoHint")}
-                </p>
-              </div>
-
-              <p className="text-xs text-slate-500">
-                {t("team.tempPasswordNote")}
-              </p>
-
-              <button
-                type="submit"
-                disabled={saving}
-                className="h-12 w-full rounded-2xl bg-indigo-600 font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
-              >
-                {saving ? t("team.adding") : t("team.addUserButton")}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {permsModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" onClick={() => setPermsModal(null)}>
-          <div className={`${cardClass} w-full max-w-lg p-4`} onClick={(e) => e.stopPropagation()}>
-            <p className="text-xs font-bold uppercase tracking-[0.25em] text-indigo-600">{t("team.fieldPermissions")}</p>
-            <h3 className="mt-1 text-base font-semibold text-slate-900">{permsModal.member.name || permsModal.member.email}</h3>
-            <p className="text-xs text-slate-500">
-              {t("team.permsModalRolePrefix", { role: t(`roles.${permsModal.member.role}`) })}
-            </p>
-
-            <div className="mt-4">
-              <PermissionChecklist
-                selected={permsModal.selected}
-                onToggle={togglePermsModalPermission}
-                lockedOn={permsModal.member.role === "owner" ? PERMISSIONS.TEAM_MANAGEMENT : null}
-                t={t}
-              />
-            </div>
-
-            {permsModal.member.role === "owner" && (
-              <p className="mt-2 text-xs text-amber-600">
-                {t("team.ownerFloorNote")}
-              </p>
-            )}
-
-            <div className="mt-5 flex gap-2">
-              <button
-                type="button"
-                onClick={savePermsModal}
-                disabled={actionBusyId === permsModal.member.client_user_id}
-                className="h-11 flex-1 rounded-2xl bg-indigo-600 text-sm font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
-              >
-                {t("common.save")}
-              </button>
-              <button
-                type="button"
-                onClick={() => setPermsModal(null)}
-                className="h-9 rounded-xl border border-slate-200 px-5 text-sm font-bold text-slate-700 hover:bg-slate-50"
-              >
-                {t("common.cancel")}
-              </button>
-            </div>
+      <Drawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        closeDisabled={saving}
+        title={t("team.drawerAddTitle")}
+        closeLabel={t("common.close")}
+        width="max-w-lg"
+        footer={
+          <>
+            <button type="button" onClick={() => setDrawerOpen(false)} disabled={saving} className={ui.btnSecondary}>{t("common.cancel")}</button>
+            <button type="submit" form="team-add-user-form" disabled={saving} className={ui.btnPrimary}>
+              {saving ? t("team.adding") : t("team.addUserButton")}
+            </button>
+          </>
+        }
+      >
+        <form id="team-add-user-form" onSubmit={handleAddUser} className="space-y-4">
+          {error && <Notice tone="error">{error}</Notice>}
+          <div>
+            <label htmlFor="team-name" className={ui.label}>{t("common.name")}</label>
+            <input id="team-name" dir="auto" className={inputClass} value={addForm.name} onChange={(e) => setAddForm({ ...addForm, name: e.target.value })} />
           </div>
-        </div>
-      )}
+          <div>
+            <label htmlFor="team-email" className={ui.label}>{t("common.email")}</label>
+            <input id="team-email" type="email" className={inputClass} value={addForm.email} onChange={(e) => setAddForm({ ...addForm, email: e.target.value })} dir="ltr" />
+          </div>
+          <div>
+            <label htmlFor="team-role" className={ui.label}>{t("team.fieldRole")}</label>
+            <select id="team-role" className={inputClass} value={addForm.role} onChange={(e) => handleAddRoleChange(e.target.value)}>
+              {ROLES.map((r) => (
+                <option key={r} value={r}>{t(`roles.${r}`)}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <p className={ui.label}>{t("team.fieldPermissions")}</p>
+            <PermissionChecklist selected={addForm.permissions} onToggle={toggleAddPermission} t={t} />
+            <p className="mt-2 text-xs text-slate-500">{t("team.permissionsAutoHint")}</p>
+          </div>
+          <Notice tone="info" className="text-xs font-normal">{t("team.tempPasswordNote")}</Notice>
+        </form>
+      </Drawer>
 
-      {reveal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" onClick={() => setReveal(null)}>
-          <div className={`${cardClass} w-full max-w-sm p-4`} onClick={(e) => e.stopPropagation()}>
-            <p className="text-xs font-bold uppercase tracking-[0.25em] text-indigo-600">{t("team.tempPasswordTitle")}</p>
-            <h3 className="mt-1 text-base font-semibold text-slate-900">{reveal.name}</h3>
-            <p className="text-xs text-slate-500" dir="ltr">{reveal.email}</p>
+      <Modal
+        open={!!permsModal}
+        onClose={() => setPermsModal(null)}
+        eyebrow={t("team.fieldPermissions")}
+        title={permsModal ? permsModal.member.name || permsModal.member.email : ""}
+        subtitle={permsModal ? t("team.permsModalRolePrefix", { role: t(`roles.${permsModal.member.role}`) }) : ""}
+        closeLabel={t("common.close")}
+        footer={
+          permsModal && (
+            <>
+              <button type="button" onClick={() => setPermsModal(null)} className={ui.btnSecondary}>{t("common.cancel")}</button>
+              <button type="button" onClick={savePermsModal} disabled={actionBusyId === permsModal.member.client_user_id} className={ui.btnPrimary}>{t("common.save")}</button>
+            </>
+          )
+        }
+      >
+        {permsModal && (
+          <>
+            <PermissionChecklist
+              selected={permsModal.selected}
+              onToggle={togglePermsModalPermission}
+              lockedOn={permsModal.member.role === "owner" ? PERMISSIONS.TEAM_MANAGEMENT : null}
+              t={t}
+            />
+            {permsModal.member.role === "owner" && <p className="mt-2 text-xs text-amber-600">{t("team.ownerFloorNote")}</p>}
+          </>
+        )}
+      </Modal>
 
-            <div className="mt-4 flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <code className="flex-1 text-sm font-bold text-slate-900" dir="ltr">{reveal.password}</code>
+      <Modal
+        open={!!reveal}
+        onClose={() => setReveal(null)}
+        eyebrow={t("team.tempPasswordTitle")}
+        title={reveal?.name || ""}
+        subtitle={reveal ? <span dir="ltr">{reveal.email}</span> : null}
+        closeLabel={t("common.close")}
+        size="max-w-sm"
+        footer={<button type="button" onClick={() => setReveal(null)} className={ui.btnPrimary}>{t("common.done")}</button>}
+      >
+        {reveal && (
+          <>
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+              <code className="min-w-0 flex-1 break-all text-sm font-semibold text-slate-900" dir="ltr">{reveal.password}</code>
               <button
                 type="button"
                 onClick={() => navigator.clipboard?.writeText(reveal.password)}
-                className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                className="inline-flex h-8 shrink-0 items-center rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
               >
                 {t("common.copy")}
               </button>
             </div>
-
-            <p className="mt-3 text-xs font-semibold text-amber-600">
-              {t("team.shareWarning")}
-            </p>
-
-            <button
-              type="button"
-              onClick={() => setReveal(null)}
-              className="mt-5 h-11 w-full rounded-2xl border border-slate-200 text-sm font-bold text-slate-700 hover:bg-slate-50"
-            >
-              {t("common.done")}
-            </button>
-          </div>
-        </div>
-      )}
+            <p className="mt-3 text-xs font-medium text-amber-700">{t("team.shareWarning")}</p>
+          </>
+        )}
+      </Modal>
     </div>
   );
 }

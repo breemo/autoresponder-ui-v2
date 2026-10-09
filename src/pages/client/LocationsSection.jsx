@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { XMarkIcon, StarIcon, PencilIcon, TrashIcon } from "@heroicons/react/24/outline";
-import { ui } from "../../components/app/primitives.jsx";
+import { MapPinIcon, PencilIcon, PlusIcon, StarIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { Card, StatusPill, cx, ui } from "../../components/app/primitives.jsx";
+import { Modal, Notice, SectionHeader } from "../../components/app/Overlay.jsx";
 
 // AI Engine V1 — Business Voice + Authoritative Locations.
 //
@@ -155,130 +156,132 @@ export default function LocationsSection({ clientId, actorUserId }) {
     }
   }
 
-  return (
-    <div className={cardClass}>
-      <div className="mb-4 flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-rose-50 text-base">📍</div>
-        <div>
-          <h3 className="text-[15px] font-semibold text-slate-900">{t("locations.title")}</h3>
-          <p className="text-xs text-slate-500">{t("locations.subtitle")}</p>
-        </div>
-      </div>
+  const iconBtn = "inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-40";
 
-      {error && <div className="mb-4 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>}
+  return (
+    <Card as="section" aria-labelledby="locations-title" data-section="locations">
+      <SectionHeader
+        id="locations-title"
+        icon={MapPinIcon}
+        tone="rose"
+        title={t("locations.title")}
+        subtitle={t("locations.subtitle")}
+        action={
+          canEdit &&
+          !loading && (
+            <button type="button" onClick={() => setDraft(emptyDraft())} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-50">
+              <PlusIcon className="h-4 w-4" />
+              {String(t("locations.addButton")).replace(/^\+\s*/, "")}
+            </button>
+          )
+        }
+      />
+
+      {error && <Notice tone="error" className="mb-3">{error}</Notice>}
 
       {loading ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">{t("common.loading")}</div>
+        <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">{t("common.loading")}</div>
       ) : (
         <>
           {locations.length === 0 ? (
-            <p className="mb-4 text-sm text-slate-400">{t("locations.empty")}</p>
+            <p className="mb-3 rounded-xl border border-dashed border-slate-200 px-3 py-4 text-center text-sm text-slate-500">{t("locations.empty")}</p>
           ) : (
-            <div className="mb-4 space-y-2">
+            <ul className="mb-3 divide-y divide-slate-100 rounded-xl border border-slate-200/80">
               {locations.map((loc) => (
-                <div key={loc.id} className={`rounded-2xl border p-3 ${loc.is_active ? "border-slate-200" : "border-slate-100 bg-slate-50 opacity-60"}`}>
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        {loc.is_primary && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">{t("locations.primaryBadge")}</span>}
-                        <p className="font-semibold text-slate-800">{loc.name || t("locations.unnamedLocation")}</p>
-                        {!loc.is_active && <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">{t("locations.inactiveBadge")}</span>}
-                      </div>
-                      <p className="text-xs text-slate-500">{[loc.address, loc.city].filter(Boolean).join(", ")}</p>
-                      {loc.phone && <p className="text-xs text-slate-400">{loc.phone}</p>}
+                <li key={loc.id} data-location-id={loc.id} className={cx("flex flex-wrap items-start justify-between gap-2 px-3 py-2.5", !loc.is_active && "bg-slate-50/70")}>
+                  <div className={cx("min-w-0", !loc.is_active && "opacity-70")}>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <p className="font-medium text-slate-900" dir="auto">{loc.name || t("locations.unnamedLocation")}</p>
+                      {loc.is_primary && <StatusPill tone="amber">{t("locations.primaryBadge")}</StatusPill>}
+                      {!loc.is_active && <StatusPill tone="slate">{t("locations.inactiveBadge")}</StatusPill>}
                     </div>
-                    {canEdit && (
-                      <div className="flex items-center gap-1.5">
-                        {loc.is_active && !loc.is_primary && (
-                          <button type="button" disabled={busyId === loc.id} onClick={() => handleSetPrimary(loc.id)} title={t("locations.actionSetPrimary")} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-40">
-                            <StarIcon className="h-4 w-4" />
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          disabled={busyId === loc.id}
-                          onClick={() => setDraft({ location_id: loc.id, name: loc.name || "", address: loc.address || "", city: loc.city || "", phone: loc.phone || "", is_primary: loc.is_primary })}
-                          title={t("locations.actionEdit")}
-                          className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-40"
-                        >
-                          <PencilIcon className="h-4 w-4" />
-                        </button>
-                        <button type="button" disabled={busyId === loc.id} onClick={() => handleToggleActive(loc)} className="rounded-lg px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-40">
-                          {loc.is_active ? t("locations.actionDeactivate") : t("locations.actionActivate")}
-                        </button>
-                        <button type="button" disabled={busyId === loc.id} onClick={() => handleDelete(loc.id)} title={t("locations.actionDelete")} className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50 disabled:opacity-40">
-                          <TrashIcon className="h-4 w-4" />
-                        </button>
-                      </div>
-                    )}
+                    <p className="text-xs text-slate-500" dir="auto">{[loc.address, loc.city].filter(Boolean).join(", ")}</p>
+                    {loc.phone && <p className="text-xs text-slate-400" dir="ltr">{loc.phone}</p>}
                   </div>
-                </div>
+                  {canEdit && (
+                    <div className="flex items-center gap-1">
+                      {loc.is_active && !loc.is_primary && (
+                        <button type="button" disabled={busyId === loc.id} onClick={() => handleSetPrimary(loc.id)} title={t("locations.actionSetPrimary")} aria-label={t("locations.actionSetPrimary")} className={iconBtn}>
+                          <StarIcon className="h-4 w-4" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        disabled={busyId === loc.id}
+                        onClick={() => setDraft({ location_id: loc.id, name: loc.name || "", address: loc.address || "", city: loc.city || "", phone: loc.phone || "", is_primary: loc.is_primary })}
+                        title={t("locations.actionEdit")}
+                        aria-label={t("locations.actionEdit")}
+                        className={iconBtn}
+                      >
+                        <PencilIcon className="h-4 w-4" />
+                      </button>
+                      <button type="button" disabled={busyId === loc.id} onClick={() => handleToggleActive(loc)} className="inline-flex h-8 items-center rounded-lg px-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 disabled:opacity-40">
+                        {loc.is_active ? t("locations.actionDeactivate") : t("locations.actionActivate")}
+                      </button>
+                      <button type="button" disabled={busyId === loc.id} onClick={() => handleDelete(loc.id)} title={t("locations.actionDelete")} aria-label={t("locations.actionDelete")} className={cx(iconBtn, "text-rose-500 hover:bg-rose-50 hover:text-rose-600")}>
+                        <TrashIcon className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+                </li>
               ))}
-            </div>
+            </ul>
           )}
 
-          {canEdit && (
-            <button type="button" onClick={() => setDraft(emptyDraft())} className="mb-4 rounded-2xl border border-slate-200 px-4 py-2 text-sm font-bold text-indigo-700 hover:bg-indigo-50">
-              {t("locations.addButton")}
-            </button>
-          )}
-
-          <div className="border-t border-slate-100 pt-4">
-            <label className="flex items-start gap-3">
-              <input type="checkbox" checked={listComplete} disabled={!canEdit || completenessSaving} onChange={handleToggleComplete} className="mt-0.5 h-4 w-4 rounded border-slate-300" />
-              <span>
-                <span className="block text-sm font-bold text-slate-700">{t("locations.completeToggleLabel")}</span>
-                <span className="block text-xs text-slate-400">{t("locations.completeToggleHint")}</span>
-              </span>
-            </label>
-          </div>
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl bg-slate-50 px-3 py-2.5">
+            <input type="checkbox" checked={listComplete} disabled={!canEdit || completenessSaving} onChange={handleToggleComplete} className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+            <span>
+              <span className="block text-[13px] font-semibold text-slate-800">{t("locations.completeToggleLabel")}</span>
+              <span className="block text-xs text-slate-500">{t("locations.completeToggleHint")}</span>
+            </span>
+          </label>
         </>
       )}
 
-      {draft && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-4 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h4 className="font-bold text-slate-900">{draft.location_id ? t("locations.editTitle") : t("locations.addTitle")}</h4>
-              <button type="button" onClick={() => setDraft(null)}>
-                <XMarkIcon className="h-5 w-5 text-slate-400" />
-              </button>
+      <Modal
+        open={!!draft}
+        onClose={() => setDraft(null)}
+        closeDisabled={saving}
+        title={draft?.location_id ? t("locations.editTitle") : t("locations.addTitle")}
+        closeLabel={t("locations.cancel")}
+        size="max-w-md"
+        footer={
+          <>
+            <button type="button" onClick={() => setDraft(null)} disabled={saving} className={ui.btnSecondary}>{t("locations.cancel")}</button>
+            <button type="button" onClick={handleSaveDraft} disabled={saving} className={ui.btnPrimary}>{saving ? t("settings.saving") : t("locations.save")}</button>
+          </>
+        }
+      >
+        {draft && (
+          <div className="space-y-3">
+            {error && <Notice tone="error">{error}</Notice>}
+            <div>
+              <label htmlFor="loc-name" className={ui.label}>{t("locations.fieldName")}</label>
+              <input id="loc-name" dir="auto" className={inputClass} value={draft.name} onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))} disabled={saving} placeholder={t("locations.fieldNamePlaceholder")} />
             </div>
-            <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-600">{t("locations.fieldName")}</label>
-                <input className={inputClass} value={draft.name} onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))} disabled={saving} placeholder={t("locations.fieldNamePlaceholder")} />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-600">{t("locations.fieldAddress")}</label>
-                <input className={inputClass} value={draft.address} onChange={(e) => setDraft((p) => ({ ...p, address: e.target.value }))} disabled={saving} />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-600">{t("locations.fieldCity")}</label>
-                <input className={inputClass} value={draft.city} onChange={(e) => setDraft((p) => ({ ...p, city: e.target.value }))} disabled={saving} />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-600">{t("locations.fieldPhone")}</label>
-                <input className={inputClass} value={draft.phone} onChange={(e) => setDraft((p) => ({ ...p, phone: e.target.value }))} disabled={saving} />
-              </div>
-              {!draft.location_id && (
-                <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                  <input type="checkbox" checked={draft.is_primary} onChange={(e) => setDraft((p) => ({ ...p, is_primary: e.target.checked }))} disabled={saving} className="h-4 w-4 rounded border-slate-300" />
-                  {t("locations.fieldIsPrimary")}
-                </label>
-              )}
+            <div>
+              <label htmlFor="loc-address" className={ui.label}>{t("locations.fieldAddress")}</label>
+              <input id="loc-address" dir="auto" className={inputClass} value={draft.address} onChange={(e) => setDraft((p) => ({ ...p, address: e.target.value }))} disabled={saving} />
             </div>
-            <div className="mt-5 flex gap-2">
-              <button type="button" onClick={handleSaveDraft} disabled={saving} className="flex-1 rounded-2xl bg-indigo-600 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-60">
-                {saving ? t("settings.saving") : t("locations.save")}
-              </button>
-              <button type="button" onClick={() => setDraft(null)} disabled={saving} className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
-                {t("locations.cancel")}
-              </button>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label htmlFor="loc-city" className={ui.label}>{t("locations.fieldCity")}</label>
+                <input id="loc-city" dir="auto" className={inputClass} value={draft.city} onChange={(e) => setDraft((p) => ({ ...p, city: e.target.value }))} disabled={saving} />
+              </div>
+              <div>
+                <label htmlFor="loc-phone" className={ui.label}>{t("locations.fieldPhone")}</label>
+                <input id="loc-phone" dir="ltr" className={inputClass} value={draft.phone} onChange={(e) => setDraft((p) => ({ ...p, phone: e.target.value }))} disabled={saving} />
+              </div>
             </div>
+            {!draft.location_id && (
+              <label className="flex items-center gap-2 text-[13px] font-medium text-slate-700">
+                <input type="checkbox" checked={draft.is_primary} onChange={(e) => setDraft((p) => ({ ...p, is_primary: e.target.checked }))} disabled={saving} className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                {t("locations.fieldIsPrimary")}
+              </label>
+            )}
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </Modal>
+    </Card>
   );
 }

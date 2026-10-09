@@ -1071,6 +1071,11 @@
     "searchDocuments": "Search documents…",
     "noDocumentMatches": "No documents match your search."
   },
+  "replies": {
+    "showMore": "Show more",
+    "showLess": "Show less",
+    "hideAfterHint": "Select the options to hide after a customer taps this one. You can select several."
+  },
   "shell": {
     "nav": {
       "planBilling": "Plan & Billing",

@@ -18,14 +18,14 @@ import { formatCount, formatDuration, shortDate } from "../../../lib/performance
 
 export function Card({ title, subtitle, action, children, className = "" }) {
   return (
-    <div className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${className}`}>
+    <div className={`min-w-0 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${className}`}>
       {(title || action) && (
         <div className="mb-4 flex items-start justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             {title && <h2 className="text-[15px] font-semibold text-slate-900">{title}</h2>}
-            {subtitle && <p className="mt-0.5 text-xs font-medium text-slate-400">{subtitle}</p>}
+            {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
           </div>
-          {action}
+          {action && <div className="shrink-0">{action}</div>}
         </div>
       )}
       {children}
@@ -35,7 +35,7 @@ export function Card({ title, subtitle, action, children, className = "" }) {
 
 export function EmptyBox({ children }) {
   return (
-    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-center text-sm font-semibold text-slate-400">
+    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-5 text-center text-sm font-medium text-slate-500">
       {children}
     </div>
   );
@@ -46,9 +46,9 @@ export function KpiCard({ label, value, kind = "count", hint, sample }) {
   const display = kind === "duration" ? formatDuration(value) : formatCount(value);
   const isEmptyDuration = kind === "duration" && (value === null || value === undefined);
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-xs font-semibold text-slate-500">{label}</p>
-      <p className={`mt-1.5 text-2xl font-bold tracking-tight ${isEmptyDuration ? "text-slate-300" : "text-slate-950"}`}>
+    <div className="min-w-0 rounded-2xl border border-slate-200/80 bg-white px-3.5 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <p className="text-xs font-medium leading-snug text-slate-500">{label}</p>
+      <p className={`mt-1 text-xl font-bold tabular-nums tracking-tight ${isEmptyDuration ? "text-slate-300" : "text-slate-900"}`}>
         {display}
       </p>
       {hint && <p className="mt-1 text-[11px] leading-tight text-slate-400">{hint}</p>}
@@ -72,13 +72,14 @@ export function RangePicker({ value, onChange }) {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+      <div role="group" className="inline-flex h-9 items-center rounded-xl border border-slate-200 bg-white p-0.5 shadow-sm">
         {presets.map(([key, label]) => (
           <button
             key={key}
             type="button"
             onClick={() => onChange({ range: key, from: draftFrom, to: draftTo })}
-            className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+            aria-pressed={value.range === key}
+            className={`h-full rounded-lg px-3 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
               value.range === key ? "bg-indigo-600 text-white shadow-sm" : "text-slate-600 hover:bg-slate-50"
             }`}
           >
@@ -89,29 +90,29 @@ export function RangePicker({ value, onChange }) {
 
       {value.range === "custom" && (
         <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-1 text-xs font-semibold text-slate-500">
+          <label className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
             {t("teamPerformance.customFrom")}
             <input
               type="date"
               value={draftFrom}
               onChange={(e) => setDraftFrom(e.target.value)}
-              className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
+              className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50"
             />
           </label>
-          <label className="flex items-center gap-1 text-xs font-semibold text-slate-500">
+          <label className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
             {t("teamPerformance.customTo")}
             <input
               type="date"
               value={draftTo}
               onChange={(e) => setDraftTo(e.target.value)}
-              className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
+              className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50"
             />
           </label>
           <button
             type="button"
             disabled={!draftFrom}
             onClick={() => onChange({ range: "custom", from: draftFrom, to: draftTo })}
-            className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-40"
+            className="inline-flex h-9 items-center rounded-lg bg-indigo-600 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-40"
           >
             {t("teamPerformance.apply")}
           </button>
@@ -151,14 +152,14 @@ export function AttributionNote({ telemetrySince }) {
   const { t, i18n } = useTranslation();
   if (!telemetrySince) {
     return (
-      <p className="text-[11px] leading-relaxed text-slate-400">{t("teamPerformance.attributionNoData")}</p>
+      <p className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-500">{t("teamPerformance.attributionNoData")}</p>
     );
   }
   const since = t("teamPerformance.attributionSince", {
     date: shortDate(telemetrySince, i18n.language),
   });
   return (
-    <p className="text-[11px] leading-relaxed text-slate-400">
+    <p className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-500">
       {t("teamPerformance.attributionNote", { since })}
     </p>
   );

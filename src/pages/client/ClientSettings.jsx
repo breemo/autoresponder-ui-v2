@@ -1,12 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { XMarkIcon } from "@heroicons/react/24/outline";
+import { BuildingStorefrontIcon, ChatBubbleLeftRightIcon, ClockIcon, LanguageIcon, PencilSquareIcon, PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useLanguage } from "../../context/LanguageContext.jsx";
 import LocationsSection from "./LocationsSection.jsx";
-import { PageHeader, ui } from "../../components/app/primitives.jsx";
+import { Card, PageHeader, cx, ui } from "../../components/app/primitives.jsx";
+import { Drawer, Notice, SectionHeader } from "../../components/app/Overlay.jsx";
 
+// Account Settings — presentation-only redesign. Field set, helper text,
+// working-hours model/validation, the single Save Settings request and its
+// payload, the default-language action and the Locations section are all
+// unchanged; only layout and styling follow the Client Portal design system.
 const inputClass = ui.input;
 const cardClass = ui.card;
 
@@ -171,9 +176,11 @@ function groupWorkingHoursSummary(wh, t) {
 function TimezoneField({ value, onChange, t }) {
   return (
     <div>
-      <label className="mb-1 block text-[13px] font-medium text-slate-700">{t("settings.timezone")}</label>
+      <label htmlFor="ar-timezone-input" className={ui.label}>{t("settings.timezone")}</label>
       <input
+        id="ar-timezone-input"
         list="ar-timezone-options"
+        dir="ltr"
         className={inputClass}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -189,10 +196,10 @@ function TimezoneField({ value, onChange, t }) {
 }
 
 // Compact one-row-per-day schedule + bulk-copy toolbar + timezone. Lives
-// ONLY inside the Edit Hours drawer now — never on the main settings page
-// (see BusinessHoursSummaryCard for what the page itself shows). A day
-// with periods.length === 0 is "closed" — no separate boolean needed,
-// matching the storage shape exactly.
+// ONLY inside the Edit Hours drawer (see BusinessHoursSummaryCard for what
+// the page itself shows). A day with periods.length === 0 is "closed" — no
+// separate boolean needed, matching the storage shape exactly. Logic is
+// unchanged; only classes differ.
 function WorkingHoursEditor({ value, onChange, errors, t }) {
   const [copySource, setCopySource] = useState("sunday");
 
@@ -229,58 +236,55 @@ function WorkingHoursEditor({ value, onChange, errors, t }) {
     onChange({ ...value, days });
   }
 
+  const timeInput = (hasError) =>
+    cx("h-9 rounded-lg border bg-white px-2 text-sm text-slate-800 outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50", hasError ? "border-rose-300 bg-rose-50" : "border-slate-200");
+
   return (
     <div className="space-y-4">
       <TimezoneField value={value.timezone} onChange={(timezone) => onChange({ ...value, timezone })} t={t} />
 
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-slate-50 p-3">
-        <span className="text-xs font-semibold text-slate-500">{t("settings.workingHoursCopyFrom")}</span>
+      <div className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-3">
+        <label htmlFor="ar-hours-copy" className="text-xs font-medium text-slate-600">{t("settings.workingHoursCopyFrom")}</label>
         <select
+          id="ar-hours-copy"
           value={copySource}
           onChange={(e) => setCopySource(e.target.value)}
-          className="rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold"
+          className="h-8 rounded-lg border border-slate-200 bg-white pe-7 ps-2 text-xs font-medium text-slate-700 outline-none focus:border-indigo-300"
         >
           {DAY_KEYS.map((day) => (
             <option key={day} value={day}>{t(`settings.days.${day}`)}</option>
           ))}
         </select>
-        <button
-          type="button"
-          onClick={() => applyCopy(WEEKDAY_KEYS)}
-          className="rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
-        >
+        <button type="button" onClick={() => applyCopy(WEEKDAY_KEYS)} className="inline-flex h-8 items-center rounded-lg border border-indigo-200 bg-white px-2.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">
           {t("settings.workingHoursApplyWeekdays")}
         </button>
-        <button
-          type="button"
-          onClick={() => applyCopy(DAY_KEYS)}
-          className="rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
-        >
+        <button type="button" onClick={() => applyCopy(DAY_KEYS)} className="inline-flex h-8 items-center rounded-lg border border-indigo-200 bg-white px-2.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">
           {t("settings.workingHoursApplyAllDays")}
         </button>
       </div>
 
-      <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200">
+      <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200/80">
         {DAY_KEYS.map((day) => {
           const periods = value.days[day];
           const open = periods.length > 0;
           return (
-            <div key={day} className="px-3 py-2.5 sm:px-4">
+            <div key={day} className="px-3 py-2.5 sm:px-4" data-day={day}>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                <label className="flex w-full items-center justify-between gap-3 sm:w-36">
-                  <span className="text-sm font-bold text-slate-800">{t(`settings.days.${day}`)}</span>
+                <div className="flex w-full items-center justify-between gap-3 sm:w-36">
+                  <span id={`ar-day-${day}`} className="text-sm font-semibold text-slate-800">{t(`settings.days.${day}`)}</span>
                   <button
                     type="button"
                     role="switch"
                     aria-checked={open}
+                    aria-labelledby={`ar-day-${day}`}
                     onClick={() => setDayOpen(day, !open)}
-                    className={`relative h-6 w-11 shrink-0 rounded-full transition ${open ? "bg-emerald-500" : "bg-slate-300"}`}
+                    className={cx("relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2", open ? "bg-emerald-500" : "bg-slate-300")}
                   >
-                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${open ? "left-[calc(100%-1.375rem)]" : "left-0.5"}`} />
+                    <span className={cx("absolute h-4 w-4 rounded-full bg-white shadow transition-all", open ? "start-[18px]" : "start-0.5")} />
                   </button>
-                </label>
+                </div>
 
-                {!open && <span className="text-xs font-semibold text-slate-400">{t("settings.workingHoursClosed")}</span>}
+                {!open && <span className="text-xs font-medium text-slate-400">{t("settings.workingHoursClosed")}</span>}
 
                 {open && (
                   <div className="flex flex-1 flex-wrap items-center gap-2">
@@ -292,42 +296,42 @@ function WorkingHoursEditor({ value, onChange, errors, t }) {
                           <input
                             type="time"
                             value={period.open}
+                            aria-label={`${t(`settings.days.${day}`)} ${index + 1} — open`}
                             onChange={(e) => updatePeriod(day, index, "open", e.target.value)}
-                            className={`rounded-xl border px-2 py-1.5 text-sm ${hasError ? "border-rose-300 bg-rose-50" : "border-slate-200"}`}
+                            className={timeInput(hasError)}
                           />
-                          <span className="text-slate-400">→</span>
+                          <span className="text-slate-400 rtl:rotate-180" aria-hidden="true">→</span>
                           <input
                             type="time"
                             value={period.close}
+                            aria-label={`${t(`settings.days.${day}`)} ${index + 1} — close`}
                             onChange={(e) => updatePeriod(day, index, "close", e.target.value)}
-                            className={`rounded-xl border px-2 py-1.5 text-sm ${hasError ? "border-rose-300 bg-rose-50" : "border-slate-200"}`}
+                            className={timeInput(hasError)}
                           />
                           {periods.length > 1 && (
                             <button
                               type="button"
                               onClick={() => removePeriod(day, index)}
-                              className="rounded-lg px-1.5 py-1 text-xs font-bold text-rose-500 hover:bg-rose-50"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-rose-500 hover:bg-rose-50"
                               aria-label={t("settings.workingHoursRemovePeriod")}
+                              title={t("settings.workingHoursRemovePeriod")}
                             >
-                              ✕
+                              <XMarkIcon className="h-4 w-4" />
                             </button>
                           )}
                         </div>
                       );
                     })}
-                    <button
-                      type="button"
-                      onClick={() => addPeriod(day)}
-                      className="rounded-lg px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50"
-                    >
-                      + {t("settings.workingHoursAddPeriod")}
+                    <button type="button" onClick={() => addPeriod(day)} className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-indigo-600 hover:bg-indigo-50">
+                      <PlusIcon className="h-3.5 w-3.5" />
+                      {t("settings.workingHoursAddPeriod")}
                     </button>
                   </div>
                 )}
               </div>
 
               {Object.keys(errors).some((k) => k.startsWith(`${day}-`)) && (
-                <p className="mt-1 text-xs font-semibold text-rose-600">{t("settings.workingHoursInvalidPeriod")}</p>
+                <p className="mt-1 text-xs font-medium text-rose-600">{t("settings.workingHoursInvalidPeriod")}</p>
               )}
             </div>
           );
@@ -337,110 +341,76 @@ function WorkingHoursEditor({ value, onChange, errors, t }) {
   );
 }
 
-// Main-page card: read-only summary only — no toggles, no time inputs,
-// no bulk-copy controls. This is the entire point of the progressive-
-// disclosure rework: a rarely-edited setting should not permanently
-// occupy this much of the page. "Edit Hours" (or "Add Hours" if nothing
-// is configured yet) is the only control here.
+// Main-page card: read-only summary + Edit/Add Hours (opens the drawer).
 function BusinessHoursSummaryCard({ workingHours, onEdit, t }) {
   const hasAnySchedule = DAY_KEYS.some((day) => workingHours.days[day].length > 0);
   const summary = useMemo(() => (hasAnySchedule ? groupWorkingHoursSummary(workingHours, t) : []), [workingHours, hasAnySchedule, t]);
 
   return (
-    <div className={`${cardClass} p-4`}>
-      <div className="mb-4 flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-amber-50 text-base">🕒</div>
-        <div>
-          <h3 className="text-[15px] font-semibold text-slate-900">{t("settings.workingHoursTitle")}</h3>
-          <p className="text-xs text-slate-500">{t("settings.workingHoursSubtitle")}</p>
-        </div>
-      </div>
+    <Card as="section" aria-labelledby="settings-hours-title" data-section="hours">
+      <SectionHeader
+        id="settings-hours-title"
+        icon={ClockIcon}
+        tone="amber"
+        title={t("settings.workingHoursTitle")}
+        subtitle={t("settings.workingHoursSubtitle")}
+        action={
+          <button type="button" onClick={onEdit} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-50">
+            <PencilSquareIcon className="h-4 w-4" />
+            {hasAnySchedule ? t("settings.workingHoursEditButton") : t("settings.workingHoursAddButton")}
+          </button>
+        }
+      />
 
       {!hasAnySchedule ? (
-        <p className="text-sm text-slate-400">{t("settings.workingHoursNotSet")}</p>
+        <p className="rounded-xl border border-dashed border-slate-200 px-3 py-4 text-center text-sm text-slate-500">{t("settings.workingHoursNotSet")}</p>
       ) : (
-        <div className="space-y-1.5 text-sm">
+        <dl className="divide-y divide-slate-100 rounded-xl border border-slate-200/80 text-sm">
           {summary.map((row, i) => (
-            <div key={i} className="flex items-center justify-between gap-3">
-              <span className="font-semibold text-slate-700">{row.label}</span>
-              <span className="text-slate-500">{row.text}</span>
+            <div key={i} className="flex items-start justify-between gap-3 px-3 py-2">
+              <dt className="font-medium text-slate-700">{row.label}</dt>
+              <dd className="text-slate-600" dir="ltr">{row.text}</dd>
             </div>
           ))}
-          {workingHours.timezone && (
-            <p className="pt-2 text-xs text-slate-400">{t("settings.timezone")}: {workingHours.timezone}</p>
-          )}
-        </div>
+        </dl>
       )}
-
-      <button
-        type="button"
-        onClick={onEdit}
-        className="mt-4 rounded-2xl border border-slate-200 px-4 py-2 text-sm font-bold text-indigo-700 hover:bg-indigo-50"
-      >
-        {hasAnySchedule ? t("settings.workingHoursEditButton") : t("settings.workingHoursAddButton")}
-      </button>
-    </div>
+      {hasAnySchedule && workingHours.timezone && (
+        <p className="mt-2 text-xs text-slate-500">
+          {t("settings.timezone")}: <span dir="ltr">{workingHours.timezone}</span>
+        </p>
+      )}
+    </Card>
   );
 }
 
-// Drawer on desktop (side panel, matches the exact pattern already used
-// by AdminClientSettings.jsx's feature drawer for visual consistency
-// across the app), full-width/full-screen on mobile (the panel is
-// `w-full`, only capped by `max-w-xl` above the `sm` breakpoint).
-//
-// Save model, deliberately unambiguous (no double-save): "Apply" commits
-// the draft into this page's `workingHours` form state ONLY — it does
-// NOT call Supabase. The page's single "Save Settings" button (top of
-// page, unchanged) is the only thing that ever persists to the database,
-// for every field on this page including hours. Closing via ✕/backdrop
-// discards the draft instead.
+// Drawer. Save model unchanged: "Apply" commits the draft into this page's
+// workingHours form state ONLY (no request); the page's single "Save
+// Settings" button persists everything. Close/backdrop/Escape discards.
 function BusinessHoursDrawer({ draft, onDraftChange, onApply, onCancel, t }) {
   const errors = useMemo(() => validateWorkingHours(draft, t), [draft, t]);
   const hasErrors = Object.keys(errors).length > 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex">
-      <div className="flex-1 bg-slate-950/50 backdrop-blur-sm" onClick={onCancel} />
-      <div className="h-full w-full max-w-xl overflow-y-auto border-s border-slate-200 bg-white shadow-2xl">
-        <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 p-4 backdrop-blur">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-base font-semibold text-slate-900">{t("settings.workingHoursDrawerTitle")}</h2>
-              <p className="mt-1 text-sm text-slate-500">{t("settings.workingHoursDrawerSubtitle")}</p>
-            </div>
-            <button type="button" onClick={onCancel} className="rounded-2xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50">
-              <XMarkIcon className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-
-        <div className="space-y-4 p-4">
-          <WorkingHoursEditor value={draft} onChange={onDraftChange} errors={errors} t={t} />
-
-          {hasErrors && (
-            <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
-              {t("settings.workingHoursHasErrors")}
-            </div>
-          )}
-
-          <p className="text-xs text-slate-400">{t("settings.workingHoursDrawerHint")}</p>
-
-          <div className="flex gap-3 border-t border-slate-100 pt-5">
-            <button
-              type="button"
-              onClick={onApply}
-              disabled={hasErrors}
-              className="flex-1 rounded-2xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {t("settings.workingHoursApply")}
-            </button>
-            <button type="button" onClick={onCancel} className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
-              {t("common.cancel")}
-            </button>
-          </div>
-        </div>
+    <Drawer
+      open
+      onClose={onCancel}
+      title={t("settings.workingHoursDrawerTitle")}
+      subtitle={t("settings.workingHoursDrawerSubtitle")}
+      closeLabel={t("common.close")}
+      width="max-w-2xl"
+      footer={
+        <>
+          <button type="button" onClick={onCancel} className={ui.btnSecondary}>{t("common.cancel")}</button>
+          <button type="button" onClick={onApply} disabled={hasErrors} className={ui.btnPrimary}>{t("settings.workingHoursApply")}</button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <WorkingHoursEditor value={draft} onChange={onDraftChange} errors={errors} t={t} />
+        {hasErrors && <Notice tone="error">{t("settings.workingHoursHasErrors")}</Notice>}
+        <p className="text-xs text-slate-500">{t("settings.workingHoursDrawerHint")}</p>
       </div>
-    </div>
+    </Drawer>
   );
 }
 
@@ -541,96 +511,137 @@ export default function ClientSettings() {
   const update = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
   const isSuccessMsg = msg === t("settings.successSaved");
 
+  const field = (key, labelKey, extra = {}) => (
+    <div className={extra.className}>
+      <label htmlFor={`settings-${key}`} className={ui.label}>{t(labelKey)}</label>
+      <input
+        id={`settings-${key}`}
+        className={inputClass}
+        value={form[key]}
+        onChange={(e) => update(key, e.target.value)}
+        disabled={extra.disabled}
+        dir={extra.dir || "auto"}
+        placeholder={extra.placeholder}
+      />
+      {extra.hint && <p className="mt-1 text-xs text-slate-500">{extra.hint}</p>}
+    </div>
+  );
+
+  const messageField = (key, labelKey, placeholderKey) => (
+    <div>
+      <label htmlFor={`settings-${key}`} className={ui.label}>{t(labelKey)}</label>
+      <textarea
+        id={`settings-${key}`}
+        rows={3}
+        dir="auto"
+        className={cx(inputClass, "min-h-[96px] resize-y leading-6")}
+        value={form[key]}
+        onChange={(e) => update(key, e.target.value)}
+        placeholder={t(placeholderKey)}
+      />
+    </div>
+  );
+
+  const saveButton = (
+    <button type="button" onClick={handleSave} disabled={loading} className={ui.btnPrimary}>
+      {loading ? t("settings.saving") : t("settings.save")}
+    </button>
+  );
+
   return (
     <div className="space-y-4">
-      <PageHeader
-        title={t("settings.title")}
-        description={t("settings.subtitle")}
-        actions={<button onClick={handleSave} disabled={loading} className={ui.btnPrimary}>{loading ? t("settings.saving") : t("settings.save")}</button>}
-      />
+      <PageHeader title={t("settings.title")} description={t("settings.subtitle")} actions={saveButton} />
 
-      {msg && <div className={`rounded-2xl border px-4 py-3 text-sm font-bold ${isSuccessMsg ? "border-emerald-100 bg-emerald-50 text-emerald-700" : "border-red-100 bg-red-50 text-red-700"}`}>{msg}</div>}
+      {msg && <Notice tone={isSuccessMsg ? "success" : "error"}>{msg}</Notice>}
 
-      {/* A. Business Information — one calm card, no tiny cards split out. */}
-      <div className={`${cardClass} p-4`}>
-        <div className="mb-4 flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-indigo-50 text-base">🏢</div><div><h3 className="text-[15px] font-semibold text-slate-900">{t("settings.businessInfoTitle")}</h3><p className="text-xs text-slate-500">{t("settings.businessInfoSubtitle")}</p></div></div>
-        {/* Wide canvas, readable fields: 1 → 2 → 3 columns; description spans the row. */}
-        <div className="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2 xl:grid-cols-3">
-          <div><label className="mb-1 block text-[13px] font-medium text-slate-700">{t("settings.businessName")}</label><input className={inputClass} value={form.business_name} onChange={(e) => update("business_name", e.target.value)} /></div>
-          <div><label className="mb-1 block text-[13px] font-medium text-slate-700">{t("settings.email")}</label><input className={inputClass} value={form.email} disabled /><p className="mt-1 text-xs text-slate-400">{t("settings.emailHint")}</p></div>
-          <div><label className="mb-1 block text-[13px] font-medium text-slate-700">{t("settings.phone")}</label><input className={inputClass} value={form.phone} onChange={(e) => update("phone", e.target.value)} /></div>
-          <div><label className="mb-1 block text-[13px] font-medium text-slate-700">{t("settings.website")}</label><input className={inputClass} value={form.website} onChange={(e) => update("website", e.target.value)} placeholder={t("settings.websitePlaceholder")} /></div>
-          <div className="xl:col-span-2"><label className="mb-1 block text-[13px] font-medium text-slate-700">{t("settings.address")}</label><input className={inputClass} value={form.address} onChange={(e) => update("address", e.target.value)} /></div>
-          <div className="md:col-span-2 xl:col-span-3"><label className="mb-1 block text-[13px] font-medium text-slate-700">{t("settings.businessDescription")}</label><textarea rows={3} className={inputClass} value={form.business_description} onChange={(e) => update("business_description", e.target.value)} /></div>
-        </div>
-      </div>
-
-      {/* AI Engine V1 — Business Voice + Authoritative Locations. Separate
-          card, deliberately not merged into Business Information above —
-          it owns its own load/save lifecycle (each action persists
-          immediately via the locations API) rather than participating in
-          this page's single "Save Settings" button. */}
-      <LocationsSection clientId={clientId} actorUserId={user?.id} />
-
-      {/* B. Business Hours (summary only) + D. Language & Regional — paired
-          side by side so neither is a lonely, mostly-empty full-width card. */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <BusinessHoursSummaryCard workingHours={workingHours} onEdit={openHoursDrawer} t={t} />
-
-        <div className={`${cardClass} p-4`}>
-          <div className="mb-4">
-            <h3 className="text-[15px] font-semibold text-slate-900">{t("settings.regionalSettingsTitle")}</h3>
-            <p className="text-xs text-slate-500">{t("settings.regionalSettingsSubtitle")}</p>
-          </div>
-
-          <p className="mb-2 text-xs font-bold text-slate-600">{t("settings.defaultLanguageTitle")}</p>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              disabled={langSaving}
-              onClick={() => handleDefaultLanguageChange("ar")}
-              className={`rounded-xl border px-4 py-2 text-xs font-bold transition disabled:opacity-50 ${
-                defaultLanguage === "ar" ? "border-indigo-300 bg-indigo-50 text-indigo-700" : "border-slate-200 text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              {t("settings.defaultLanguageArabic")}
-            </button>
-            <button
-              type="button"
-              disabled={langSaving}
-              onClick={() => handleDefaultLanguageChange("en")}
-              className={`rounded-xl border px-4 py-2 text-xs font-bold transition disabled:opacity-50 ${
-                defaultLanguage === "en" ? "border-indigo-300 bg-indigo-50 text-indigo-700" : "border-slate-200 text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              {t("settings.defaultLanguageEnglish")}
-            </button>
-          </div>
-          {langMsg && <p className="mt-2 text-xs font-bold text-indigo-700">{langMsg}</p>}
-          <p className="mt-2 text-[11px] text-slate-400">{t("settings.defaultLanguageSubtitle")}</p>
-
-          <div className="mt-5 border-t border-slate-100 pt-4">
-            <p className="text-xs font-bold text-slate-600">{t("settings.timezone")}</p>
-            <div className="mt-1 flex items-center justify-between gap-3">
-              <span className="text-sm text-slate-700">{workingHours.timezone || "—"}</span>
-              <button type="button" onClick={openHoursDrawer} className="text-xs font-semibold text-indigo-600 hover:underline">
-                {t("settings.timezoneEditHint")}
-              </button>
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,380px)]">
+        {/* Main column */}
+        <div className="min-w-0 space-y-4">
+          {/* A. Business Information */}
+          <Card as="section" aria-labelledby="settings-business-title" data-section="business">
+            <SectionHeader id="settings-business-title" icon={BuildingStorefrontIcon} title={t("settings.businessInfoTitle")} subtitle={t("settings.businessInfoSubtitle")} />
+            <div className="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2">
+              {field("business_name", "settings.businessName")}
+              {field("email", "settings.email", { disabled: true, dir: "ltr", hint: t("settings.emailHint") })}
+              {field("phone", "settings.phone", { dir: "ltr" })}
+              {field("website", "settings.website", { dir: "ltr", placeholder: t("settings.websitePlaceholder") })}
+              {field("address", "settings.address", { className: "md:col-span-2" })}
+              <div className="md:col-span-2">
+                <label htmlFor="settings-business_description" className={ui.label}>{t("settings.businessDescription")}</label>
+                <textarea
+                  id="settings-business_description"
+                  rows={3}
+                  dir="auto"
+                  className={cx(inputClass, "min-h-[96px] resize-y leading-6")}
+                  value={form.business_description}
+                  onChange={(e) => update("business_description", e.target.value)}
+                />
+              </div>
             </div>
-          </div>
+          </Card>
+
+          {/* Business Locations — own load/save lifecycle (each action persists
+              immediately via the locations API), not part of Save Settings. */}
+          <LocationsSection clientId={clientId} actorUserId={user?.id} />
+
+          {/* C. Conversation Messages */}
+          <Card as="section" aria-labelledby="settings-messages-title" data-section="messages">
+            <SectionHeader id="settings-messages-title" icon={ChatBubbleLeftRightIcon} tone="emerald" title={t("settings.conversationMessagesTitle")} subtitle={t("settings.conversationMessagesSubtitle")} />
+            <div className="grid grid-cols-1 gap-4 2xl:grid-cols-3">
+              {messageField("welcome_message", "settings.welcomeMessage", "settings.welcomeMessagePlaceholder")}
+              {messageField("default_reply", "settings.defaultReply", "settings.defaultReplyPlaceholder")}
+              {messageField("closing_message", "settings.closingMessage", "settings.closingMessagePlaceholder")}
+            </div>
+          </Card>
+        </div>
+
+        {/* Side column */}
+        <div className="min-w-0 space-y-4">
+          {/* B. Business Hours (summary; edited in the drawer) */}
+          <BusinessHoursSummaryCard workingHours={workingHours} onEdit={openHoursDrawer} t={t} />
+
+          {/* D. Language & Regional */}
+          <Card as="section" aria-labelledby="settings-regional-title" data-section="regional">
+            <SectionHeader id="settings-regional-title" icon={LanguageIcon} tone="sky" title={t("settings.regionalSettingsTitle")} subtitle={t("settings.regionalSettingsSubtitle")} />
+
+            <p id="settings-default-language" className={ui.label}>{t("settings.defaultLanguageTitle")}</p>
+            <div role="group" aria-labelledby="settings-default-language" className="inline-flex h-9 items-center rounded-xl border border-slate-200 bg-white p-0.5">
+              {[
+                ["ar", "settings.defaultLanguageArabic"],
+                ["en", "settings.defaultLanguageEnglish"],
+              ].map(([lang, key]) => (
+                <button
+                  key={lang}
+                  type="button"
+                  disabled={langSaving}
+                  aria-pressed={defaultLanguage === lang}
+                  onClick={() => handleDefaultLanguageChange(lang)}
+                  className={cx(
+                    "h-full rounded-lg px-4 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50",
+                    defaultLanguage === lang ? "bg-indigo-600 text-white shadow-sm" : "text-slate-600 hover:bg-slate-50"
+                  )}
+                >
+                  {t(key)}
+                </button>
+              ))}
+            </div>
+            {langMsg && <p role="status" className="mt-2 text-xs font-medium text-emerald-700">{langMsg}</p>}
+            <p className="mt-2 text-xs text-slate-500">{t("settings.defaultLanguageSubtitle")}</p>
+
+            <div className="mt-4 border-t border-slate-100 pt-3">
+              <p className="text-xs font-medium text-slate-500">{t("settings.timezone")}</p>
+              <div className="mt-0.5 flex items-center justify-between gap-3">
+                <span className="text-sm font-medium text-slate-800" dir="ltr">{workingHours.timezone || "—"}</span>
+                <button type="button" onClick={openHoursDrawer} className="text-xs font-semibold text-indigo-600 hover:underline">
+                  {t("settings.timezoneEditHint")}
+                </button>
+              </div>
+            </div>
+          </Card>
         </div>
       </div>
 
-      {/* C. Conversation Messages — compact, side by side on larger screens
-          instead of one tall stacked column. */}
-      <div className={`${cardClass} p-4`}>
-        <div className="mb-4 flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-emerald-50 text-base">💬</div><div><h3 className="text-[15px] font-semibold text-slate-900">{t("settings.conversationMessagesTitle")}</h3><p className="text-xs text-slate-500">{t("settings.conversationMessagesSubtitle")}</p></div></div>
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <div><label className="mb-1 block text-[13px] font-medium text-slate-700">{t("settings.welcomeMessage")}</label><textarea rows={3} className={inputClass} value={form.welcome_message} onChange={(e) => update("welcome_message", e.target.value)} placeholder={t("settings.welcomeMessagePlaceholder")} /></div>
-          <div><label className="mb-1 block text-[13px] font-medium text-slate-700">{t("settings.defaultReply")}</label><textarea rows={3} className={inputClass} value={form.default_reply} onChange={(e) => update("default_reply", e.target.value)} placeholder={t("settings.defaultReplyPlaceholder")} /></div>
-          <div><label className="mb-1 block text-[13px] font-medium text-slate-700">{t("settings.closingMessage")}</label><textarea rows={3} className={inputClass} value={form.closing_message} onChange={(e) => update("closing_message", e.target.value)} placeholder={t("settings.closingMessagePlaceholder")} /></div>
-        </div>
-      </div>
+      <div className="flex justify-end">{saveButton}</div>
 
       {hoursDraft && (
         <BusinessHoursDrawer

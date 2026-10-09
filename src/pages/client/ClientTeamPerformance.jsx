@@ -33,7 +33,7 @@ function EventLabel({ type }) {
     reopened: "bg-amber-50 text-amber-700",
     transferred: "bg-slate-100 text-slate-600",
   }[type] || "bg-slate-100 text-slate-600";
-  return <span className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${tone}`}>{map[type] || type}</span>;
+  return <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${tone}`}>{map[type] || type}</span>;
 }
 
 function EmployeeDetail({ detail, employee }) {
@@ -42,7 +42,7 @@ function EmployeeDetail({ detail, employee }) {
   return (
     <Card
       title={t("teamPerformance.detailTitle", { name: employee.name || "—" })}
-      className="mt-5"
+      className="mt-4"
     >
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <KpiCard label={t("teamPerformance.conversationsHandled")} value={employee.conversations_handled} />
@@ -66,26 +66,26 @@ function EmployeeDetail({ detail, employee }) {
       </div>
 
       <div className="mt-5">
-        <p className="mb-2 text-sm font-bold text-slate-950">{t("teamPerformance.trendTitle")}</p>
+        <p className="mb-2 text-[13px] font-semibold text-slate-900">{t("teamPerformance.trendTitle")}</p>
         <TrendChart trend={detail?.trend} />
       </div>
 
       <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div>
-          <p className="mb-2 text-sm font-bold text-slate-950">{t("teamPerformance.recentCycles")}</p>
+          <p className="mb-2 text-[13px] font-semibold text-slate-900">{t("teamPerformance.recentCycles")}</p>
           {(detail?.recent_cycles || []).length === 0 ? (
             <EmptyBox>{t("teamPerformance.notEnoughData")}</EmptyBox>
           ) : (
             <div className="space-y-2">
               {detail.recent_cycles.map((c) => (
-                <div key={`${c.conversation_id}-${c.accepted_at}`} className="rounded-xl border border-slate-100 p-3 text-xs">
+                <div key={`${c.conversation_id}-${c.accepted_at}`} className="rounded-xl border border-slate-200/80 px-3 py-2.5 text-xs">
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-slate-500">{shortDateTime(c.accepted_at, i18n.language)}</span>
-                    <span className="font-bold text-slate-700">
+                    <span className="font-semibold tabular-nums text-slate-800">
                       {c.solved_at ? formatDuration(c.resolution_sec) : t("teamPerformance.cycleOpen")}
                     </span>
                   </div>
-                  <div className="mt-1 text-slate-400">
+                  <div className="mt-1 text-slate-500">
                     {t("teamPerformance.avgFirstResponse")}: {formatDuration(c.first_response_sec)}
                   </div>
                 </div>
@@ -94,15 +94,15 @@ function EmployeeDetail({ detail, employee }) {
           )}
         </div>
         <div>
-          <p className="mb-2 text-sm font-bold text-slate-950">{t("teamPerformance.activityTimeline")}</p>
+          <p className="mb-2 text-[13px] font-semibold text-slate-900">{t("teamPerformance.activityTimeline")}</p>
           {(detail?.timeline || []).length === 0 ? (
             <EmptyBox>{t("teamPerformance.notEnoughData")}</EmptyBox>
           ) : (
             <div className="space-y-2">
               {detail.timeline.map((e, i) => (
-                <div key={i} className="flex items-center justify-between rounded-xl border border-slate-100 p-3 text-xs">
+                <div key={i} className="flex items-center justify-between rounded-xl border border-slate-200/80 px-3 py-2.5 text-xs">
                   <EventLabel type={e.event_type} />
-                  <span className="text-slate-400">{shortDateTime(e.created_at, i18n.language)}</span>
+                  <span className="text-slate-500">{shortDateTime(e.created_at, i18n.language)}</span>
                 </div>
               ))}
             </div>
@@ -152,7 +152,7 @@ export default function ClientTeamPerformance() {
       />
 
       {error && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+        <div role="alert" className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">
           {t("teamPerformance.loadError")}
         </div>
       )}
@@ -162,7 +162,7 @@ export default function ClientTeamPerformance() {
       ) : !data ? null : (
         <>
           <Card title={t("teamPerformance.summaryTitle")}>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
               <KpiCard label={t("teamPerformance.conversationsHandled")} value={team?.conversations_handled} />
               <KpiCard label={t("teamPerformance.conversationsSolved")} value={team?.conversations_solved} />
               <KpiCard
@@ -187,7 +187,7 @@ export default function ClientTeamPerformance() {
             action={
               <Link
                 to="/client/team"
-                className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
+                className="inline-flex h-8 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
               >
                 {t("navigation.team")}
               </Link>
@@ -196,19 +196,19 @@ export default function ClientTeamPerformance() {
             {employees.length === 0 ? (
               <EmptyBox>{t("teamPerformance.noEmployees")}</EmptyBox>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[820px] text-sm">
+              <div className="-mx-4 overflow-x-auto">
+                <table className="w-full min-w-[860px] text-sm">
                   <thead>
-                    <tr className="border-b border-slate-200 text-left text-xs font-bold text-slate-500">
-                      <th className="py-2 pe-3">{t("teamPerformance.employee")}</th>
-                      <th className="px-3 py-2">{t("teamPerformance.conversationsHandled")}</th>
-                      <th className="px-3 py-2">{t("teamPerformance.handlingCycles")}</th>
-                      <th className="px-3 py-2">{t("teamPerformance.conversationsSolved")}</th>
-                      <th className="px-3 py-2">{t("teamPerformance.humanMessagesSent")}</th>
-                      <th className="px-3 py-2">{t("teamPerformance.avgFirstResponse")}</th>
-                      <th className="px-3 py-2">{t("teamPerformance.avgResolution")}</th>
-                      <th className="px-3 py-2">{t("teamPerformance.currentWorkload")}</th>
-                      <th className="px-3 py-2">{t("teamPerformance.manualReopens")}</th>
+                    <tr className="bg-slate-50/80 text-start text-[11px] font-semibold uppercase tracking-wide text-slate-500 rtl:tracking-normal">
+                      <th className="sticky start-0 z-[1] bg-slate-50 py-2.5 pe-3 ps-4 text-start">{t("teamPerformance.employee")}</th>
+                      <th className="px-3 py-2.5 text-start">{t("teamPerformance.conversationsHandled")}</th>
+                      <th className="px-3 py-2.5 text-start">{t("teamPerformance.handlingCycles")}</th>
+                      <th className="px-3 py-2.5 text-start">{t("teamPerformance.conversationsSolved")}</th>
+                      <th className="px-3 py-2.5 text-start">{t("teamPerformance.humanMessagesSent")}</th>
+                      <th className="px-3 py-2.5 text-start">{t("teamPerformance.avgFirstResponse")}</th>
+                      <th className="px-3 py-2.5 text-start">{t("teamPerformance.avgResolution")}</th>
+                      <th className="px-3 py-2.5 text-start">{t("teamPerformance.currentWorkload")}</th>
+                      <th className="px-3 py-2.5 text-start">{t("teamPerformance.manualReopens")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -218,38 +218,50 @@ export default function ClientTeamPerformance() {
                         <tr
                           key={e.user_id}
                           onClick={() => setSelectedId(selected ? null : e.user_id)}
-                          className={`cursor-pointer border-b border-slate-100 transition hover:bg-slate-50 ${
-                            selected ? "bg-indigo-50/50" : ""
+                          data-employee-id={e.user_id}
+                          aria-selected={selected}
+                          className={`group cursor-pointer border-b border-slate-100 transition hover:bg-slate-50 ${
+                            selected ? "bg-indigo-50/60" : ""
                           }`}
                         >
-                          <td className="py-2.5 pe-3">
-                            <span className="font-bold text-slate-900">{e.name || "—"}</span>
+                          <td className={`sticky start-0 z-[1] py-2.5 pe-3 ps-4 transition group-hover:bg-slate-50 ${selected ? "bg-indigo-50" : "bg-white"}`}>
+                            <button
+                              type="button"
+                              aria-pressed={selected}
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                setSelectedId(selected ? null : e.user_id);
+                              }}
+                              className="rounded text-start font-semibold text-slate-900 hover:text-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                            >
+                              {e.name || "—"}
+                            </button>
                             {e.is_active === false && (
-                              <span className="ms-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-400">
+                              <span className="ms-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
                                 {t("common.inactive")}
                               </span>
                             )}
                           </td>
-                          <td className="px-3 py-2.5 font-semibold text-slate-700">{formatCount(e.conversations_handled)}</td>
-                          <td className="px-3 py-2.5 text-slate-600">{formatCount(e.handling_cycles)}</td>
-                          <td className="px-3 py-2.5 font-semibold text-slate-700">{formatCount(e.conversations_solved)}</td>
-                          <td className="px-3 py-2.5 text-slate-600">{formatCount(e.human_messages_sent)}</td>
-                          <td className="px-3 py-2.5 text-slate-600">
+                          <td className="px-3 py-2.5 font-semibold tabular-nums text-slate-800">{formatCount(e.conversations_handled)}</td>
+                          <td className="px-3 py-2.5 tabular-nums text-slate-600">{formatCount(e.handling_cycles)}</td>
+                          <td className="px-3 py-2.5 font-semibold tabular-nums text-slate-800">{formatCount(e.conversations_solved)}</td>
+                          <td className="px-3 py-2.5 tabular-nums text-slate-600">{formatCount(e.human_messages_sent)}</td>
+                          <td className="px-3 py-2.5 tabular-nums text-slate-600">
                             {e.first_response_sample === 0 ? (
-                              <span className="text-slate-300">{t("teamPerformance.notEnoughData")}</span>
+                              <span className="text-xs text-slate-400">{t("teamPerformance.notEnoughData")}</span>
                             ) : (
                               formatDuration(e.avg_first_response_sec)
                             )}
                           </td>
-                          <td className="px-3 py-2.5 text-slate-600">
+                          <td className="px-3 py-2.5 tabular-nums text-slate-600">
                             {e.resolution_sample === 0 ? (
-                              <span className="text-slate-300">{t("teamPerformance.notEnoughData")}</span>
+                              <span className="text-xs text-slate-400">{t("teamPerformance.notEnoughData")}</span>
                             ) : (
                               formatDuration(e.avg_resolution_sec)
                             )}
                           </td>
-                          <td className="px-3 py-2.5 text-slate-600">{formatCount(e.current_workload)}</td>
-                          <td className="px-3 py-2.5 text-slate-600">{formatCount(e.manual_reopens)}</td>
+                          <td className="px-3 py-2.5 tabular-nums text-slate-600">{formatCount(e.current_workload)}</td>
+                          <td className="px-3 py-2.5 tabular-nums text-slate-600">{formatCount(e.manual_reopens)}</td>
                         </tr>
                       );
                     })}
@@ -266,7 +278,7 @@ export default function ClientTeamPerformance() {
           {selectedEmployee ? (
             <EmployeeDetail detail={data.detail} employee={selectedEmployee} />
           ) : employees.length > 0 ? (
-            <p className="px-1 text-xs font-medium text-slate-400">{t("teamPerformance.selectEmployee")}</p>
+            <p className="px-1 text-xs font-medium text-slate-500">{t("teamPerformance.selectEmployee")}</p>
           ) : null}
         </>
       )}
