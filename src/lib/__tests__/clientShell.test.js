@@ -97,7 +97,8 @@ test("density scale: shared tokens, PageHeader on every standard client page, no
   assert.ok(prim.includes("export function PageHeader") && prim.includes("export const ui = {"));
   for (const p of ["ClientDashboard", "ClientLeads", "ClientSettings", "ClientIntegrations", "ClientTeam", "ClientTeamPerformance", "ClientMyPerformance", "ClientAutoReplies", "ClientQuickReplies", "ClientAccount"]) {
     const src = read(`src/pages/client/${p}.jsx`);
-    assert.ok(src.includes("<PageHeader"), p);
+    // Account Settings uses its identity hero (h1 + title + Save) as the page header.
+    assert.ok(src.includes("<PageHeader") || (p === "ClientSettings" && src.includes('data-testid="settings-hero"') && src.includes("<h1")), p);
     assert.equal(/tracking-[0.35em]/.test(src), false, p + " eyebrow");
     assert.equal(/rounded-3xl|font-black|text-3xl/.test(src), false, p + " legacy scale");
   }
