@@ -109,6 +109,21 @@ test("no fabricated commercial claims: no prices, testimonials or social profile
   assert.ok(LANDING.includes("Live Monitoring is coming soon."));
 });
 
+test("trial CTAs never imply self-service sign-up works (not implemented yet)", () => {
+  const site = read("src/lib/publicSite.js");
+  assert.match(site, /export const TRIAL_CTA_LABEL = "Free Trial — Coming Soon";/);
+  for (const src of [LANDING, NAV, FOOTER, TRIAL]) {
+    assert.equal(/Start Free Trial|Start your \S+ free trial|shown when you sign up|Try the (AI Agent|shared inbox)|Start capturing leads/.test(src), false);
+    // every trial link still goes to the coming-soon page, never to a form/API
+    assert.equal(/fetch\(|supabase|<form/.test(src), false);
+  }
+  assert.ok(TRIAL.includes("is not available yet"));
+  const en = JSON.parse(read("src/locales/en/translation.json"));
+  const ar = JSON.parse(read("src/locales/ar/translation.json"));
+  assert.match(en.login.startTrial, /coming soon/i);
+  assert.match(ar.login.startTrial, /قريباً/);
+});
+
 test("language context follows the live i18next language (no stale label/dir after a signed-out switch)", () => {
   const ctx = read("src/context/LanguageContext.jsx");
   assert.ok(ctx.includes('i18n.on("languageChanged", onChange);'));

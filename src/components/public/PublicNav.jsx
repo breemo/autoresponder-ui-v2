@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { ArrowRightIcon, Bars3Icon, ChevronDownIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { BrandLogo } from "./Brand.jsx";
-import { LOGIN_PATH, NAV_ITEMS, PUBLIC_HOME_PATH, TRIAL_PATH, appHomePath } from "../../lib/publicSite.js";
+import { LOGIN_PATH, NAV_ITEMS, PUBLIC_HOME_PATH, TRIAL_CTA_LABEL, TRIAL_PATH, appHomePath } from "../../lib/publicSite.js";
 
 // Section link that works from the landing page (in-page anchor, smooth
 // scroll via `scroll-behavior: smooth` + section scroll-margin) and from any
@@ -149,7 +149,7 @@ export default function PublicNav({ onHome = false }) {
                 to={TRIAL_PATH}
                 className="group inline-flex items-center gap-2 rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-600/25 transition hover:-translate-y-px hover:bg-indigo-700"
               >
-                Start Free Trial
+                {TRIAL_CTA_LABEL}
                 <ArrowRightIcon className="h-4 w-4 transition group-hover:translate-x-0.5" />
               </Link>
             </>
@@ -190,7 +190,7 @@ export default function PublicNav({ onHome = false }) {
             ) : (
               <>
                 <Link to={TRIAL_PATH} onClick={closeMobile} className="rounded-full bg-indigo-600 px-5 py-3 text-center text-sm font-semibold text-white shadow-md shadow-indigo-600/25">
-                  Start Free Trial
+                  {TRIAL_CTA_LABEL}
                 </Link>
                 <Link to={LOGIN_PATH} onClick={closeMobile} className="rounded-full border border-indigo-200 px-5 py-3 text-center text-sm font-semibold text-indigo-700">
                   Log in

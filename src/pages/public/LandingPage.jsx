@@ -28,7 +28,7 @@ import {
   MessageBubble,
   MonitoringPreview,
 } from "../../components/public/ProductPreviews.jsx";
-import { CHANNELS, SECTION_IDS, TRIAL_DAYS, TRIAL_PATH } from "../../lib/publicSite.js";
+import { CHANNELS, SECTION_IDS, TRIAL_CTA_LABEL, TRIAL_DAYS, TRIAL_PATH } from "../../lib/publicSite.js";
 
 const PAGE_TITLE = "Auto Responder — AI + team for every customer conversation";
 
@@ -130,7 +130,7 @@ function Hero() {
             AI that answers instantly and your team stepping in whenever it matters.
           </p>
           <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-            <PrimaryButton to={TRIAL_PATH}>Start Free Trial</PrimaryButton>
+            <PrimaryButton to={TRIAL_PATH}>{TRIAL_CTA_LABEL}</PrimaryButton>
             <a
               href={`#${SECTION_IDS.howItWorks}`}
               className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-6 py-3.5 text-sm font-semibold text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:text-indigo-700"
@@ -140,7 +140,7 @@ function Hero() {
             </a>
           </div>
           <ul className="mt-7 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-500">
-            {[`${TRIAL_DAYS}-day free trial`, "All five channels in one inbox", "AI + human handover"].map((t) => (
+            {[`${TRIAL_DAYS}-day free trial (coming soon)`, "All five channels in one inbox", "AI + human handover"].map((t) => (
               <li key={t} className="inline-flex items-center gap-1.5">
                 <CheckIcon className="h-4 w-4 text-indigo-600" strokeWidth={2.5} />
                 {t}
@@ -284,7 +284,7 @@ function Pricing() {
           <SectionHeading
             eyebrow="Simple, transparent pricing"
             title="Choose the plan that fits your business"
-            text={`Start with a ${TRIAL_DAYS}-day free trial, then pick the plan that matches your volume. Plans grow with you as your conversations grow.`}
+            text={`Self-service sign-up with a ${TRIAL_DAYS}-day free trial is coming soon. Plans grow with you as your conversations grow.`}
           />
           <div className="mt-8 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-5">
             <p className="text-sm font-semibold text-slate-900">Plans differ by</p>
@@ -304,7 +304,7 @@ function Pricing() {
             <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-gradient-to-br from-indigo-200/70 to-violet-200/40 blur-2xl" />
             <div className="relative flex flex-wrap items-start justify-between gap-4">
               <div>
-                <span className="rounded-full bg-indigo-600 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-white">Free trial</span>
+                <span className="rounded-full bg-indigo-600 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-white">Free trial · Coming soon</span>
                 <p className="mt-4 text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl">
                   {TRIAL_DAYS} days<span className="ml-2 text-lg font-semibold text-slate-400">to try everything</span>
                 </p>
@@ -322,8 +322,8 @@ function Pricing() {
               ))}
             </ul>
             <div className="relative mt-8 flex flex-col gap-4 border-t border-slate-100 pt-7 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-slate-500">Plan options and pricing are shown when you sign up.</p>
-              <PrimaryButton to={TRIAL_PATH}>Start Free Trial</PrimaryButton>
+              <p className="text-sm text-slate-500">Self-service sign-up is not available yet. Existing customers can log in as usual.</p>
+              <PrimaryButton to={TRIAL_PATH}>{TRIAL_CTA_LABEL}</PrimaryButton>
             </div>
           </div>
         </div>
@@ -343,14 +343,14 @@ function FinalCta() {
             Ready to transform your customer conversations?
           </h2>
           <p className="mt-5 text-base leading-relaxed text-indigo-100 sm:text-lg">
-            Start your {TRIAL_DAYS}-day free trial and let AI and your team handle every message together.
+            Let AI and your team handle every message together. Self-service sign-up with a {TRIAL_DAYS}-day free trial is coming soon.
           </p>
           <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
             <Link
               to={TRIAL_PATH}
               className="group inline-flex items-center justify-center gap-2 rounded-full bg-white px-7 py-3.5 text-sm font-semibold text-indigo-700 shadow-lg transition hover:-translate-y-0.5 hover:bg-indigo-50"
             >
-              Start Free Trial
+              {TRIAL_CTA_LABEL}
               <ArrowRightIcon className="h-4 w-4 transition group-hover:translate-x-0.5" />
             </Link>
             <a
@@ -406,7 +406,7 @@ export default function LandingPage() {
             "Supports booking-related conversations where configured",
             "Hands the conversation to your team when needed",
           ]}
-          cta={<PrimaryButton to={TRIAL_PATH}>Try the AI Agent</PrimaryButton>}
+          cta={<PrimaryButton to={TRIAL_PATH}>{TRIAL_CTA_LABEL}</PrimaryButton>}
           visual={<ChatPreview />}
         />
         <FeatureSection
@@ -438,7 +438,7 @@ export default function LandingPage() {
             "Team members with roles and permissions",
             "Reply to customers directly from the inbox",
           ]}
-          cta={<PrimaryButton to={TRIAL_PATH}>Try the shared inbox</PrimaryButton>}
+          cta={<PrimaryButton to={TRIAL_PATH}>{TRIAL_CTA_LABEL}</PrimaryButton>}
           visual={<InboxPreview />}
         />
         <FeatureSection
@@ -454,7 +454,7 @@ export default function LandingPage() {
             "Each lead linked to its conversation",
             "Follow up from the same place you chat",
           ]}
-          cta={<PrimaryButton to={TRIAL_PATH}>Start capturing leads</PrimaryButton>}
+          cta={<PrimaryButton to={TRIAL_PATH}>{TRIAL_CTA_LABEL}</PrimaryButton>}
           visual={<LeadsPreview />}
         />
         <UseCases />

@@ -2,7 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { BrandLogo, ChannelTile } from "./Brand.jsx";
 import { SectionLink } from "./PublicNav.jsx";
-import { CHANNELS, LOGIN_PATH, SECTION_IDS, TRIAL_PATH } from "../../lib/publicSite.js";
+import { CHANNELS, LOGIN_PATH, SECTION_IDS, TRIAL_CTA_LABEL, TRIAL_PATH } from "../../lib/publicSite.js";
 
 const COLUMNS = [
   {
@@ -61,7 +61,7 @@ export default function PublicFooter({ onHome = false }) {
               <Link to={LOGIN_PATH} className="text-sm text-slate-600 transition hover:text-indigo-700">Log in</Link>
             </li>
             <li>
-              <Link to={TRIAL_PATH} className="text-sm text-slate-600 transition hover:text-indigo-700">Start Free Trial</Link>
+              <Link to={TRIAL_PATH} className="text-sm text-slate-600 transition hover:text-indigo-700">{TRIAL_CTA_LABEL}</Link>
             </li>
             <li>
               <SectionLink section={SECTION_IDS.contact} onHome={onHome} className="text-sm text-slate-600 transition hover:text-indigo-700">

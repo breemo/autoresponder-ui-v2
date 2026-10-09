@@ -7,11 +7,11 @@ import { LOGIN_PATH, PUBLIC_HOME_PATH, TRIAL_DAYS } from "../../lib/publicSite.j
 // Placeholder for the upcoming self-service registration + trial flow.
 // Intentionally has NO form and NO backend calls. The next phase replaces
 // this page (route: TRIAL_PATH in src/lib/publicSite.js); every
-// "Start Free Trial" CTA already points here.
+// trial CTA (label: TRIAL_CTA_LABEL) already points here.
 export default function StartTrial() {
   useEffect(() => {
     const previous = document.title;
-    document.title = "Start your free trial — Auto Responder";
+    document.title = "Free trial — coming soon — Auto Responder";
     return () => {
       document.title = previous;
     };
@@ -27,7 +27,7 @@ export default function StartTrial() {
           </span>
           <h1 className="mt-6 text-2xl font-bold tracking-tight sm:text-3xl">Free trial sign-up is coming soon</h1>
           <p className="mt-3 text-[15px] leading-relaxed text-slate-600">
-            Self-service registration with a {TRIAL_DAYS}-day free trial is on its way. Already have an account? Log in to continue.
+            Self-service registration with a {TRIAL_DAYS}-day free trial is not available yet. Existing customers can log in as usual.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
             <Link

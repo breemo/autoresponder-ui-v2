@@ -12,6 +12,11 @@ export const PUBLIC_HOME_PATH = "/";
 export const LOGIN_PATH = "/login";
 export const TRIAL_PATH = "/start-trial";
 
+// Self-service registration / trial activation is NOT implemented yet, so
+// every trial CTA says so explicitly and leads to the "coming soon" page
+// (TRIAL_PATH). Replace this label when real sign-up ships.
+export const TRIAL_CTA_LABEL = "Free Trial — Coming Soon";
+
 // Where an already signed-in user continues from the public site.
 export function appHomePath(user) {
   if (!user) return null;
