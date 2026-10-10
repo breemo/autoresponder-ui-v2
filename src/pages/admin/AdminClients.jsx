@@ -12,6 +12,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { supabase } from "../../lib/supabaseClient";
+import { useAuth } from "../../context/AuthContext.jsx";
 
 const emptyForm = {
   business_name: "",
@@ -34,7 +35,22 @@ function formatDate(value) {
   }
 }
 
+// Security C2.1: client create/delete run server-side
+// (api/_lib/adminClients.js via /api/system-settings?resource=clients) so
+// this page never reads, inserts or deletes `users` rows in the browser.
+// Same steps, validation, rollback and messages as before.
+async function callAdminClientsApi(actorUserId, payload) {
+  const response = await fetch("/api/system-settings?resource=clients", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ actor_user_id: actorUserId, ...payload }),
+  });
+  const data = await response.json().catch(() => null);
+  return { ok: response.ok && data?.success === true, code: data?.code || `http_${response.status}` };
+}
+
 export default function AdminClients() {
+  const { user } = useAuth();
   const [clients, setClients] = useState([]);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -202,113 +218,25 @@ export default function AdminClients() {
 
     setSubmitting(true);
 
-
-let createdClient = null;
-let createdUser = null;
-let createdSubscription = null;
-    
     try {
-      const normalizedEmail = form.email.trim().toLowerCase();
+      const result = await callAdminClientsApi(user?.id, {
+        action: "create",
+        business_name: form.business_name,
+        email: form.email,
+        password: form.password,
+        plan_id: form.plan_id,
+        subscription_type: form.subscription_type,
+      });
 
-      const { data: existingUser, error: existingUserError } = await supabase
-        .from("users")
-        .select("id")
-        .eq("email", normalizedEmail)
-        .maybeSingle();
-
-      if (existingUserError) throw existingUserError;
-      if (existingUser) {
+      if (result.code === "email_in_use_users") {
         setMsg("⚠️ هذا البريد الإلكتروني مستخدم مسبقًا في جدول المستخدمين");
         return;
       }
-
-      const { data: existingClient, error: existingClientError } = await supabase
-        .from("clients")
-        .select("id")
-        .eq("email", normalizedEmail)
-        .maybeSingle();
-
-      if (existingClientError) throw existingClientError;
-      if (existingClient) {
+      if (result.code === "email_in_use_clients") {
         setMsg("⚠️ هذا البريد الإلكتروني مستخدم مسبقًا في جدول العملاء");
         return;
       }
-
-      const { data: clientData, error: clientError } = await supabase
-        .from("clients")
-        .insert([
-          {
-            business_name: form.business_name.trim(),
-            email: normalizedEmail,
-            plan_id: form.plan_id || null,
-          },
-        ])
-        .select("id, business_name, email, plan_id, is_active, created_at")
-        .single();
-
-      if (clientError) throw clientError;
-      createdClient = clientData;
-
-if (form.plan_id) {
-  const startDate = new Date();
-
-  const endDate = new Date();
-
-  if (form.subscription_type === "trial") {
-    endDate.setDate(endDate.getDate() + 3);
-  } else {
-    endDate.setMonth(endDate.getMonth() + 1);
-  }
-
-const { data: subscriptionData, error: subscriptionError } = await supabase
-  .from("subscriptions")
-  .insert([
-    {
-      client_id: createdClient.id,
-	  plan_id: form.plan_id,
-	  subscription_type: form.subscription_type,
-	  status: "active",
-	  start_date: startDate.toISOString(),
-	  end_date: endDate.toISOString(),
-    },
-  ])
-  .select()
-  .single();
-
-if (subscriptionError) throw subscriptionError;
-
-createdSubscription = subscriptionData;
-}
-      const { data: userData, error: userError } = await supabase
-        .from("users")
-        .insert([
-          {
-            email: normalizedEmail,
-            name: form.business_name.trim(),
-            role: "client",
-            password: form.password,
-            // The Owner must change this on first login before using the
-            // Client Portal — see ClientRoute's mandatory-change gate.
-            must_change_password: true,
-          },
-        ])
-        .select("id")
-        .single();
-
-      if (userError) throw userError;
-      createdUser = userData;
-
-      const { error: linkError } = await supabase
-        .from("client_users")
-        .insert([
-          {
-            client_id: createdClient.id,
-            user_id: createdUser.id,
-            role: "owner",
-          },
-        ]);
-
-      if (linkError) throw linkError;
+      if (!result.ok) throw new Error(result.code);
 
   setMsg(
   form.plan_id
@@ -320,26 +248,8 @@ createdSubscription = subscriptionData;
       setIsDrawerOpen(false);
       fetchData();
     } catch (error) {
-      console.error(error);
-
-      if (createdUser?.id) {
-        await supabase.from("users").delete().eq("id", createdUser.id);
-      }
-
-if (createdSubscription?.id) {
-  await supabase
-    .from("subscriptions")
-    .delete()
-    .eq("id", createdSubscription.id);
-}
-
-      if (createdClient?.id) {
-  await supabase
-    .from("clients")
-    .delete()
-    .eq("id", createdClient.id);
-}
-      
+      // Rollback now happens server-side. Log only the error code.
+      console.error("Add client failed:", error?.message);
       setMsg("❌ فشل في إضافة العميل. يرجى المحاولة مرة أخرى.");
     } finally {
       setSubmitting(false);
@@ -368,31 +278,14 @@ if (createdSubscription?.id) {
   const deleteClient = async (id) => {
     if (!window.confirm("هل أنت متأكد من حذف هذا العميل؟")) return;
 
-    const targetClient = clients.find((c) => c.id === id);
-    const targetEmail = targetClient?.email || null;
-
     try {
-      if (targetEmail) {
-        const { data: linkedUser } = await supabase
-          .from("users")
-          .select("id")
-          .eq("email", targetEmail)
-          .maybeSingle();
-
-        if (linkedUser?.id) {
-          await supabase.from("client_users").delete().eq("client_id", id);
-          await supabase.from("users").delete().eq("id", linkedUser.id);
-        }
-      }
-
-      const { error } = await supabase.from("clients").delete().eq("id", id);
-
-      if (error) throw error;
+      const result = await callAdminClientsApi(user?.id, { action: "delete", client_id: id });
+      if (!result.ok) throw new Error(result.code);
 
       setMsg("🗑️ تم حذف العميل");
       fetchData();
     } catch (error) {
-      console.error(error);
+      console.error("Delete client failed:", error?.message);
       setMsg("❌ فشل في حذف العميل");
     }
   };

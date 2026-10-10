@@ -1,6 +1,7 @@
 import { getSupabaseServerClient } from "./_lib/supabaseServer.js";
 import { resolveActingAdmin } from "./_lib/clientAuthz.js";
 import { computeAdminOverview } from "./_lib/adminOverview.js";
+import { handleAdminClients } from "./_lib/adminClients.js";
 import { MAIN_INBOUND_WEBHOOK_KEY, normalizeInboundWebhookBase } from "./_lib/inboundWebhookBase.js";
 import { WORKFLOW_PAIRS, extractN8nWorkflowId, environmentLabel } from "../src/lib/n8nSettings.js";
 
@@ -49,6 +50,12 @@ import { WORKFLOW_PAIRS, extractN8nWorkflowId, environmentLabel } from "../src/l
 // api/_lib/adminOverview.js. (Folded in here rather than a new file — the
 // deploy is already at the 12-Serverless-Function Hobby cap, and this
 // endpoint is already the platform-admin one.)
+//
+// POST /api/system-settings?resource=clients { actor_user_id, action, ... }
+// ->  Admin Clients create/delete (Security C2.1), moved here from the
+// browser so AdminClients.jsx no longer touches `users` directly. Same
+// admin-only gate (actor_user_id is still unverified until S3); requires
+// the service-role key. See api/_lib/adminClients.js.
 const WEBHOOK_KEYS = new Set(["human_reply_webhook_url", "evolution_api_gateway_workflow_url", MAIN_INBOUND_WEBHOOK_KEY]);
 const ID_KEYS = new Set(["ai_agent_core_workflow_id", "inbound_media_core_workflow_id"]);
 const URL_KEYS = new Set(["ai_agent_core_workflow_url", "inbound_media_core_workflow_url"]);
@@ -111,6 +118,11 @@ export default async function handler(req, res, deps = {}) {
       console.error("system-settings(overview): failed to build admin overview:", error);
       return res.status(500).json({ success: false, message: "Failed to load the admin overview" });
     }
+  }
+
+  // Admin Clients create/delete — reached ONLY after the admin gate above.
+  if (req.method === "POST" && req.query?.resource === "clients") {
+    return handleAdminClients(req, res, { supabase, env: deps.env || process.env, now: deps.now });
   }
 
   if (req.method === "GET") {
