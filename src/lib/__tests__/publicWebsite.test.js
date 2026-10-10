@@ -54,9 +54,10 @@ test("redesigned Login keeps the existing authentication flow", () => {
   // Same credential check, membership resolution, storage, session and destinations.
   assert.match(login, /\.from\("users"\)\s+\.select\("\*"\)\s+\.eq\("email", email\)\s+\.eq\("password", password\)\s+\.single\(\);/);
   assert.ok(login.includes('.select("client_id, role, is_active, permissions_overrides, clients(id, business_name, email)")'));
-  assert.ok(login.includes('localStorage.setItem("user", JSON.stringify(finalUser));'));
+  // Security C1: the stored/state user is the sanitized copy (no password).
+  assert.ok(login.includes("const storedUser = writeStoredUser(finalUser);"));
   assert.ok(login.includes("writeSessionExpiry();"));
-  assert.ok(login.includes("setUser(finalUser);"));
+  assert.ok(login.includes("setUser(storedUser);"));
   assert.ok(login.includes('navigate(user.role === "admin" ? "/admin" : "/client");'));
   // No registration / password-reset / Supabase Auth was introduced.
   assert.equal(/supabase\.auth|signUp|resetPassword|\.insert\(/.test(login), false);

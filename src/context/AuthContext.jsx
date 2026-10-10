@@ -1,6 +1,7 @@
 // src/context/AuthContext.jsx
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { writeSessionExpiry, clearSessionExpiry, readSessionExpiry, isSessionExpired } from "../lib/session.js";
+import { hasSensitiveUserFields, writeStoredUser } from "../lib/storedUser.js";
 
 // Rehydrates whatever shape Login.jsx stored in localStorage — no field
 // list is enforced here. For a "client" role user, that object also
@@ -48,6 +49,13 @@ function loadStoredUser() {
     if (isSessionExpired(expiresAt)) {
       clearStoredSession();
       return null;
+    }
+
+    // Security C1: an object cached by an older build may still carry the
+    // plaintext password — strip it and rewrite storage, keeping the
+    // session itself (no forced logout).
+    if (hasSensitiveUserFields(parsedUser)) {
+      return writeStoredUser(parsedUser);
     }
 
     return parsedUser;

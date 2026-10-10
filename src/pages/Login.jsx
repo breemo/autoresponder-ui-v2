@@ -13,6 +13,7 @@ import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext.jsx";
 import { writeSessionExpiry } from "../lib/session.js";
+import { writeStoredUser } from "../lib/storedUser.js";
 import { BrandLogo, BrandMark, ChannelTile } from "../components/public/Brand.jsx";
 import { MessageBubble } from "../components/public/ProductPreviews.jsx";
 import { CHANNELS, PUBLIC_HOME_PATH, TRIAL_DAYS, TRIAL_PATH } from "../lib/publicSite.js";
@@ -148,9 +149,11 @@ export default function Login() {
     }
 
     // 💾 3) نخزن البيانات الصحيحة للـ user
-    localStorage.setItem("user", JSON.stringify(finalUser));
+    // Security C1: credentials (e.g. `password` from select("*")) are
+    // stripped before the object reaches localStorage or React state.
+    const storedUser = writeStoredUser(finalUser);
     writeSessionExpiry();
-    setUser(finalUser);
+    setUser(storedUser);
 
     // Best-effort last-login stamp (shown on the client Team page). Not
     // awaited/blocking — a failure here must never prevent login.
@@ -178,7 +181,9 @@ export default function Login() {
       // On success keep the button in its loading state until navigation.
       if (!signedIn) setLoading(false);
     } catch (err) {
-      console.error("Login failed:", err);
+      // Log only the message — never the error object, which may carry
+      // request details from the credential query.
+      console.error("Login failed:", err?.message || "unknown error");
       setMessage({ tone: "error", text: t("login.errorGeneric") });
       setLoading(false);
     }

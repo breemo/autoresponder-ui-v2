@@ -117,3 +117,29 @@ If implementation conflicts with the provided design, ask for clarification befo
 - Minimize token usage.
 - Clearly list modified files.
 - Report any assumptions before implementation.
+
+---
+
+# Execution Reports
+
+Every development, security, or maintenance task must end with a structured Markdown execution report.
+
+- Save it under `docs/security/reports/` as `YYYY-MM-DD-<descriptive-task-name>.md`.
+- Required sections:
+  1. Executive Summary
+  2. Task Objectives and Scope
+  3. Git Branch and Starting Commit
+  4. Files Created / Modified (exact paths)
+  5. Implementation Details
+  6. Completed vs Partially Completed vs Blocked
+  7. Database Impact
+  8. n8n Workflow Impact
+  9. DEV and PROD Impact
+  10. Build and Test Results (exact commands, counts, failures and causes; pre-existing failures listed separately)
+  11. Security Risks and Remaining Vulnerabilities
+  12. Compatibility and Regression Assessment
+  13. Rollback Instructions
+  14. Recommended Next Steps
+  15. Final Status: PASS / PARTIAL / BLOCKED, plus the next action
+- Clearly distinguish active protections from code that is only prepared for future activation.
+- Give the report's full absolute path in the final response.
