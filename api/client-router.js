@@ -2,6 +2,7 @@ import { handleClientUsers } from "./_lib/clientUsers.js";
 import { handleClientAiBehavior } from "./_lib/clientAiBehavior.js";
 import { handleClientLocations } from "./_lib/clientLocations.js";
 import { handleChangePassword } from "./_lib/changePassword.js";
+import { handleAuthLogin } from "./_lib/authLogin.js";
 
 // Vercel Hobby Function-count consolidation — merges the former top-level
 // api/client-users.js (Team Management) and api/client-ai-behavior.js
@@ -36,6 +37,10 @@ import { handleChangePassword } from "./_lib/changePassword.js";
 //     -> former api/change-password.js, unchanged (api/_lib/changePassword.js).
 //        Own trust model: re-verifies the caller's current password, no
 //        actor_user_id / team_management check.
+//   POST /api/client-router?resource=login { email, password }
+//     -> api/_lib/authLogin.js (Security C2: server-side credential check,
+//        replaces the browser's direct `users` query). Own trust model: no
+//        actor_user_id; returns a sanitized user only, issues no session.
 // Pure, synchronous routing decision — extracted from handler() below so
 // it's unit-testable (api/_lib/__tests__/clientRouting.test.js) without
 // needing a real Supabase client.
@@ -45,6 +50,7 @@ export function resolveClientRoute(req) {
   if (resource === "ai-behavior") return "ai-behavior";
   if (resource === "locations") return "locations";
   if (resource === "password") return "password";
+  if (resource === "login") return "login";
   return null;
 }
 
@@ -62,6 +68,9 @@ export default async function handler(req, res) {
   }
   if (route === "password") {
     return handleChangePassword(req, res);
+  }
+  if (route === "login") {
+    return handleAuthLogin(req, res);
   }
 
   return res.status(400).json({ success: false, message: "Unknown resource" });

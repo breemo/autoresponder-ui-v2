@@ -162,6 +162,7 @@
     "errorInvalidCredentials": "❌ Incorrect email or password",
     "errorNoMembership": "❌ This account isn't linked to any client",
     "errorAccountDisabled": "❌ This account has been disabled — please contact the account owner",
+    "errorRateLimited": "❌ Too many login attempts. Please wait a few minutes and try again.",
     "successAdmin": "✅ Welcome, admin!",
     "successClient": "✅ Welcome!",
     "welcomeTitle": "Welcome back",

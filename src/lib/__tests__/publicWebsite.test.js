@@ -51,14 +51,21 @@ test("logout and the installed PWA land on Login", () => {
 
 test("redesigned Login keeps the existing authentication flow", () => {
   const login = read("src/pages/Login.jsx");
-  // Same credential check, membership resolution, storage, session and destinations.
-  assert.match(login, /\.from\("users"\)\s+\.select\("\*"\)\s+\.eq\("email", email\)\s+\.eq\("password", password\)\s+\.single\(\);/);
-  assert.ok(login.includes('.select("client_id, role, is_active, permissions_overrides, clients(id, business_name, email)")'));
-  // Security C1: the stored/state user is the sanitized copy (no password).
-  assert.ok(login.includes("const storedUser = writeStoredUser(finalUser);"));
+  // Security C2: credentials are verified server-side; the browser never
+  // queries `users` (and never filters on the password column) any more.
+  assert.equal(/\.from\("users"\)/.test(login), false);
+  assert.equal(/\.eq\("password"/.test(login), false);
+  assert.ok(login.includes('fetch("/api/client-router?resource=login"'));
+  assert.ok(login.includes("body: JSON.stringify({ email, password })"));
+  // Same storage (sanitized, Security C1), session and destinations.
+  assert.ok(login.includes("const storedUser = writeStoredUser(user);"));
   assert.ok(login.includes("writeSessionExpiry();"));
   assert.ok(login.includes("setUser(storedUser);"));
   assert.ok(login.includes('navigate(user.role === "admin" ? "/admin" : "/client");'));
+  // Existing messages are reused for every server error code.
+  for (const key of ["errorInvalidCredentials", "errorNoMembership", "errorAccountDisabled", "errorRateLimited", "errorGeneric"]) {
+    assert.ok(login.includes(`"login.${key}"`), key);
+  }
   // No registration / password-reset / Supabase Auth was introduced.
   assert.equal(/supabase\.auth|signUp|resetPassword|\.insert\(/.test(login), false);
 });

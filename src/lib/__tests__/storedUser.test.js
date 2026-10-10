@@ -109,9 +109,9 @@ test("Login.jsx stores and sets only the sanitized user", () => {
   const src = code(read("src/pages/Login.jsx"));
   assert.match(src, /import \{ writeStoredUser \} from "\.\.\/lib\/storedUser\.js"/);
   assert.doesNotMatch(src, /localStorage\.setItem\(\s*"user"/);
-  assert.match(src, /const storedUser = writeStoredUser\(finalUser\);/);
+  assert.match(src, /const storedUser = writeStoredUser\(user\);/);
   assert.match(src, /setUser\(storedUser\)/);
-  assert.doesNotMatch(src, /setUser\(finalUser\)/);
+  assert.doesNotMatch(src, /setUser\((user|finalUser)\)/);
 });
 
 test("Login.jsx never logs credentials or the raw error object", () => {

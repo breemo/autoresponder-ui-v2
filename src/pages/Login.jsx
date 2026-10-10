@@ -9,7 +9,6 @@ import {
   EyeIcon,
   EyeSlashIcon,
 } from "@heroicons/react/24/outline";
-import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext.jsx";
 import { writeSessionExpiry } from "../lib/session.js";
@@ -17,6 +16,15 @@ import { writeStoredUser } from "../lib/storedUser.js";
 import { BrandLogo, BrandMark, ChannelTile } from "../components/public/Brand.jsx";
 import { MessageBubble } from "../components/public/ProductPreviews.jsx";
 import { CHANNELS, PUBLIC_HOME_PATH, TRIAL_DAYS, TRIAL_PATH } from "../lib/publicSite.js";
+
+// Server error codes (api/_lib/authLogin.js) -> existing login messages.
+const LOGIN_ERROR_KEYS = {
+  invalid_request: "login.errorInvalidCredentials",
+  invalid_credentials: "login.errorInvalidCredentials",
+  no_membership: "login.errorNoMembership",
+  account_disabled: "login.errorAccountDisabled",
+  rate_limited: "login.errorRateLimited",
+};
 
 // Existing translations carry a leading ❌/✅; the redesigned alert shows its
 // own icon instead.
@@ -79,88 +87,32 @@ export default function Login() {
 
   const isRtl = lang?.isRtl ?? false;
 
-  // Authentication flow — unchanged from the previous Login page (same
-  // queries, role/membership resolution, stored user, session expiry and
-  // destinations). Only the message presentation is new. Returns true when
-  // the user was signed in.
+  // Authentication flow. Security C2: credentials are verified server-side
+  // (api/_lib/authLogin.js) — the browser no longer queries `users`. The
+  // response is the same user/membership shape as before minus credential
+  // fields; stored user, session expiry and destinations are unchanged.
+  // Returns true when the user was signed in.
   const handleLogin = async () => {
-    const { data: user, error } = await supabase
-      .from("users")
-      .select("*")
-      .eq("email", email)
-      .eq("password", password)
-      .single();
+    const response = await fetch("/api/client-router?resource=login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await response.json().catch(() => null);
 
-    if (error || !user) {
-      setMessage({ tone: "error", text: t("login.errorInvalidCredentials") });
+    if (!response.ok || !data?.success || !data.user) {
+      setMessage({ tone: "error", text: t(LOGIN_ERROR_KEYS[data?.code] || "login.errorGeneric") });
       return false;
     }
 
-    // 🔍 1) نجلب عضوية العميل من جدول client_users (مش عن طريق مطابقة الإيميل)
-    let finalUser = { ...user };
+    const user = data.user;
 
-    if (user.role === "client") {
-      const { data: membership, error: membershipError } = await supabase
-        .from("client_users")
-        .select("client_id, role, is_active, permissions_overrides, clients(id, business_name, email)")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (membershipError || !membership) {
-        setMessage({ tone: "error", text: t("login.errorNoMembership") });
-        return false;
-      }
-
-      if (membership.is_active === false) {
-        setMessage({ tone: "error", text: t("login.errorAccountDisabled") });
-        return false;
-      }
-
-      // 🧠 2) ندمج ال user مع بيانات العضوية بحيث يصير عنده client_id ودوره
-      finalUser = {
-        ...user,
-        client_id: membership.client_id,
-        business_name: membership.clients?.business_name || null,
-        client_role: membership.role,
-        is_active: membership.is_active,
-        permissions_overrides: membership.permissions_overrides,
-      };
-
-      // Best-effort UI-language fetch — completely separate from AI/customer
-      // language, this only resolves which language the PORTAL itself
-      // renders in for this account (see LanguageContext.jsx for the
-      // resolution order). Both columns are new/optional and may not exist
-      // yet if the language migration hasn't been applied — caught and
-      // silently ignored so login never breaks because of this, exactly like
-      // the last_login_at best-effort update below.
-      try {
-        const { data: langRow } = await supabase
-          .from("client_users")
-          .select("language, clients(default_language)")
-          .eq("user_id", user.id)
-          .maybeSingle();
-
-        finalUser.ui_language_user = langRow?.language || null;
-        finalUser.ui_language_client = langRow?.clients?.default_language || null;
-      } catch (langErr) {
-        // Column(s) not present yet, or any other failure — language simply
-        // falls back to the system default; never blocks login.
-      }
-    }
-
-    // 💾 3) نخزن البيانات الصحيحة للـ user
-    // Security C1: credentials (e.g. `password` from select("*")) are
-    // stripped before the object reaches localStorage or React state.
-    const storedUser = writeStoredUser(finalUser);
+    // 💾 نخزن البيانات الصحيحة للـ user
+    // Security C1: credentials are stripped again before the object
+    // reaches localStorage or React state.
+    const storedUser = writeStoredUser(user);
     writeSessionExpiry();
     setUser(storedUser);
-
-    // Best-effort last-login stamp (shown on the client Team page). Not
-    // awaited/blocking — a failure here must never prevent login.
-    supabase.from("users").update({ last_login_at: new Date().toISOString() }).eq("id", user.id).then(
-      () => {},
-      () => {}
-    );
 
     setMessage({ tone: "success", text: user.role === "admin" ? t("login.successAdmin") : t("login.successClient") });
 
